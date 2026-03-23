@@ -1,0 +1,47 @@
+{
+  "name": "@aman_asmuei/aman-agent",
+  "version": "0.1.0",
+  "description": "Your AI companion, running locally — powered by the aman ecosystem",
+  "type": "module",
+  "bin": {
+    "aman-agent": "./bin/aman-agent.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "openai": "^4.80.0",
+    "@clack/prompts": "^0.9.1",
+    "picocolors": "^1.1.1",
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.0"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "companion",
+    "aman",
+    "llm",
+    "claude",
+    "openai"
+  ],
+  "author": "Aman Asmuei",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amanasmuei/aman-agent.git"
+  }
+}

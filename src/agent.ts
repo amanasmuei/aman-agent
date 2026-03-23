@@ -1,0 +1,83 @@
+import * as readline from "node:readline";
+import pc from "picocolors";
+import type { LLMClient, Message } from "./llm/types.js";
+import { handleCommand } from "./commands.js";
+
+export async function runAgent(
+  client: LLMClient,
+  systemPrompt: string,
+  aiName: string,
+  model: string,
+): Promise<void> {
+  const messages: Message[] = [];
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  // Handle Ctrl+C gracefully
+  rl.on("SIGINT", () => {
+    console.log(pc.dim("\nGoodbye.\n"));
+    rl.close();
+    process.exit(0);
+  });
+
+  const prompt = (): Promise<string> => {
+    return new Promise<string>((resolve) => {
+      rl.question(pc.green("\nYou > "), (answer) => {
+        resolve(answer);
+      });
+    });
+  };
+
+  console.log(
+    `\nType a message, ${pc.dim("/help")} for commands, or ${pc.dim("/quit")} to exit.\n`,
+  );
+
+  while (true) {
+    const input = await prompt();
+    if (!input.trim()) continue;
+
+    // Handle slash commands
+    const cmdResult = handleCommand(input, model);
+    if (cmdResult.handled) {
+      if (cmdResult.quit) {
+        console.log(pc.dim("\nGoodbye.\n"));
+        rl.close();
+        return;
+      }
+      if (cmdResult.output) {
+        console.log(cmdResult.output);
+      }
+      if (cmdResult.clearHistory) {
+        messages.length = 0;
+      }
+      continue;
+    }
+
+    // Send to LLM
+    messages.push({ role: "user", content: input });
+
+    process.stdout.write(pc.cyan(`\n${aiName} > `));
+
+    try {
+      const response = await client.chat(systemPrompt, messages, (chunk) => {
+        if (chunk.type === "text" && chunk.text) {
+          process.stdout.write(chunk.text);
+        }
+        if (chunk.type === "done") {
+          process.stdout.write("\n");
+        }
+      });
+
+      messages.push(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown error occurred";
+      console.error(pc.red(`\nError: ${message}`));
+      // Remove the user message that failed
+      messages.pop();
+    }
+  }
+}

@@ -59,22 +59,91 @@ program
 
       if (provider === "ollama") {
         apiKey = "ollama";
-        defaultModel = "llama3.2";
         const modelInput = (await p.text({
-          message: "Ollama model",
+          message: "Ollama model name",
           placeholder: "llama3.2",
           defaultValue: "llama3.2",
         })) as string;
         if (p.isCancel(modelInput)) process.exit(0);
         defaultModel = modelInput || "llama3.2";
-      } else {
+      } else if (provider === "anthropic") {
+        const authMethod = (await p.select({
+          message: "Authentication method",
+          options: [
+            { value: "api-key", label: "API key", hint: "from console.anthropic.com" },
+            { value: "subscription", label: "Claude Pro/Team subscription", hint: "uses claude.ai session" },
+          ],
+          initialValue: "api-key",
+        })) as string;
+        if (p.isCancel(authMethod)) process.exit(0);
+
+        if (authMethod === "subscription") {
+          p.log.info("To use your Claude subscription:");
+          p.log.info("1. Go to https://console.anthropic.com/settings/keys");
+          p.log.info("2. Create an API key (included with Pro/Team plan)");
+          p.log.info("3. Paste it below");
+        }
+
         apiKey = (await p.text({
           message: "API key",
-          validate: (v) =>
-            v.length === 0 ? "API key is required" : undefined,
+          validate: (v) => v.length === 0 ? "API key is required" : undefined,
         })) as string;
         if (p.isCancel(apiKey)) process.exit(0);
-        defaultModel = provider === "anthropic" ? "claude-sonnet-4-5-20250514" : "gpt-4o";
+
+        const modelChoice = (await p.select({
+          message: "Claude model",
+          options: [
+            { value: "claude-sonnet-4-5-20250514", label: "Claude Sonnet 4.5", hint: "fast, recommended" },
+            { value: "claude-opus-4-6", label: "Claude Opus 4.6", hint: "most capable" },
+            { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", hint: "fastest, cheapest" },
+            { value: "custom", label: "Custom model ID" },
+          ],
+          initialValue: "claude-sonnet-4-5-20250514",
+        })) as string;
+        if (p.isCancel(modelChoice)) process.exit(0);
+
+        if (modelChoice === "custom") {
+          const customModel = (await p.text({
+            message: "Model ID",
+            placeholder: "claude-sonnet-4-5-20250514",
+            validate: (v) => v.length === 0 ? "Model ID is required" : undefined,
+          })) as string;
+          if (p.isCancel(customModel)) process.exit(0);
+          defaultModel = customModel;
+        } else {
+          defaultModel = modelChoice;
+        }
+      } else {
+        // OpenAI
+        apiKey = (await p.text({
+          message: "API key",
+          validate: (v) => v.length === 0 ? "API key is required" : undefined,
+        })) as string;
+        if (p.isCancel(apiKey)) process.exit(0);
+
+        const modelChoice = (await p.select({
+          message: "OpenAI model",
+          options: [
+            { value: "gpt-4o", label: "GPT-4o", hint: "recommended" },
+            { value: "gpt-4o-mini", label: "GPT-4o Mini", hint: "faster, cheaper" },
+            { value: "o3", label: "o3", hint: "reasoning model" },
+            { value: "custom", label: "Custom model ID" },
+          ],
+          initialValue: "gpt-4o",
+        })) as string;
+        if (p.isCancel(modelChoice)) process.exit(0);
+
+        if (modelChoice === "custom") {
+          const customModel = (await p.text({
+            message: "Model ID",
+            placeholder: "gpt-4o",
+            validate: (v) => v.length === 0 ? "Model ID is required" : undefined,
+          })) as string;
+          if (p.isCancel(customModel)) process.exit(0);
+          defaultModel = customModel;
+        } else {
+          defaultModel = modelChoice;
+        }
       }
 
       config = { provider, apiKey, model: defaultModel };

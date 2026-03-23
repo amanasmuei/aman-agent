@@ -6,6 +6,7 @@ import { assembleSystemPrompt } from "./prompt.js";
 import { createAnthropicClient } from "./llm/anthropic.js";
 import { createOpenAIClient } from "./llm/openai.js";
 import { createOllamaClient } from "./llm/ollama.js";
+import { McpManager } from "./mcp/client.js";
 import { runAgent } from "./agent.js";
 import {
   loadSchedules,
@@ -29,6 +30,7 @@ program
   .description("Your AI companion, running locally")
   .version(__VERSION__)
   .option("--model <model>", "Override LLM model")
+  .option("--budget <tokens>", "Token budget for system prompt (default: 8000)", parseInt)
   .action(async (options) => {
     p.intro(pc.bold("aman agent") + pc.dim(" — starting your AI companion"));
 
@@ -83,8 +85,9 @@ program
     // Override model if specified
     const model = options.model || config.model;
 
-    // Assemble system prompt from ecosystem
-    const { prompt: systemPrompt, layers } = assembleSystemPrompt();
+    // Assemble system prompt from ecosystem with token budget
+    const budget = options.budget || undefined;
+    const { prompt: systemPrompt, layers, truncated, totalTokens } = assembleSystemPrompt(budget);
 
     if (layers.length === 0) {
       p.log.warning(
@@ -94,7 +97,12 @@ program
       );
       p.log.info("Starting with empty system prompt.");
     } else {
-      p.log.success(`Loaded: ${layers.join(", ")}`);
+      p.log.success(
+        `Loaded: ${layers.join(", ")} ${pc.dim(`(${totalTokens.toLocaleString()} tokens)`)}`,
+      );
+      if (truncated.length > 0) {
+        p.log.warning(`Truncated: ${truncated.join(", ")} ${pc.dim("(over budget)")}`);
+      }
     }
 
     p.log.info(`Model: ${pc.dim(model)}`);

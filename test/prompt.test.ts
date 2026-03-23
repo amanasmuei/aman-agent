@@ -94,7 +94,8 @@ describe("assembleSystemPrompt", () => {
     }
 
     const result = assembleSystemPrompt();
-    expect(result.layers).toEqual(["identity", "tools", "workflows", "guardrails", "skills"]);
+    // Budget-aware ordering: sorted by priority (identity, guardrails, workflows, tools, skills)
+    expect(result.layers).toEqual(["identity", "guardrails", "workflows", "tools", "skills"]);
 
     // All content pieces present and separated by ---
     for (const [, , content] of files) {
@@ -117,6 +118,7 @@ describe("assembleSystemPrompt", () => {
     fs.writeFileSync(path.join(rulesDir, "rules.md"), "Rules only", "utf-8");
 
     const result = assembleSystemPrompt();
+    // Budget-aware ordering: identity first, then guardrails
     expect(result.layers).toEqual(["identity", "guardrails"]);
     expect(result.prompt).toContain("Identity only");
     expect(result.prompt).toContain("Rules only");

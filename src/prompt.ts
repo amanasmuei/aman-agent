@@ -1,55 +1,61 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { estimateTokens, buildBudgetedPrompt } from "./token-budget.js";
+import type { PromptComponent } from "./token-budget.js";
 
-export function assembleSystemPrompt(): { prompt: string; layers: string[] } {
+interface EcosystemFile {
+  name: string;
+  dir: string;
+  file: string;
+}
+
+const ECOSYSTEM_FILES: EcosystemFile[] = [
+  { name: "identity", dir: ".acore", file: "core.md" },
+  { name: "tools", dir: ".akit", file: "kit.md" },
+  { name: "workflows", dir: ".aflow", file: "flow.md" },
+  { name: "guardrails", dir: ".arules", file: "rules.md" },
+  { name: "skills", dir: ".askill", file: "skills.md" },
+];
+
+export function assembleSystemPrompt(maxTokens?: number): {
+  prompt: string;
+  layers: string[];
+  truncated: string[];
+  totalTokens: number;
+} {
   const home = os.homedir();
-  const layers: string[] = [];
-  const parts: string[] = [];
+  const components: PromptComponent[] = [];
 
-  // Identity (acore)
-  const corePath = path.join(home, ".acore", "core.md");
-  if (fs.existsSync(corePath)) {
-    parts.push(fs.readFileSync(corePath, "utf-8").trim());
-    layers.push("identity");
+  for (const entry of ECOSYSTEM_FILES) {
+    const filePath = path.join(home, entry.dir, entry.file);
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, "utf-8").trim();
+      components.push({
+        name: entry.name,
+        content,
+        tokens: estimateTokens(content),
+      });
+    }
   }
 
-  // Project context
+  // Project context (not prioritized — appended as extra)
   const contextPath = path.join(process.cwd(), ".acore", "context.md");
   if (fs.existsSync(contextPath)) {
-    parts.push(fs.readFileSync(contextPath, "utf-8").trim());
+    const content = fs.readFileSync(contextPath, "utf-8").trim();
+    components.push({
+      name: "context",
+      content,
+      tokens: estimateTokens(content),
+    });
   }
 
-  // Tools (akit)
-  const kitPath = path.join(home, ".akit", "kit.md");
-  if (fs.existsSync(kitPath)) {
-    parts.push(fs.readFileSync(kitPath, "utf-8").trim());
-    layers.push("tools");
-  }
-
-  // Workflows (aflow)
-  const flowPath = path.join(home, ".aflow", "flow.md");
-  if (fs.existsSync(flowPath)) {
-    parts.push(fs.readFileSync(flowPath, "utf-8").trim());
-    layers.push("workflows");
-  }
-
-  // Guardrails (arules)
-  const rulesPath = path.join(home, ".arules", "rules.md");
-  if (fs.existsSync(rulesPath)) {
-    parts.push(fs.readFileSync(rulesPath, "utf-8").trim());
-    layers.push("guardrails");
-  }
-
-  // Skills (askill)
-  const skillsPath = path.join(home, ".askill", "skills.md");
-  if (fs.existsSync(skillsPath)) {
-    parts.push(fs.readFileSync(skillsPath, "utf-8").trim());
-    layers.push("skills");
-  }
+  const budgeted = buildBudgetedPrompt(components, maxTokens);
 
   return {
-    prompt: parts.join("\n\n---\n\n"),
-    layers,
+    prompt: budgeted.prompt,
+    layers: budgeted.included,
+    truncated: budgeted.truncated,
+    totalTokens: budgeted.totalTokens,
   };
 }

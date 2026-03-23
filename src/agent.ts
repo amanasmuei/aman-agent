@@ -1,14 +1,22 @@
 import * as readline from "node:readline";
 import pc from "picocolors";
-import type { LLMClient, Message } from "./llm/types.js";
+import type {
+  LLMClient,
+  Message,
+  ToolDefinition,
+  ToolResultBlock,
+} from "./llm/types.js";
 import { handleCommand } from "./commands.js";
 import { setReminder, clearReminders } from "./reminders.js";
+import type { McpManager } from "./mcp/client.js";
 
 export async function runAgent(
   client: LLMClient,
   systemPrompt: string,
   aiName: string,
   model: string,
+  tools?: ToolDefinition[],
+  mcpManager?: McpManager,
 ): Promise<void> {
   const messages: Message[] = [];
 
@@ -78,16 +86,66 @@ export async function runAgent(
     process.stdout.write(pc.cyan(`\n${aiName} > `));
 
     try {
-      const response = await client.chat(systemPrompt, messages, (chunk) => {
-        if (chunk.type === "text" && chunk.text) {
-          process.stdout.write(chunk.text);
-        }
-        if (chunk.type === "done") {
-          process.stdout.write("\n");
-        }
-      });
+      let response = await client.chat(
+        systemPrompt,
+        messages,
+        (chunk) => {
+          if (chunk.type === "text" && chunk.text) {
+            process.stdout.write(chunk.text);
+          }
+          if (chunk.type === "done") {
+            process.stdout.write("\n");
+          }
+        },
+        tools,
+      );
 
-      messages.push(response);
+      // Add assistant message to history
+      messages.push(response.message);
+
+      // Agentic tool loop: execute tools until LLM stops requesting them
+      while (response.toolUses.length > 0 && mcpManager) {
+        const toolResults: ToolResultBlock[] = [];
+
+        for (const toolUse of response.toolUses) {
+          process.stdout.write(
+            pc.dim(`  [using ${toolUse.name}...]\n`),
+          );
+          const result = await mcpManager.callTool(
+            toolUse.name,
+            toolUse.input,
+          );
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: toolUse.id,
+            content: result,
+          });
+        }
+
+        // Add tool results as a user message
+        messages.push({
+          role: "user",
+          content: toolResults,
+        });
+
+        // Call LLM again with tool results
+        response = await client.chat(
+          systemPrompt,
+          messages,
+          (chunk) => {
+            if (chunk.type === "text" && chunk.text) {
+              process.stdout.write(chunk.text);
+            }
+            if (chunk.type === "done") {
+              process.stdout.write("\n");
+            }
+          },
+          tools,
+        );
+
+        // Add assistant response to history
+        messages.push(response.message);
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown error occurred";

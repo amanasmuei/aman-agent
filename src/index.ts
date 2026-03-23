@@ -122,6 +122,33 @@ program
     const notifications = checkNotifications();
     displayNotifications(notifications);
 
+    // Start MCP servers
+    const mcpManager = new McpManager();
+
+    p.log.step("Connecting to MCP servers...");
+
+    // Connect to aman-mcp (identity, tools, workflows, rules, eval)
+    await mcpManager.connect("aman", "npx", ["-y", "@aman_asmuei/aman-mcp"]);
+
+    // Connect to amem (memory)
+    await mcpManager.connect("amem", "npx", ["-y", "@aman_asmuei/amem"]);
+
+    const mcpTools = mcpManager.getTools();
+    if (mcpTools.length > 0) {
+      p.log.success(`${mcpTools.length} MCP tools available`);
+    } else {
+      p.log.info(
+        "No MCP tools connected (install aman-mcp or amem for tool support)",
+      );
+    }
+
+    // Convert ToolDef[] to ToolDefinition[] for the LLM
+    const toolDefs = mcpTools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.input_schema,
+    }));
+
     // Create LLM client
     let client;
     if (config.provider === "anthropic") {
@@ -133,7 +160,17 @@ program
     }
 
     // Run the agent
-    await runAgent(client, systemPrompt, aiName, model);
+    await runAgent(
+      client,
+      systemPrompt,
+      aiName,
+      model,
+      toolDefs.length > 0 ? toolDefs : undefined,
+      toolDefs.length > 0 ? mcpManager : undefined,
+    );
+
+    // Cleanup on exit
+    await mcpManager.disconnect();
   });
 
 program

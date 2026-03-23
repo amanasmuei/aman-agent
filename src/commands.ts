@@ -41,6 +41,7 @@ export function handleCommand(input: string, model?: string): CommandResult {
         `  ${pc.cyan("/remind")}     Set a reminder (e.g. /remind 30m Review PR)`,
         `  ${pc.cyan("/model")}      Show current LLM model`,
         `  ${pc.cyan("/update")}     Check for updates`,
+        `  ${pc.cyan("/reconfig")}   Reset LLM config (provider, model, API key)`,
         `  ${pc.cyan("/clear")}      Clear conversation history`,
         `  ${pc.cyan("/quit")}       Exit`,
       ].join("\n"),
@@ -91,6 +92,21 @@ export function handleCommand(input: string, model?: string): CommandResult {
     return {
       handled: true,
       output: model ? `Model: ${pc.bold(model)}` : "Model: unknown",
+    };
+  }
+
+  if (cmd === "/update-config" || cmd === "/reconfig") {
+    const configPath = path.join(os.homedir(), ".aman-agent", "config.json");
+    if (fs.existsSync(configPath)) {
+      fs.unlinkSync(configPath);
+    }
+    return {
+      handled: true,
+      quit: true,
+      output: [
+        pc.green("Config reset."),
+        `Run ${pc.bold("npx @aman_asmuei/aman-agent")} again to reconfigure your LLM provider, model, and API key.`,
+      ].join("\n"),
     };
   }
 

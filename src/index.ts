@@ -5,6 +5,7 @@ import { loadConfig, saveConfig } from "./config.js";
 import { assembleSystemPrompt } from "./prompt.js";
 import { createAnthropicClient } from "./llm/anthropic.js";
 import { createOpenAIClient } from "./llm/openai.js";
+import { createOllamaClient } from "./llm/ollama.js";
 import { runAgent } from "./agent.js";
 import {
   loadSchedules,
@@ -45,20 +46,34 @@ program
             hint: "recommended",
           },
           { value: "openai", label: "GPT (OpenAI)" },
+          { value: "ollama", label: "Ollama (local)", hint: "free, runs offline" },
         ],
         initialValue: "anthropic",
-      })) as "anthropic" | "openai";
+      })) as "anthropic" | "openai" | "ollama";
       if (p.isCancel(provider)) process.exit(0);
 
-      const apiKey = (await p.text({
-        message: "API key",
-        validate: (v) =>
-          v.length === 0 ? "API key is required" : undefined,
-      })) as string;
-      if (p.isCancel(apiKey)) process.exit(0);
+      let apiKey = "";
+      let defaultModel = "";
 
-      const defaultModel =
-        provider === "anthropic" ? "claude-sonnet-4-5-20250514" : "gpt-4o";
+      if (provider === "ollama") {
+        apiKey = "ollama";
+        defaultModel = "llama3.2";
+        const modelInput = (await p.text({
+          message: "Ollama model",
+          placeholder: "llama3.2",
+          defaultValue: "llama3.2",
+        })) as string;
+        if (p.isCancel(modelInput)) process.exit(0);
+        defaultModel = modelInput || "llama3.2";
+      } else {
+        apiKey = (await p.text({
+          message: "API key",
+          validate: (v) =>
+            v.length === 0 ? "API key is required" : undefined,
+        })) as string;
+        if (p.isCancel(apiKey)) process.exit(0);
+        defaultModel = provider === "anthropic" ? "claude-sonnet-4-5-20250514" : "gpt-4o";
+      }
 
       config = { provider, apiKey, model: defaultModel };
       saveConfig(config);
@@ -100,10 +115,14 @@ program
     displayNotifications(notifications);
 
     // Create LLM client
-    const client =
-      config.provider === "anthropic"
-        ? createAnthropicClient(config.apiKey, model)
-        : createOpenAIClient(config.apiKey, model);
+    let client;
+    if (config.provider === "anthropic") {
+      client = createAnthropicClient(config.apiKey, model);
+    } else if (config.provider === "ollama") {
+      client = createOllamaClient(model);
+    } else {
+      client = createOpenAIClient(config.apiKey, model);
+    }
 
     // Run the agent
     await runAgent(client, systemPrompt, aiName, model);

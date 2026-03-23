@@ -3,7 +3,7 @@ import path from "node:path";
 import os from "node:os";
 
 export interface AgentConfig {
-  provider: "anthropic" | "openai";
+  provider: "anthropic" | "openai" | "ollama";
   apiKey: string;
   model: string;
 }

@@ -2,6 +2,7 @@ import * as readline from "node:readline";
 import pc from "picocolors";
 import type { LLMClient, Message } from "./llm/types.js";
 import { handleCommand } from "./commands.js";
+import { setReminder, clearReminders } from "./reminders.js";
 
 export async function runAgent(
   client: LLMClient,
@@ -43,9 +44,24 @@ export async function runAgent(
     const cmdResult = handleCommand(input, model);
     if (cmdResult.handled) {
       if (cmdResult.quit) {
+        clearReminders();
         console.log(pc.dim("\nGoodbye.\n"));
         rl.close();
         return;
+      }
+      if (cmdResult.remind) {
+        const duration = setReminder(
+          cmdResult.remind.timeStr,
+          cmdResult.remind.message,
+        );
+        if (duration) {
+          console.log(pc.dim(`Reminder set for ${duration} from now.`));
+        } else {
+          console.log(
+            pc.red("Invalid time format. Use: 5m, 30m, 1h, 2h, tomorrow"),
+          );
+        }
+        continue;
       }
       if (cmdResult.output) {
         console.log(cmdResult.output);

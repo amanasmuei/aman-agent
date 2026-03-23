@@ -8,6 +8,7 @@ export interface CommandResult {
   output?: string;
   quit?: boolean;
   clearHistory?: boolean;
+  remind?: { timeStr: string; message: string };
 }
 
 function readEcosystemFile(filePath: string, label: string): string {
@@ -36,6 +37,7 @@ export function handleCommand(input: string, model?: string): CommandResult {
         `  ${pc.cyan("/workflows")}  View defined workflows`,
         `  ${pc.cyan("/rules")}      View guardrails`,
         `  ${pc.cyan("/skills")}     View installed skills`,
+        `  ${pc.cyan("/remind")}     Set a reminder (e.g. /remind 30m Review PR)`,
         `  ${pc.cyan("/model")}      Show current LLM model`,
         `  ${pc.cyan("/clear")}      Clear conversation history`,
         `  ${pc.cyan("/quit")}       Exit`,
@@ -92,6 +94,20 @@ export function handleCommand(input: string, model?: string): CommandResult {
 
   if (cmd === "/clear") {
     return { handled: true, output: pc.dim("Conversation cleared."), clearHistory: true };
+  }
+
+  if (cmd.startsWith("/remind")) {
+    const parts = input.trim().split(/\s+/);
+    if (parts.length < 3) {
+      return {
+        handled: true,
+        output:
+          "Usage: /remind <time> <message>\nExamples: /remind 30m Review PR, /remind 2h Deploy, /remind tomorrow Check metrics",
+      };
+    }
+    const timeStr = parts[1];
+    const message = parts.slice(2).join(" ");
+    return { handled: true, remind: { timeStr, message } };
   }
 
   if (cmd.startsWith("/")) {

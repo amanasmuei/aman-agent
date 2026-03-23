@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { execFileSync } from "node:child_process";
 import pc from "picocolors";
 
 export interface CommandResult {
@@ -39,6 +40,7 @@ export function handleCommand(input: string, model?: string): CommandResult {
         `  ${pc.cyan("/skills")}     View installed skills`,
         `  ${pc.cyan("/remind")}     Set a reminder (e.g. /remind 30m Review PR)`,
         `  ${pc.cyan("/model")}      Show current LLM model`,
+        `  ${pc.cyan("/update")}     Check for updates`,
         `  ${pc.cyan("/clear")}      Clear conversation history`,
         `  ${pc.cyan("/quit")}       Exit`,
       ].join("\n"),
@@ -90,6 +92,39 @@ export function handleCommand(input: string, model?: string): CommandResult {
       handled: true,
       output: model ? `Model: ${pc.bold(model)}` : "Model: unknown",
     };
+  }
+
+  if (cmd === "/update" || cmd === "/upgrade") {
+    try {
+      const current = execFileSync("npm", ["view", "@aman_asmuei/aman-agent", "version"], { encoding: "utf-8" }).trim();
+      const local = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8")).version;
+      if (current === local) {
+        return { handled: true, output: `${pc.green("Up to date")} — v${local}` };
+      }
+      return {
+        handled: true,
+        output: [
+          `${pc.yellow("Update available:")} v${local} → v${current}`,
+          "",
+          `Run this in your terminal:`,
+          `  ${pc.bold("npm install -g @aman_asmuei/aman-agent@latest")}`,
+          "",
+          `Or use npx (always latest):`,
+          `  ${pc.bold("npx @aman_asmuei/aman-agent@latest")}`,
+        ].join("\n"),
+      };
+    } catch {
+      return {
+        handled: true,
+        output: [
+          `To update, run in your terminal:`,
+          `  ${pc.bold("npm install -g @aman_asmuei/aman-agent@latest")}`,
+          "",
+          `Or use npx (always latest):`,
+          `  ${pc.bold("npx @aman_asmuei/aman-agent@latest")}`,
+        ].join("\n"),
+      };
+    }
   }
 
   if (cmd === "/clear") {

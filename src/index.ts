@@ -67,25 +67,11 @@ program
         if (p.isCancel(modelInput)) process.exit(0);
         defaultModel = modelInput || "llama3.2";
       } else if (provider === "anthropic") {
-        const authMethod = (await p.select({
-          message: "Authentication method",
-          options: [
-            { value: "api-key", label: "API key", hint: "from console.anthropic.com" },
-            { value: "subscription", label: "Claude Pro/Team subscription", hint: "uses claude.ai session" },
-          ],
-          initialValue: "api-key",
-        })) as string;
-        if (p.isCancel(authMethod)) process.exit(0);
-
-        if (authMethod === "subscription") {
-          p.log.info("To use your Claude subscription:");
-          p.log.info("1. Go to https://console.anthropic.com/settings/keys");
-          p.log.info("2. Create an API key (included with Pro/Team plan)");
-          p.log.info("3. Paste it below");
-        }
+        p.log.info("Get your API key from: https://console.anthropic.com/settings/keys");
+        p.log.info(pc.dim("Note: API access is separate from Claude Pro subscription. You need API credits."));
 
         apiKey = (await p.text({
-          message: "API key",
+          message: "API key (starts with sk-ant-)",
           validate: (v) => v.length === 0 ? "API key is required" : undefined,
         })) as string;
         if (p.isCancel(apiKey)) process.exit(0);

@@ -222,6 +222,7 @@ program
       model,
       toolDefs.length > 0 ? toolDefs : undefined,
       toolDefs.length > 0 ? mcpManager : undefined,
+      config.hooks,
     );
 
     // Cleanup on exit

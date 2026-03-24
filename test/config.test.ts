@@ -41,7 +41,17 @@ describe("config", () => {
       fs.writeFileSync(CONFIG_PATH, JSON.stringify(config), "utf-8");
 
       const result = loadConfig();
-      expect(result).toEqual(config);
+      expect(result).toEqual({
+        ...config,
+        hooks: {
+          memoryRecall: true,
+          sessionResume: true,
+          rulesCheck: true,
+          workflowSuggest: true,
+          evalPrompt: true,
+          autoSessionSave: true,
+        },
+      });
     });
 
     it("returns null for malformed JSON", () => {

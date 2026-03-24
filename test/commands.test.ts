@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import type { McpManager } from "../src/mcp/client.js";
 
 const tmpHome = path.join(os.tmpdir(), `aman-agent-test-cmds-${Date.now()}`);
 
@@ -11,6 +12,15 @@ vi.mock("node:os", async () => {
 });
 
 const { handleCommand } = await import("../src/commands.js");
+
+function createMockMcpManager() {
+  return {
+    callTool: vi.fn(async (name: string) => `Mock result for ${name}`),
+    getTools: vi.fn(() => []),
+    connect: vi.fn(async () => {}),
+    disconnect: vi.fn(async () => {}),
+  } as unknown as McpManager;
+}
 
 describe("handleCommand", () => {
   beforeEach(() => {
@@ -24,20 +34,20 @@ describe("handleCommand", () => {
   // --- Quit commands ---
 
   describe("/quit, /exit, /q", () => {
-    it("/quit sets quit flag", () => {
-      const result = handleCommand("/quit");
+    it("/quit sets quit flag", async () => {
+      const result = await handleCommand("/quit", {});
       expect(result.handled).toBe(true);
       expect(result.quit).toBe(true);
     });
 
-    it("/exit sets quit flag", () => {
-      const result = handleCommand("/exit");
+    it("/exit sets quit flag", async () => {
+      const result = await handleCommand("/exit", {});
       expect(result.handled).toBe(true);
       expect(result.quit).toBe(true);
     });
 
-    it("/q sets quit flag", () => {
-      const result = handleCommand("/q");
+    it("/q sets quit flag", async () => {
+      const result = await handleCommand("/q", {});
       expect(result.handled).toBe(true);
       expect(result.quit).toBe(true);
     });
@@ -46,8 +56,8 @@ describe("handleCommand", () => {
   // --- Help ---
 
   describe("/help", () => {
-    it("returns help output listing commands", () => {
-      const result = handleCommand("/help");
+    it("returns help output listing commands", async () => {
+      const result = await handleCommand("/help", {});
       expect(result.handled).toBe(true);
       expect(result.output).toBeDefined();
       expect(result.output).toContain("/help");
@@ -65,8 +75,8 @@ describe("handleCommand", () => {
   // --- Clear ---
 
   describe("/clear", () => {
-    it("sets clearHistory flag", () => {
-      const result = handleCommand("/clear");
+    it("sets clearHistory flag", async () => {
+      const result = await handleCommand("/clear", {});
       expect(result.handled).toBe(true);
       expect(result.clearHistory).toBe(true);
       expect(result.output).toContain("cleared");
@@ -76,14 +86,14 @@ describe("handleCommand", () => {
   // --- Model ---
 
   describe("/model", () => {
-    it("shows provided model name", () => {
-      const result = handleCommand("/model", "claude-sonnet-4-20250514");
+    it("shows provided model name", async () => {
+      const result = await handleCommand("/model", { model: "claude-sonnet-4-20250514" });
       expect(result.handled).toBe(true);
       expect(result.output).toContain("claude-sonnet-4-20250514");
     });
 
-    it("shows unknown when no model provided", () => {
-      const result = handleCommand("/model");
+    it("shows unknown when no model provided", async () => {
+      const result = await handleCommand("/model", {});
       expect(result.handled).toBe(true);
       expect(result.output).toContain("unknown");
     });
@@ -92,18 +102,18 @@ describe("handleCommand", () => {
   // --- Ecosystem file commands ---
 
   describe("/identity", () => {
-    it("shows core.md content when file exists", () => {
+    it("shows core.md content when file exists", async () => {
       const dir = path.join(tmpHome, ".acore");
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, "core.md"), "# My Identity", "utf-8");
 
-      const result = handleCommand("/identity");
+      const result = await handleCommand("/identity", {});
       expect(result.handled).toBe(true);
       expect(result.output).toBe("# My Identity");
     });
 
-    it("shows not-found message when file is missing", () => {
-      const result = handleCommand("/identity");
+    it("shows not-found message when file is missing", async () => {
+      const result = await handleCommand("/identity", {});
       expect(result.handled).toBe(true);
       expect(result.output).toContain("No");
       expect(result.output).toContain("identity");
@@ -111,18 +121,18 @@ describe("handleCommand", () => {
   });
 
   describe("/tools", () => {
-    it("shows kit.md content when file exists", () => {
+    it("shows kit.md content when file exists", async () => {
       const dir = path.join(tmpHome, ".akit");
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, "kit.md"), "# My Tools", "utf-8");
 
-      const result = handleCommand("/tools");
+      const result = await handleCommand("/tools", {});
       expect(result.handled).toBe(true);
       expect(result.output).toBe("# My Tools");
     });
 
-    it("shows not-found message when file is missing", () => {
-      const result = handleCommand("/tools");
+    it("shows not-found message when file is missing", async () => {
+      const result = await handleCommand("/tools", {});
       expect(result.handled).toBe(true);
       expect(result.output).toContain("No");
       expect(result.output).toContain("tools");
@@ -130,18 +140,18 @@ describe("handleCommand", () => {
   });
 
   describe("/workflows", () => {
-    it("shows flow.md content when file exists", () => {
+    it("shows flow.md content when file exists", async () => {
       const dir = path.join(tmpHome, ".aflow");
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, "flow.md"), "# My Workflows", "utf-8");
 
-      const result = handleCommand("/workflows");
+      const result = await handleCommand("/workflows", {});
       expect(result.handled).toBe(true);
       expect(result.output).toBe("# My Workflows");
     });
 
-    it("shows not-found message when file is missing", () => {
-      const result = handleCommand("/workflows");
+    it("shows not-found message when file is missing", async () => {
+      const result = await handleCommand("/workflows", {});
       expect(result.handled).toBe(true);
       expect(result.output).toContain("No");
       expect(result.output).toContain("workflows");
@@ -149,18 +159,18 @@ describe("handleCommand", () => {
   });
 
   describe("/rules", () => {
-    it("shows rules.md content when file exists", () => {
+    it("shows rules.md content when file exists", async () => {
       const dir = path.join(tmpHome, ".arules");
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, "rules.md"), "# My Rules", "utf-8");
 
-      const result = handleCommand("/rules");
+      const result = await handleCommand("/rules", {});
       expect(result.handled).toBe(true);
       expect(result.output).toBe("# My Rules");
     });
 
-    it("shows not-found message when file is missing", () => {
-      const result = handleCommand("/rules");
+    it("shows not-found message when file is missing", async () => {
+      const result = await handleCommand("/rules", {});
       expect(result.handled).toBe(true);
       expect(result.output).toContain("No");
       expect(result.output).toContain("guardrails");
@@ -168,18 +178,18 @@ describe("handleCommand", () => {
   });
 
   describe("/skills", () => {
-    it("shows skills.md content when file exists", () => {
+    it("shows skills.md content when file exists", async () => {
       const dir = path.join(tmpHome, ".askill");
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, "skills.md"), "# My Skills", "utf-8");
 
-      const result = handleCommand("/skills");
+      const result = await handleCommand("/skills", {});
       expect(result.handled).toBe(true);
       expect(result.output).toBe("# My Skills");
     });
 
-    it("shows not-found message when file is missing", () => {
-      const result = handleCommand("/skills");
+    it("shows not-found message when file is missing", async () => {
+      const result = await handleCommand("/skills", {});
       expect(result.handled).toBe(true);
       expect(result.output).toContain("No");
       expect(result.output).toContain("skills");
@@ -189,25 +199,25 @@ describe("handleCommand", () => {
   // --- Unknown commands ---
 
   describe("unknown commands", () => {
-    it("handles unknown slash command", () => {
-      const result = handleCommand("/foobar");
+    it("handles unknown slash command", async () => {
+      const result = await handleCommand("/foobar", {});
       expect(result.handled).toBe(true);
       expect(result.output).toContain("Unknown command");
-      expect(result.output).toContain("/foobar");
+      expect(result.output).toContain("foobar");
     });
   });
 
   // --- Non-commands ---
 
   describe("non-commands (regular input)", () => {
-    it("returns handled: false for regular text", () => {
-      const result = handleCommand("hello world");
+    it("returns handled: false for regular text", async () => {
+      const result = await handleCommand("hello world", {});
       expect(result.handled).toBe(false);
       expect(result.output).toBeUndefined();
     });
 
-    it("returns handled: false for empty string", () => {
-      const result = handleCommand("");
+    it("returns handled: false for empty string", async () => {
+      const result = await handleCommand("", {});
       expect(result.handled).toBe(false);
     });
   });
@@ -215,14 +225,14 @@ describe("handleCommand", () => {
   // --- Case insensitivity ---
 
   describe("case insensitivity", () => {
-    it("handles uppercase /HELP", () => {
-      const result = handleCommand("/HELP");
+    it("handles uppercase /HELP", async () => {
+      const result = await handleCommand("/HELP", {});
       expect(result.handled).toBe(true);
       expect(result.output).toContain("/help");
     });
 
-    it("handles mixed case /QuIt", () => {
-      const result = handleCommand("/QuIt");
+    it("handles mixed case /QuIt", async () => {
+      const result = await handleCommand("/QuIt", {});
       expect(result.handled).toBe(true);
       expect(result.quit).toBe(true);
     });
@@ -231,10 +241,107 @@ describe("handleCommand", () => {
   // --- Whitespace handling ---
 
   describe("whitespace handling", () => {
-    it("trims leading/trailing whitespace", () => {
-      const result = handleCommand("  /help  ");
+    it("trims leading/trailing whitespace", async () => {
+      const result = await handleCommand("  /help  ", {});
       expect(result.handled).toBe(true);
       expect(result.output).toContain("/help");
+    });
+  });
+
+  // --- /eval ---
+
+  describe("/eval", () => {
+    it("reads eval.md content when file exists", async () => {
+      const dir = path.join(tmpHome, ".aeval");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "eval.md"), "# My Eval", "utf-8");
+
+      const result = await handleCommand("/eval", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toBe("# My Eval");
+    });
+
+    it("shows not-found message when eval.md is missing", async () => {
+      const result = await handleCommand("/eval", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("No");
+    });
+  });
+
+  // --- /memory ---
+
+  describe("/memory", () => {
+    it("calls memory_context via MCP when connected", async () => {
+      const mcp = createMockMcpManager();
+      const result = await handleCommand("/memory", { mcpManager: mcp });
+      expect(result.handled).toBe(true);
+      expect(mcp.callTool).toHaveBeenCalledWith("memory_context", {});
+      expect(result.output).toContain("Mock result for memory_context");
+    });
+
+    it("shows error when MCP not connected", async () => {
+      const result = await handleCommand("/memory", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("not connected");
+    });
+  });
+
+  // --- /status ---
+
+  describe("/status", () => {
+    it("returns handled: true with output", async () => {
+      const result = await handleCommand("/status", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toBeDefined();
+    });
+  });
+
+  // --- /doctor ---
+
+  describe("/doctor", () => {
+    it("returns handled: true with output", async () => {
+      const result = await handleCommand("/doctor", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toBeDefined();
+    });
+  });
+
+  // --- /rules add (write subcommand) ---
+
+  describe("/rules add", () => {
+    it("delegates to MCP when mcpManager is provided", async () => {
+      const mcp = createMockMcpManager();
+      const result = await handleCommand("/rules add safety Do not harm", { mcpManager: mcp });
+      expect(result.handled).toBe(true);
+      expect(mcp.callTool).toHaveBeenCalledWith("rules_add", { category: "safety", rule: "Do not harm" });
+    });
+
+    it("shows not connected error without mcpManager", async () => {
+      const result = await handleCommand("/rules add safety Do not harm", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("not connected");
+    });
+  });
+
+  // --- /skills install ---
+
+  describe("/skills install", () => {
+    it("delegates to MCP when mcpManager is provided", async () => {
+      const mcp = createMockMcpManager();
+      const result = await handleCommand("/skills install code-review", { mcpManager: mcp });
+      expect(result.handled).toBe(true);
+      expect(mcp.callTool).toHaveBeenCalledWith("skill_install", { name: "code-review" });
+    });
+  });
+
+  // --- /eval milestone ---
+
+  describe("/eval milestone", () => {
+    it("delegates to MCP with eval_milestone", async () => {
+      const mcp = createMockMcpManager();
+      const result = await handleCommand("/eval milestone Completed phase 1", { mcpManager: mcp });
+      expect(result.handled).toBe(true);
+      expect(mcp.callTool).toHaveBeenCalledWith("eval_milestone", { text: "Completed phase 1" });
     });
   });
 });

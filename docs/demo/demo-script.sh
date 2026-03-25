@@ -57,7 +57,7 @@ printf "${BOLD}  aman agent${RESET}${DIM} — starting your AI companion${RESET}
 pause 0.5
 printf "${GREEN}  Loaded: identity, guardrails, workflows, tools, skills ${DIM}(2,847 tokens)${RESET}\n"
 pause 0.3
-printf "  Model: ${DIM}claude-sonnet-4-5-20250514${RESET}\n"
+printf "  Model: ${DIM}claude-sonnet-4-6${RESET}\n"
 pause 0.3
 printf "  Connecting to MCP servers...\n"
 pause 0.6

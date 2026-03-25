@@ -305,7 +305,7 @@ Default budget: 8,000 tokens. Override with `--budget`.
 
 | Provider | Models | Tool Use | Streaming |
 |:---|:---|:---|:---|
-| **Anthropic** | Claude Sonnet 4.5, Opus 4.6, Haiku 4.5 | Full | Full (with tools) |
+| **Anthropic** | Claude Sonnet 4.6, Opus 4.6, Haiku 4.5 | Full | Full (with tools) |
 | **OpenAI** | GPT-4o, GPT-4o Mini, o3 | Full | Full (with tools) |
 | **Ollama** | Llama, Mistral, Gemma, any local model | Text only | Full |
 
@@ -319,7 +319,7 @@ Config is stored in `~/.aman-agent/config.json`:
 {
   "provider": "anthropic",
   "apiKey": "sk-ant-...",
-  "model": "claude-sonnet-4-5-20250514",
+  "model": "claude-sonnet-4-6",
   "hooks": {
     "memoryRecall": true,
     "sessionResume": true,

@@ -70,19 +70,19 @@ program
         const modelChoice = (await p.select({
           message: "Claude model",
           options: [
-            { value: "claude-sonnet-4-5-20250514", label: "Claude Sonnet 4.5", hint: "fast, recommended" },
+            { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", hint: "fast, recommended" },
             { value: "claude-opus-4-6", label: "Claude Opus 4.6", hint: "most capable" },
             { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", hint: "fastest, cheapest" },
             { value: "custom", label: "Custom model ID" },
           ],
-          initialValue: "claude-sonnet-4-5-20250514",
+          initialValue: "claude-sonnet-4-6",
         })) as string;
         if (p.isCancel(modelChoice)) process.exit(0);
 
         if (modelChoice === "custom") {
           const customModel = (await p.text({
             message: "Model ID",
-            placeholder: "claude-sonnet-4-5-20250514",
+            placeholder: "claude-sonnet-4-6",
             validate: (v) => v.length === 0 ? "Model ID is required" : undefined,
           })) as string;
           if (p.isCancel(customModel)) process.exit(0);

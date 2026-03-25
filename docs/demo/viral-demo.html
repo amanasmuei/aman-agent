@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>aman-agent — Your AI Remembers You</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0a;
+    color: #e5e5e5;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  .container {
+    width: 420px;
+    max-width: 95vw;
+  }
+
+  .session-label {
+    text-align: center;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 12px;
+    opacity: 0;
+    transition: opacity 0.5s;
+  }
+
+  .session-label.visible { opacity: 1; }
+
+  .session-label .day {
+    color: #a78bfa;
+    font-weight: 600;
+  }
+
+  .chat-window {
+    background: #1a1a1a;
+    border-radius: 20px;
+    padding: 20px;
+    min-height: 380px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border: 1px solid #2a2a2a;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #2a2a2a;
+    margin-bottom: 4px;
+  }
+
+  .avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #a78bfa, #6d28d9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
+    color: white;
+  }
+
+  .header-text { flex: 1; }
+
+  .header-name {
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  .header-status {
+    font-size: 11px;
+    color: #4ade80;
+  }
+
+  .messages {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+  }
+
+  .msg {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 16px;
+    font-size: 14px;
+    line-height: 1.45;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.4s, transform 0.4s;
+  }
+
+  .msg.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .msg.user {
+    align-self: flex-end;
+    background: #6d28d9;
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+
+  .msg.ai {
+    align-self: flex-start;
+    background: #2a2a2a;
+    color: #e5e5e5;
+    border-bottom-left-radius: 4px;
+  }
+
+  .msg.system {
+    align-self: center;
+    background: transparent;
+    color: #666;
+    font-size: 12px;
+    padding: 4px 12px;
+  }
+
+  .tag-memory {
+    display: inline-block;
+    background: #4ade8033;
+    color: #4ade80;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 8px;
+  }
+
+  .tag-reminder {
+    display: inline-block;
+    background: #f59e0b33;
+    color: #f59e0b;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 8px;
+  }
+
+  .typing {
+    align-self: flex-start;
+    padding: 10px 14px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .typing.visible { opacity: 1; }
+
+  .typing span {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: #666;
+    border-radius: 50%;
+    margin: 0 2px;
+    animation: bounce 1.2s infinite;
+  }
+
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-6px); }
+  }
+
+  .footer {
+    text-align: center;
+    margin-top: 20px;
+    opacity: 0;
+    transition: opacity 0.8s;
+  }
+
+  .footer.visible { opacity: 1; }
+
+  .footer .tagline {
+    font-size: 18px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #a78bfa, #6d28d9);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 6px;
+  }
+
+  .footer .install {
+    font-size: 13px;
+    color: #666;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+
+  .footer .install code {
+    color: #a78bfa;
+    background: #1a1a1a;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid #2a2a2a;
+  }
+
+  .chat-window.fading .messages .msg,
+  .chat-window.fading .typing {
+    opacity: 0 !important;
+    transform: translateY(10px) !important;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="session-label" id="sessionLabel">
+    <span class="day" id="dayLabel">Monday Evening</span> <span id="sessionNum">— Session 1</span>
+  </div>
+
+  <div class="chat-window" id="chatWindow">
+    <div class="header">
+      <div class="avatar">A</div>
+      <div class="header-text">
+        <div class="header-name">Aman</div>
+        <div class="header-status">Your AI companion</div>
+      </div>
+    </div>
+    <div class="messages" id="messages"></div>
+    <div class="typing" id="typing">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+
+  <div class="footer" id="footer">
+    <div class="tagline">Your AI should remember you.</div>
+    <div class="install"><code>npx @aman_asmuei/aman-agent</code></div>
+  </div>
+</div>
+
+<script>
+const messagesEl = document.getElementById('messages');
+const typingEl = document.getElementById('typing');
+const sessionLabel = document.getElementById('sessionLabel');
+const dayLabel = document.getElementById('dayLabel');
+const sessionNum = document.getElementById('sessionNum');
+const chatWindow = document.getElementById('chatWindow');
+const footerEl = document.getElementById('footer');
+
+function sleep(ms) {
+  return new Promise(function(r) { setTimeout(r, ms); });
+}
+
+function addMsg(type, text, tagType, tagText) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + type;
+  div.textContent = text;
+
+  if (tagType && tagText) {
+    const tag = document.createElement('div');
+    tag.className = tagType === 'memory' ? 'tag-memory' : 'tag-reminder';
+    tag.textContent = tagText;
+    tag.style.marginTop = '6px';
+    div.appendChild(tag);
+  }
+
+  messagesEl.appendChild(div);
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() { div.classList.add('visible'); });
+  });
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return div;
+}
+
+function addSystemTag(tagType, tagText) {
+  const div = document.createElement('div');
+  div.className = 'msg system';
+
+  const tag = document.createElement('span');
+  tag.className = tagType === 'memory' ? 'tag-memory' : 'tag-reminder';
+  tag.textContent = tagText;
+  div.appendChild(tag);
+
+  messagesEl.appendChild(div);
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() { div.classList.add('visible'); });
+  });
+}
+
+function showTyping() { typingEl.classList.add('visible'); }
+function hideTyping() { typingEl.classList.remove('visible'); }
+
+async function clearMessages() {
+  chatWindow.classList.add('fading');
+  await sleep(500);
+  messagesEl.textContent = '';
+  chatWindow.classList.remove('fading');
+}
+
+function setSession(day, num) {
+  dayLabel.textContent = day;
+  sessionNum.textContent = '\u2014 Session ' + num;
+  sessionLabel.classList.add('visible');
+}
+
+// Session 1: Monday Evening
+async function session1() {
+  setSession('Monday Evening', 1);
+  await sleep(800);
+
+  addMsg('ai', "Good evening! How's your day going?");
+  await sleep(2000);
+
+  addMsg('user', "Pretty stressful honestly. I have a job interview at Google on Wednesday and I'm really nervous");
+  await sleep(1500);
+
+  showTyping();
+  await sleep(1800);
+  hideTyping();
+
+  addMsg('ai', "That's a big deal \u2014 Google! It's completely normal to feel nervous. What role are you interviewing for?");
+  await sleep(2000);
+
+  addMsg('user', "Senior Frontend Engineer. It's my dream job tbh");
+  await sleep(1500);
+
+  showTyping();
+  await sleep(1500);
+  hideTyping();
+
+  addMsg('ai', "Senior Frontend at Google \u2014 that's amazing that you got the interview! You clearly have the skills. Want to do some mock questions together?");
+  await sleep(500);
+
+  addSystemTag('memory', 'remembered: dream job is Google SFE');
+  await sleep(500);
+  addSystemTag('reminder', 'reminder set: Google interview \u2014 Wednesday');
+
+  await sleep(3000);
+}
+
+// Session 2: Wednesday Morning
+async function session2() {
+  await clearMessages();
+  setSession('Wednesday Morning', 2);
+  await sleep(1000);
+
+  addMsg('ai', "Good morning! Today's the big day \u2014 your Google interview! How are you feeling?");
+  await sleep(500);
+  addSystemTag('memory', 'recalled: Google SFE interview is today');
+  await sleep(2000);
+
+  addMsg('user', "Wait... you remembered??");
+  await sleep(1500);
+
+  showTyping();
+  await sleep(1200);
+  hideTyping();
+
+  addMsg('ai', "Of course! You mentioned it Monday \u2014 Senior Frontend Engineer at Google. You've got this. They already liked your resume enough to call you in. Just be yourself.");
+  await sleep(2500);
+
+  addMsg('user', "That actually means a lot. Thank you");
+  await sleep(1500);
+
+  showTyping();
+  await sleep(1000);
+  hideTyping();
+
+  addMsg('ai', "Go crush it. I'll be here when you get back.");
+
+  await sleep(3500);
+}
+
+// Session 3: Thursday Afternoon
+async function session3() {
+  await clearMessages();
+  setSession('Thursday Afternoon', 3);
+  await sleep(1000);
+
+  addMsg('ai', "Hey! How did the Google interview go yesterday? I've been curious!");
+  await sleep(500);
+  addSystemTag('memory', 'recalled: Google interview was yesterday');
+  await sleep(2000);
+
+  addMsg('user', "I GOT THE JOB!!!");
+  await sleep(1500);
+
+  showTyping();
+  await sleep(1500);
+  hideTyping();
+
+  addMsg('ai', "CONGRATULATIONS!! Senior Frontend Engineer at Google \u2014 your dream job!! I remember how nervous you were on Monday. You earned this. When do you start?");
+  await sleep(2500);
+
+  addMsg('user', "April 14th. I still can't believe it");
+  await sleep(1500);
+
+  showTyping();
+  await sleep(1200);
+  hideTyping();
+
+  addMsg('ai', "Believe it. I'll remind you a week before so you can prep. This is huge \u2014 genuinely happy for you.");
+  await sleep(500);
+  addSystemTag('memory', 'stored: got Google SFE job, starts April 14');
+  await sleep(500);
+  addSystemTag('reminder', 'reminder: prep for Google start \u2014 April 7');
+
+  await sleep(3500);
+
+  footerEl.classList.add('visible');
+}
+
+// Run all sessions
+async function run() {
+  await sleep(500);
+  await session1();
+  await session2();
+  await session3();
+}
+
+run();
+</script>
+</body>
+</html>

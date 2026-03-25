@@ -7,7 +7,6 @@ import type {
   ToolResultBlock,
 } from "./llm/types.js";
 import { handleCommand } from "./commands.js";
-import { setReminder, clearReminders } from "./reminders.js";
 import type { McpManager } from "./mcp/client.js";
 import {
   onSessionStart,
@@ -17,6 +16,14 @@ import {
   type HookContext,
 } from "./hooks.js";
 import type { HooksConfig } from "./config.js";
+import { trimConversation } from "./context-manager.js";
+
+// Generate a session ID for conversation logging
+function generateSessionId(): string {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `session-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+}
 
 export async function runAgent(
   client: LLMClient,
@@ -28,6 +35,7 @@ export async function runAgent(
   hooksConfig?: HooksConfig,
 ): Promise<void> {
   const messages: Message[] = [];
+  const sessionId = generateSessionId();
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -39,7 +47,7 @@ export async function runAgent(
     if (mcpManager && hooksConfig) {
       try {
         const hookCtx: HookContext = { mcpManager, config: hooksConfig };
-        await onSessionEnd(hookCtx, messages);
+        await onSessionEnd(hookCtx, messages, sessionId);
       } catch { /* Skip */ }
     }
     console.log(pc.dim("\nGoodbye.\n"));
@@ -79,28 +87,22 @@ export async function runAgent(
     const cmdResult = await handleCommand(input, { model, mcpManager });
     if (cmdResult.handled) {
       if (cmdResult.quit) {
-        clearReminders();
         if (mcpManager && hooksConfig) {
           try {
             const hookCtx: HookContext = { mcpManager, config: hooksConfig };
-            await onSessionEnd(hookCtx, messages);
+            await onSessionEnd(hookCtx, messages, sessionId);
           } catch { /* Skip */ }
         }
         console.log(pc.dim("\nGoodbye.\n"));
         rl.close();
         return;
       }
-      if (cmdResult.remind) {
-        const duration = setReminder(
-          cmdResult.remind.timeStr,
-          cmdResult.remind.message,
-        );
-        if (duration) {
-          console.log(pc.dim(`Reminder set for ${duration} from now.`));
-        } else {
-          console.log(
-            pc.red("Invalid time format. Use: 5m, 30m, 1h, 2h, tomorrow"),
-          );
+      if (cmdResult.saveConversation && mcpManager) {
+        try {
+          await saveConversationToMemory(mcpManager, messages, sessionId);
+          console.log(pc.green("Conversation saved to memory."));
+        } catch {
+          console.log(pc.red("Failed to save conversation."));
         }
         continue;
       }
@@ -130,6 +132,9 @@ export async function runAgent(
         }
       } catch { /* Skip */ }
     }
+
+    // Auto-trim conversation if approaching token limits
+    trimConversation(messages, client);
 
     // Send to LLM
     messages.push({ role: "user", content: input });
@@ -218,6 +223,29 @@ export async function runAgent(
       console.error(pc.red(`\nError: ${message}`));
       // Remove the user message that failed
       messages.pop();
+    }
+  }
+}
+
+// Save conversation messages to amem's memory_log
+async function saveConversationToMemory(
+  mcpManager: McpManager,
+  messages: Message[],
+  sessionId: string,
+): Promise<void> {
+  // Save last 50 messages
+  const recentMessages = messages.slice(-50);
+
+  for (const msg of recentMessages) {
+    if (typeof msg.content !== "string") continue;
+    try {
+      await mcpManager.callTool("memory_log", {
+        session_id: sessionId,
+        role: msg.role,
+        content: msg.content.slice(0, 5000),
+      });
+    } catch {
+      // Skip individual failures
     }
   }
 }

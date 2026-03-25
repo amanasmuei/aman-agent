@@ -158,8 +158,62 @@ export async function onWorkflowMatch(
 export async function onSessionEnd(
   ctx: HookContext,
   messages: Message[],
+  sessionId: string,
 ): Promise<void> {
   try {
+    // Auto-save conversation to amem memory_log
+    if (ctx.config.autoSessionSave && messages.length > 2) {
+      console.log(pc.dim("\n  Saving conversation to memory..."));
+
+      // Save last 50 text messages to memory_log
+      const textMessages = messages
+        .filter((m) => typeof m.content === "string")
+        .slice(-50);
+
+      for (const msg of textMessages) {
+        try {
+          isHookCall = true;
+          await ctx.mcpManager.callTool("memory_log", {
+            session_id: sessionId,
+            role: msg.role,
+            content: (msg.content as string).slice(0, 5000),
+          });
+        } catch {
+          // Skip individual log failures
+        } finally {
+          isHookCall = false;
+        }
+      }
+
+      // Update session resume in identity
+      let lastUserMsg = "";
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (
+          messages[i].role === "user" &&
+          typeof messages[i].content === "string"
+        ) {
+          lastUserMsg = messages[i].content as string;
+          break;
+        }
+      }
+
+      if (lastUserMsg) {
+        try {
+          isHookCall = true;
+          await ctx.mcpManager.callTool("identity_update_session", {
+            resume: lastUserMsg.slice(0, 200),
+            topics: "See conversation history",
+            decisions: "See conversation history",
+          });
+        } finally {
+          isHookCall = false;
+        }
+      }
+
+      console.log(pc.dim(`  Saved ${textMessages.length} messages (session: ${sessionId})`));
+    }
+
+    // Session rating prompt
     if (ctx.config.evalPrompt) {
       const rating = await p.select({
         message: "Quick rating for this session?",
@@ -179,33 +233,6 @@ export async function onSessionEnd(
             rating: rating as string,
             highlights: "Quick session rating",
             improvements: "",
-          });
-        } finally {
-          isHookCall = false;
-        }
-      }
-    }
-
-    if (ctx.config.autoSessionSave && messages.length > 2) {
-      // Extract last user message as resume hint
-      let lastUserMsg = "";
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (
-          messages[i].role === "user" &&
-          typeof messages[i].content === "string"
-        ) {
-          lastUserMsg = messages[i].content as string;
-          break;
-        }
-      }
-
-      if (lastUserMsg) {
-        try {
-          isHookCall = true;
-          await ctx.mcpManager.callTool("identity_update_session", {
-            resume: lastUserMsg.slice(0, 200),
-            topics: "See conversation history",
-            decisions: "See conversation history",
           });
         } finally {
           isHookCall = false;

@@ -82,90 +82,104 @@ export function createOpenAIClient(apiKey: string, model: string): LLMClient {
       const hasTools = tools && tools.length > 0;
 
       try {
+        let fullText = "";
+        const toolCallAccumulators: Map<
+          number,
+          { id: string; name: string; arguments: string }
+        > = new Map();
+
+        const createParams: Record<string, unknown> = {
+          model,
+          max_tokens: 8192,
+          messages: openaiMessages,
+          stream: true,
+        };
+
         if (hasTools) {
-          // Non-streaming with tools
-          const response = await client.chat.completions.create({
-            model,
-            max_tokens: 8192,
-            messages: openaiMessages,
-            tools: tools.map((t) => ({
-              type: "function" as const,
-              function: {
-                name: t.name,
-                description: t.description,
-                parameters: t.input_schema,
-              },
-            })),
-          });
+          createParams.tools = tools.map((t) => ({
+            type: "function" as const,
+            function: {
+              name: t.name,
+              description: t.description,
+              parameters: t.input_schema,
+            },
+          }));
+        }
 
-          const choice = response.choices[0];
-          const textContent = choice?.message?.content || "";
-          const toolCalls = choice?.message?.tool_calls || [];
+        const stream = await client.chat.completions.create(
+          createParams as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+        );
 
-          const toolUses = toolCalls.map((tc) => ({
-            id: tc.id,
-            name: tc.function.name,
-            input: JSON.parse(tc.function.arguments || "{}") as Record<
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta;
+          if (!delta) continue;
+
+          // Stream text content
+          if (delta.content) {
+            fullText += delta.content;
+            onChunk({ type: "text", text: delta.content });
+          }
+
+          // Accumulate tool calls
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index;
+              let acc = toolCallAccumulators.get(idx);
+              if (!acc) {
+                acc = { id: "", name: "", arguments: "" };
+                toolCallAccumulators.set(idx, acc);
+              }
+              if (tc.id) {
+                acc.id = tc.id;
+              }
+              if (tc.function?.name) {
+                acc.name = tc.function.name;
+              }
+              if (tc.function?.arguments) {
+                acc.arguments += tc.function.arguments;
+              }
+            }
+          }
+        }
+
+        // Parse accumulated tool calls
+        const toolUses = Array.from(toolCallAccumulators.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([, acc]) => ({
+            id: acc.id,
+            name: acc.name,
+            input: JSON.parse(acc.arguments || "{}") as Record<
               string,
               unknown
             >,
           }));
 
-          if (textContent && toolUses.length === 0) {
-            onChunk({ type: "text", text: textContent });
-            onChunk({ type: "done" });
-          } else if (textContent) {
-            onChunk({ type: "text", text: textContent });
-          }
+        // Signal done
+        onChunk({ type: "done" });
 
-          // Build content blocks
-          if (toolUses.length > 0) {
-            const contentBlocks = [
-              ...(textContent
-                ? [{ type: "text" as const, text: textContent }]
-                : []),
-              ...toolUses.map((tu) => ({
-                type: "tool_use" as const,
-                id: tu.id,
-                name: tu.name,
-                input: tu.input,
-              })),
-            ];
-            return {
-              message: { role: "assistant", content: contentBlocks },
-              toolUses,
-            };
-          }
-
+        // Build response
+        if (toolUses.length > 0) {
+          const contentBlocks = [
+            ...(fullText
+              ? [{ type: "text" as const, text: fullText }]
+              : []),
+            ...toolUses.map((tu) => ({
+              type: "tool_use" as const,
+              id: tu.id,
+              name: tu.name,
+              input: tu.input,
+            })),
+          ];
           return {
-            message: { role: "assistant", content: textContent },
-            toolUses: [],
-          };
-        } else {
-          // Streaming without tools — original behavior
-          let fullText = "";
-
-          const stream = await client.chat.completions.create({
-            model,
-            max_tokens: 8192,
-            messages: openaiMessages,
-            stream: true,
-          });
-
-          for await (const chunk of stream) {
-            const text = chunk.choices[0]?.delta?.content || "";
-            if (text) {
-              fullText += text;
-              onChunk({ type: "text", text });
-            }
-          }
-
-          onChunk({ type: "done" });
-          return {
-            message: { role: "assistant", content: fullText },
-            toolUses: [],
+            message: { role: "assistant", content: contentBlocks },
+            toolUses,
           };
         }
+
+        return {
+          message: { role: "assistant", content: fullText },
+          toolUses: [],
+        };
       } catch (error) {
         if (error instanceof OpenAI.AuthenticationError) {
           throw new Error(

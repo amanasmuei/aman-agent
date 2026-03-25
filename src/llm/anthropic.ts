@@ -60,101 +60,107 @@ export function createAnthropicClient(
       const hasTools = tools && tools.length > 0;
 
       try {
+        let fullText = "";
+        const toolUseBlocks: Array<{
+          id: string;
+          name: string;
+          inputJson: string;
+        }> = [];
+        let currentBlockType: "text" | "tool_use" | null = null;
+        let currentBlockIndex = -1;
+
+        const createParams: Record<string, unknown> = {
+          model,
+          max_tokens: 8192,
+          system: systemPrompt,
+          messages: anthropicMessages,
+          stream: true,
+        };
+
         if (hasTools) {
-          // Non-streaming when tools are present for simpler tool_use handling
-          const response = await client.messages.create({
-            model,
-            max_tokens: 8192,
-            system: systemPrompt,
-            messages: anthropicMessages,
-            tools: tools.map((t) => ({
-              name: t.name,
-              description: t.description,
-              input_schema: t.input_schema as Anthropic.Messages.Tool["input_schema"],
-            })),
-          });
+          createParams.tools = tools.map((t) => ({
+            name: t.name,
+            description: t.description,
+            input_schema:
+              t.input_schema as Anthropic.Messages.Tool["input_schema"],
+          }));
+        }
 
-          const toolUses = response.content
-            .filter(
-              (block): block is Anthropic.Messages.ToolUseBlock =>
-                block.type === "tool_use",
-            )
-            .map((block) => ({
-              id: block.id,
-              name: block.name,
-              input: block.input as Record<string, unknown>,
-            }));
+        const stream = await client.messages.create(
+          createParams as unknown as Anthropic.Messages.MessageCreateParamsStreaming,
+        );
 
-          const textContent = response.content
-            .filter(
-              (block): block is Anthropic.Messages.TextBlock =>
-                block.type === "text",
-            )
-            .map((block) => block.text)
-            .join("");
-
-          // Stream text to output if there's text and no tool calls
-          if (textContent && toolUses.length === 0) {
-            onChunk({ type: "text", text: textContent });
-            onChunk({ type: "done" });
-          } else if (textContent) {
-            // There's text alongside tool calls — show it
-            onChunk({ type: "text", text: textContent });
-          }
-
-          // Build the content blocks for the message
-          const contentBlocks: ContentBlock[] = response.content.map(
-            (block) => {
-              if (block.type === "text") {
-                return { type: "text" as const, text: block.text };
-              }
-              // tool_use
-              return {
-                type: "tool_use" as const,
-                id: (block as Anthropic.Messages.ToolUseBlock).id,
-                name: (block as Anthropic.Messages.ToolUseBlock).name,
-                input: (block as Anthropic.Messages.ToolUseBlock)
-                  .input as Record<string, unknown>,
-              };
-            },
-          );
-
-          return {
-            message: {
-              role: "assistant",
-              content: toolUses.length > 0 ? contentBlocks : textContent,
-            },
-            toolUses,
-          };
-        } else {
-          // Streaming when no tools — original behavior
-          let fullText = "";
-
-          const stream = await client.messages.create({
-            model,
-            max_tokens: 8192,
-            system: systemPrompt,
-            messages: anthropicMessages,
-            stream: true,
-          });
-
-          for await (const event of stream) {
+        for await (const event of stream) {
+          if (event.type === "content_block_start") {
+            currentBlockIndex = event.index;
+            if (event.content_block.type === "text") {
+              currentBlockType = "text";
+            } else if (event.content_block.type === "tool_use") {
+              currentBlockType = "tool_use";
+              toolUseBlocks.push({
+                id: event.content_block.id,
+                name: event.content_block.name,
+                inputJson: "",
+              });
+            }
+          } else if (event.type === "content_block_delta") {
             if (
-              event.type === "content_block_delta" &&
+              currentBlockType === "text" &&
               event.delta.type === "text_delta"
             ) {
               const text = event.delta.text;
               fullText += text;
               onChunk({ type: "text", text });
+            } else if (
+              currentBlockType === "tool_use" &&
+              event.delta.type === "input_json_delta"
+            ) {
+              const lastTool = toolUseBlocks[toolUseBlocks.length - 1];
+              if (lastTool) {
+                lastTool.inputJson += event.delta.partial_json;
+              }
             }
+          } else if (event.type === "content_block_stop") {
+            currentBlockType = null;
           }
+        }
 
-          onChunk({ type: "done" });
+        // Parse tool inputs from accumulated JSON
+        const toolUses = toolUseBlocks.map((block) => ({
+          id: block.id,
+          name: block.name,
+          input: (block.inputJson
+            ? JSON.parse(block.inputJson)
+            : {}) as Record<string, unknown>,
+        }));
+
+        // Signal done
+        onChunk({ type: "done" });
+
+        // Build content blocks for the message
+        if (toolUses.length > 0) {
+          const contentBlocks: ContentBlock[] = [];
+          if (fullText) {
+            contentBlocks.push({ type: "text" as const, text: fullText });
+          }
+          for (const tu of toolUses) {
+            contentBlocks.push({
+              type: "tool_use" as const,
+              id: tu.id,
+              name: tu.name,
+              input: tu.input,
+            });
+          }
           return {
-            message: { role: "assistant", content: fullText },
-            toolUses: [],
+            message: { role: "assistant", content: contentBlocks },
+            toolUses,
           };
         }
+
+        return {
+          message: { role: "assistant", content: fullText },
+          toolUses: [],
+        };
       } catch (error) {
         if (error instanceof Anthropic.AuthenticationError) {
           throw new Error(

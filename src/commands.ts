@@ -11,7 +11,7 @@ export interface CommandResult {
   output?: string;
   quit?: boolean;
   clearHistory?: boolean;
-  remind?: { timeStr: string; message: string };
+  saveConversation?: boolean;
 }
 
 export interface CommandContext {
@@ -319,7 +319,7 @@ function handleHelp(): CommandResult {
       `  ${pc.cyan("/memory")}       View recent memories [search|clear ...]`,
       `  ${pc.cyan("/status")}       Ecosystem dashboard`,
       `  ${pc.cyan("/doctor")}       Health check all layers`,
-      `  ${pc.cyan("/remind")}       Set a reminder`,
+      `  ${pc.cyan("/save")}         Save conversation to memory`,
       `  ${pc.cyan("/model")}        Show current LLM model`,
       `  ${pc.cyan("/update")}       Check for updates`,
       `  ${pc.cyan("/reconfig")}     Reset LLM config`,
@@ -329,18 +329,8 @@ function handleHelp(): CommandResult {
   };
 }
 
-function handleRemind(input: string): CommandResult {
-  const parts = input.trim().split(/\s+/);
-  if (parts.length < 3) {
-    return {
-      handled: true,
-      output:
-        "Usage: /remind <time> <message>\nExamples: /remind 30m Review PR, /remind 2h Deploy, /remind tomorrow Check metrics",
-    };
-  }
-  const timeStr = parts[1];
-  const message = parts.slice(2).join(" ");
-  return { handled: true, remind: { timeStr, message } };
+function handleSave(): CommandResult {
+  return { handled: true, saveConversation: true };
 }
 
 function handleReconfig(): CommandResult {
@@ -428,8 +418,8 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
       return handleStatusCommand(ctx);
     case "doctor":
       return handleDoctorCommand(ctx);
-    case "remind":
-      return handleRemind(trimmed);
+    case "save":
+      return handleSave();
     case "update-config":
     case "reconfig":
       return handleReconfig();

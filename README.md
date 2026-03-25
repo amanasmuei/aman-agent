@@ -87,17 +87,19 @@ aman-agent --budget 12000
 
 ## Intelligent Companion Features
 
-### Per-Message Memory Recall
+### Per-Message Memory Recall with Progressive Disclosure
 
-Every message you send triggers a semantic search against your memory database. Relevant memories are injected into the AI's context for *that turn only* — so the AI always has the right context without bloating the conversation.
+Every message you send triggers a semantic search against your memory database. Results use **progressive disclosure** — a compact index (~50-100 tokens) is injected instead of full content (~500-1000 tokens), giving **~10x token savings**. The agent shows the cost:
 
 ```
 You > Let's set up the auth service
 
+  [memories: ~47 tokens]
+
   Agent recalls:
-  - [decision] Auth service uses JWT tokens (confidence: 0.92)
-  - [preference] User prefers PostgreSQL (confidence: 0.88)
-  - [fact] Auth middleware rewrite driven by compliance (confidence: 0.75)
+  a1b2c3d4 [decision] Auth service uses JWT tokens... (92%)
+  e5f6g7h8 [preference] User prefers PostgreSQL... (88%)
+  i9j0k1l2 [fact] Auth middleware rewrite driven by compliance... (75%)
 
 Aman > Based on our previous decisions, I'll set up JWT-based auth
        with PostgreSQL, keeping the compliance requirements in mind...
@@ -127,6 +129,18 @@ When the AI needs multiple tools, they run in parallel via `Promise.all` instead
 ### Retry with Backoff
 
 LLM calls and MCP tool calls automatically retry on transient errors (rate limits, timeouts) with exponential backoff and jitter. Auth errors fail immediately.
+
+### Passive Tool Observation Capture
+
+Every tool the AI executes is automatically logged to amem's conversation log — tool name, input, and result. This happens passively (fire-and-forget) without slowing down the agent. Your AI builds a complete history of what it *did*, not just what it *said*.
+
+### Token Cost Visibility
+
+Every memory recall shows how many tokens it costs, so you always know the overhead:
+
+```
+  [memories: ~47 tokens]
+```
 
 ### Time-Aware Greetings
 

@@ -373,17 +373,39 @@ aman
 
 ## What Makes This Different
 
-| Feature | aman-agent | MemoryCore / Others |
-|:---|:---|:---|
-| Memory storage | SQLite + embeddings + knowledge graph | Markdown files |
-| Per-message recall | Semantic search every turn | Static blob at session start |
-| Memory extraction | Auto-extract from conversation (LLM) | AI must manually write to files |
-| Context compression | LLM-powered summarization | Truncation or line limits |
-| Tool execution | Parallel with guardrail checks | Sequential or none |
-| Reminders | Persistent, cross-session, deadline-aware | None |
-| Error handling | Structured JSON debug log | Silent failures |
-| Multi-LLM | Anthropic, OpenAI, Ollama | Usually single provider |
-| Reliability | Retry with exponential backoff | Single attempt |
+### aman-agent vs other companion runtimes
+
+| Feature | aman-agent | Letta / MemGPT | Raw LLM CLI |
+|:---|:---|:---|:---|
+| Identity system | 7 portable layers | None | None |
+| Memory | amem (SQLite + embeddings + graph) | Postgres + embeddings | None |
+| Per-message recall | Progressive disclosure (~10x token savings) | Yes | No |
+| Learns from conversation | Auto-extract (hybrid confirm) | Requires configuration | No |
+| Guardrail enforcement | Runtime tool blocking | None | None |
+| Reminders | Persistent, deadline-aware | None | None |
+| Context compression | LLM-powered summarization | Archival system | Truncation |
+| Tool observation capture | Passive logging of all tool calls | None | None |
+| Token cost visibility | Shows memory injection cost per turn | None | None |
+| Multi-LLM | Anthropic, OpenAI, Ollama | OpenAI-focused | Single provider |
+| Tool execution | Parallel with guardrails | Sequential | None |
+
+### amem vs other memory layers
+
+| Feature | amem | claude-mem (40K stars) | mem0 |
+|:---|:---|:---|:---|
+| Works with | Any MCP client | Claude Code only | OpenAI-focused |
+| Storage | SQLite + local embeddings | SQLite + Chroma vectors | Cloud vector DB |
+| Progressive disclosure | Compact index + on-demand detail | Yes (10x savings) | No |
+| Memory types | 6 typed (correction > decision > fact) | Untyped observations | Untyped blobs |
+| Knowledge graph | Typed relations between memories | None | None |
+| Reminders | Persistent, deadline-aware | None | None |
+| Scoring | relevance x recency x confidence x importance | Recency-based | Similarity only |
+| Consolidation | Auto merge/prune/promote | None | None |
+| Version history | Immutable snapshots | Immutable observations | None |
+| Token cost visibility | Shown per recall | Shown per injection | None |
+| License | MIT | AGPL-3.0 | Apache-2.0 |
+
+> **claude-mem** excels at capturing what Claude Code *did*. **amem** is a structured memory system that works with *any* MCP client, with typed memories, a knowledge graph, reminders, progressive disclosure, and consolidation.
 
 ---
 

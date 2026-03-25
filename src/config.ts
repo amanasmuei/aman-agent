@@ -9,6 +9,7 @@ export interface HooksConfig {
   workflowSuggest?: boolean;
   evalPrompt?: boolean;
   autoSessionSave?: boolean;
+  extractMemories?: boolean;
 }
 
 const DEFAULT_HOOKS: HooksConfig = {
@@ -18,6 +19,7 @@ const DEFAULT_HOOKS: HooksConfig = {
   workflowSuggest: true,
   evalPrompt: true,
   autoSessionSave: true,
+  extractMemories: true,
 };
 
 export interface AgentConfig {

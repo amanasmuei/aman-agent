@@ -12,6 +12,7 @@ export interface CommandResult {
   quit?: boolean;
   clearHistory?: boolean;
   saveConversation?: boolean;
+  exportConversation?: boolean;
 }
 
 export interface CommandContext {
@@ -319,6 +320,9 @@ function handleHelp(): CommandResult {
       `  ${pc.cyan("/memory")}       View recent memories [search|clear ...]`,
       `  ${pc.cyan("/status")}       Ecosystem dashboard`,
       `  ${pc.cyan("/doctor")}       Health check all layers`,
+      `  ${pc.cyan("/decisions")}    View decision log [<project>]`,
+      `  ${pc.cyan("/export")}       Export conversation to markdown`,
+      `  ${pc.cyan("/debug")}        Show debug log`,
       `  ${pc.cyan("/save")}         Save conversation to memory`,
       `  ${pc.cyan("/model")}        Show current LLM model`,
       `  ${pc.cyan("/update")}       Check for updates`,
@@ -381,6 +385,42 @@ function handleUpdate(): CommandResult {
   }
 }
 
+async function handleDecisionsCommand(
+  action: string | undefined,
+  _args: string[],
+  ctx: CommandContext,
+): Promise<CommandResult> {
+  if (!ctx.mcpManager) {
+    return { handled: true, output: pc.red("Decisions not available: MCP not connected.") };
+  }
+  const scope = action || undefined;
+  const result = await ctx.mcpManager.callTool("memory_recall", {
+    query: "decision",
+    type: "decision",
+    limit: 20,
+    ...(scope ? { scope } : {}),
+  });
+  if (result.startsWith("Error")) {
+    return { handled: true, output: pc.red(result) };
+  }
+  return { handled: true, output: pc.bold("Decision Log:\n") + result };
+}
+
+function handleExportCommand(): CommandResult {
+  return { handled: true, exportConversation: true };
+}
+
+function handleDebugCommand(): CommandResult {
+  const logPath = path.join(os.homedir(), ".aman-agent", "debug.log");
+  if (!fs.existsSync(logPath)) {
+    return { handled: true, output: pc.dim("No debug log found.") };
+  }
+  const content = fs.readFileSync(logPath, "utf-8");
+  const lines = content.trim().split("\n");
+  const last20 = lines.slice(-20).join("\n");
+  return { handled: true, output: pc.bold("Debug Log (last 20 entries):\n") + pc.dim(last20) };
+}
+
 // --- Main Router ---
 
 export async function handleCommand(input: string, ctx: CommandContext): Promise<CommandResult> {
@@ -420,6 +460,12 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
       return handleDoctorCommand(ctx);
     case "save":
       return handleSave();
+    case "decisions":
+      return handleDecisionsCommand(action, args, ctx);
+    case "export":
+      return handleExportCommand();
+    case "debug":
+      return handleDebugCommand();
     case "update-config":
     case "reconfig":
       return handleReconfig();

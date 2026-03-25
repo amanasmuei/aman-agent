@@ -1,4 +1,5 @@
 import type { Message, LLMClient } from "./llm/types.js";
+import { log } from "./logger.js";
 
 // Rough token estimation: ~1.3 tokens per word
 function estimateMessageTokens(msg: Message): number {
@@ -36,33 +37,54 @@ const KEEP_INITIAL = 2;
  * Replaces middle messages with a summary.
  * Mutates the messages array in place.
  */
-export function trimConversation(
+export async function trimConversation(
   messages: Message[],
-  _client: LLMClient,
-): void {
+  client: LLMClient,
+): Promise<void> {
   const totalTokens = estimateTotalTokens(messages);
 
   if (totalTokens < MAX_CONVERSATION_TOKENS || messages.length <= KEEP_INITIAL + KEEP_RECENT) {
     return;
   }
 
-  // Keep first N and last N, summarize middle
   const initial = messages.slice(0, KEEP_INITIAL);
   const recent = messages.slice(-KEEP_RECENT);
   const middle = messages.slice(KEEP_INITIAL, messages.length - KEEP_RECENT);
 
-  // Build a text summary of the middle messages
-  const summaryParts: string[] = [];
-  for (const msg of middle) {
-    if (typeof msg.content === "string" && msg.content.length > 0) {
-      const preview = msg.content.slice(0, 150);
-      summaryParts.push(`[${msg.role}]: ${preview}${msg.content.length > 150 ? "..." : ""}`);
+  const middleText = middle
+    .filter((m) => typeof m.content === "string" && m.content.length > 0)
+    .map((m) => `[${m.role}]: ${(m.content as string).slice(0, 500)}`)
+    .slice(0, 30)
+    .join("\n");
+
+  let summaryText: string;
+
+  try {
+    const summaryPrompt = "Summarize the following conversation messages in 3-5 bullet points. Preserve: decisions made, user preferences expressed, action items, and key facts discussed. Be concise.\n\n" + middleText;
+
+    let fullText = "";
+    await client.chat(
+      "You are a concise summarizer. Return only bullet points, no preamble.",
+      [{ role: "user", content: summaryPrompt }],
+      (chunk) => {
+        if (chunk.type === "text" && chunk.text) fullText += chunk.text;
+      },
+    );
+
+    summaryText = `<conversation-summary>\nSummary of ${middle.length} earlier messages:\n\n${fullText}\n</conversation-summary>`;
+    log.debug("context", `Summarized ${middle.length} messages via LLM`);
+  } catch (err) {
+    log.warn("context", "LLM summarization failed, using fallback", err);
+    const summaryParts: string[] = [];
+    for (const msg of middle) {
+      if (typeof msg.content === "string" && msg.content.length > 0) {
+        const preview = msg.content.slice(0, 150);
+        summaryParts.push(`[${msg.role}]: ${preview}${msg.content.length > 150 ? "..." : ""}`);
+      }
     }
+    summaryText = `<conversation-summary>\nSummary of ${middle.length} earlier messages:\n\n${summaryParts.slice(0, 20).join("\n")}\n</conversation-summary>`;
   }
 
-  const summaryText = `<conversation-summary>\nThe following is a summary of ${middle.length} earlier messages that were compressed to save context:\n\n${summaryParts.slice(0, 20).join("\n")}\n${summaryParts.length > 20 ? `\n... and ${summaryParts.length - 20} more messages` : ""}\n</conversation-summary>`;
-
-  // Rebuild messages array in place
   messages.length = 0;
   messages.push(...initial);
   messages.push({ role: "user", content: summaryText });

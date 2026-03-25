@@ -344,4 +344,40 @@ describe("handleCommand", () => {
       expect(mcp.callTool).toHaveBeenCalledWith("eval_milestone", { text: "Completed phase 1" });
     });
   });
+
+  // --- /decisions ---
+
+  describe("/decisions", () => {
+    it("delegates to MCP memory_recall for decisions", async () => {
+      const mcp = createMockMcpManager();
+      const result = await handleCommand("/decisions", { mcpManager: mcp });
+      expect(result.handled).toBe(true);
+      expect(mcp.callTool).toHaveBeenCalled();
+    });
+
+    it("shows error when MCP not connected", async () => {
+      const result = await handleCommand("/decisions", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("not connected");
+    });
+  });
+
+  // --- /export ---
+
+  describe("/export", () => {
+    it("sets exportConversation flag", async () => {
+      const result = await handleCommand("/export", {});
+      expect(result.handled).toBe(true);
+      expect(result.exportConversation).toBe(true);
+    });
+  });
+
+  // --- /debug ---
+
+  describe("/debug", () => {
+    it("returns handled: true", async () => {
+      const result = await handleCommand("/debug", {});
+      expect(result.handled).toBe(true);
+    });
+  });
 });

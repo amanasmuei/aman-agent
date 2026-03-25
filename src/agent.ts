@@ -1,10 +1,14 @@
 import * as readline from "node:readline";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 import pc from "picocolors";
 import type {
   LLMClient,
   Message,
   ToolDefinition,
   ToolResultBlock,
+  StreamChunk,
 } from "./llm/types.js";
 import { handleCommand } from "./commands.js";
 import type { McpManager } from "./mcp/client.js";
@@ -17,6 +21,28 @@ import {
 } from "./hooks.js";
 import type { HooksConfig } from "./config.js";
 import { trimConversation } from "./context-manager.js";
+import { log } from "./logger.js";
+import { withRetry } from "./retry.js";
+import { extractMemories as runExtraction, type ExtractorState } from "./memory-extractor.js";
+
+async function recallForMessage(
+  input: string,
+  mcpManager: McpManager,
+): Promise<string> {
+  try {
+    const result = await mcpManager.callTool("memory_recall", {
+      query: input,
+      limit: 5,
+    });
+    if (!result || result.startsWith("Error") || result.trim() === "[]") {
+      return "";
+    }
+    return `\n\n<relevant-memories>\n${result}\n</relevant-memories>`;
+  } catch (err) {
+    log.debug("agent", "memory recall failed", err);
+    return "";
+  }
+}
 
 // Generate a session ID for conversation logging
 function generateSessionId(): string {
@@ -36,6 +62,23 @@ export async function runAgent(
 ): Promise<void> {
   const messages: Message[] = [];
   const sessionId = generateSessionId();
+  const extractorState: ExtractorState = { turnsSinceLastExtraction: 0, lastExtractionCount: 0 };
+
+  const isRetryable = (err: Error) =>
+    err.message.includes("Rate limit") ||
+    err.message.includes("rate limit") ||
+    err.message.includes("ECONNRESET") ||
+    err.message.includes("ETIMEDOUT") ||
+    err.message.includes("fetch failed");
+
+  const onChunkHandler = (chunk: StreamChunk) => {
+    if (chunk.type === "text" && chunk.text) {
+      process.stdout.write(chunk.text);
+    }
+    if (chunk.type === "done") {
+      process.stdout.write("\n");
+    }
+  };
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -48,7 +91,7 @@ export async function runAgent(
       try {
         const hookCtx: HookContext = { mcpManager, config: hooksConfig };
         await onSessionEnd(hookCtx, messages, sessionId);
-      } catch { /* Skip */ }
+      } catch (err) { log.debug("agent", "session end hook failed on SIGINT", err); }
     }
     console.log(pc.dim("\nGoodbye.\n"));
     rl.close();
@@ -76,7 +119,7 @@ export async function runAgent(
         messages.push({ role: "user", content: session.contextInjection });
         messages.push({ role: "assistant", content: "I have context from our previous sessions. How can I help?" });
       }
-    } catch { /* Hook failure — continue */ }
+    } catch (err) { log.warn("agent", "session start hook failed", err); }
   }
 
   while (true) {
@@ -91,11 +134,39 @@ export async function runAgent(
           try {
             const hookCtx: HookContext = { mcpManager, config: hooksConfig };
             await onSessionEnd(hookCtx, messages, sessionId);
-          } catch { /* Skip */ }
+          } catch (err) { log.debug("agent", "session end hook failed on quit", err); }
         }
         console.log(pc.dim("\nGoodbye.\n"));
         rl.close();
         return;
+      }
+      if (cmdResult.exportConversation) {
+        try {
+          const exportDir = path.join(os.homedir(), ".aman-agent", "exports");
+          fs.mkdirSync(exportDir, { recursive: true });
+          const exportPath = path.join(exportDir, `${sessionId}.md`);
+
+          const lines: string[] = [
+            `# Conversation — ${new Date().toLocaleString()}`,
+            `**Model:** ${model}`,
+            "",
+            "---",
+            "",
+          ];
+
+          for (const msg of messages) {
+            if (typeof msg.content === "string") {
+              const label = msg.role === "user" ? "**You:**" : `**${aiName}:**`;
+              lines.push(`${label} ${msg.content}`, "");
+            }
+          }
+
+          fs.writeFileSync(exportPath, lines.join("\n"), "utf-8");
+          console.log(pc.green(`Exported to ${exportPath}`));
+        } catch {
+          console.log(pc.red("Failed to export conversation."));
+        }
+        continue;
       }
       if (cmdResult.saveConversation && mcpManager) {
         try {
@@ -130,30 +201,30 @@ export async function runAgent(
             console.log(pc.dim(`  Using "${wfMatch.name}" workflow.`));
           }
         }
-      } catch { /* Skip */ }
+      } catch (err) { log.debug("agent", "workflow match failed", err); }
     }
 
     // Auto-trim conversation if approaching token limits
-    trimConversation(messages, client);
+    await trimConversation(messages, client);
 
     // Send to LLM
     messages.push({ role: "user", content: input });
 
+    // Per-message memory recall
+    let augmentedSystemPrompt = activeSystemPrompt;
+    if (mcpManager) {
+      const memories = await recallForMessage(input, mcpManager);
+      if (memories) {
+        augmentedSystemPrompt = activeSystemPrompt + memories;
+      }
+    }
+
     process.stdout.write(pc.cyan(`\n${aiName} > `));
 
     try {
-      let response = await client.chat(
-        activeSystemPrompt,
-        messages,
-        (chunk) => {
-          if (chunk.type === "text" && chunk.text) {
-            process.stdout.write(chunk.text);
-          }
-          if (chunk.type === "done") {
-            process.stdout.write("\n");
-          }
-        },
-        tools,
+      let response = await withRetry(
+        () => client.chat(augmentedSystemPrompt, messages, onChunkHandler, tools),
+        { maxAttempts: 3, baseDelay: 1000, retryable: isRetryable },
       );
 
       // Add assistant message to history
@@ -161,37 +232,31 @@ export async function runAgent(
 
       // Agentic tool loop: execute tools until LLM stops requesting them
       while (response.toolUses.length > 0 && mcpManager) {
-        const toolResults: ToolResultBlock[] = [];
-
-        for (const toolUse of response.toolUses) {
-          if (hooksConfig) {
-            const hookCtx: HookContext = { mcpManager: mcpManager!, config: hooksConfig };
-            const check = await onBeforeToolExec(toolUse.name, toolUse.input, hookCtx);
-            if (!check.allow) {
-              process.stdout.write(pc.red(`  [BLOCKED: ${check.reason}]\n`));
-              toolResults.push({
-                type: "tool_result",
-                tool_use_id: toolUse.id,
-                content: `BLOCKED by guardrail: ${check.reason}`,
-                is_error: true,
-              });
-              continue;
+        const toolResults: ToolResultBlock[] = await Promise.all(
+          response.toolUses.map(async (toolUse) => {
+            if (hooksConfig) {
+              const hookCtx: HookContext = { mcpManager: mcpManager!, config: hooksConfig };
+              const check = await onBeforeToolExec(toolUse.name, toolUse.input, hookCtx);
+              if (!check.allow) {
+                process.stdout.write(pc.red(`  [BLOCKED: ${check.reason}]\n`));
+                return {
+                  type: "tool_result" as const,
+                  tool_use_id: toolUse.id,
+                  content: `BLOCKED by guardrail: ${check.reason}`,
+                  is_error: true,
+                };
+              }
             }
-          }
 
-          process.stdout.write(
-            pc.dim(`  [using ${toolUse.name}...]\n`),
-          );
-          const result = await mcpManager.callTool(
-            toolUse.name,
-            toolUse.input,
-          );
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUse.id,
-            content: result,
-          });
-        }
+            process.stdout.write(pc.dim(`  [using ${toolUse.name}...]\n`));
+            const result = await mcpManager.callTool(toolUse.name, toolUse.input);
+            return {
+              type: "tool_result" as const,
+              tool_use_id: toolUse.id,
+              content: result,
+            };
+          }),
+        );
 
         // Add tool results as a user message
         messages.push({
@@ -200,22 +265,43 @@ export async function runAgent(
         });
 
         // Call LLM again with tool results
-        response = await client.chat(
-          activeSystemPrompt,
-          messages,
-          (chunk) => {
-            if (chunk.type === "text" && chunk.text) {
-              process.stdout.write(chunk.text);
-            }
-            if (chunk.type === "done") {
-              process.stdout.write("\n");
-            }
-          },
-          tools,
+        response = await withRetry(
+          () => client.chat(augmentedSystemPrompt, messages, onChunkHandler, tools),
+          { maxAttempts: 3, baseDelay: 1000, retryable: isRetryable },
         );
 
         // Add assistant response to history
         messages.push(response.message);
+      }
+
+      // Memory extraction (runs silently after response)
+      if (mcpManager && hooksConfig?.extractMemories) {
+        const assistantText = typeof response.message.content === "string"
+          ? response.message.content
+          : response.message.content
+              .filter((b) => b.type === "text")
+              .map((b) => ("text" in b ? b.text : ""))
+              .join("");
+
+        if (assistantText) {
+          const confirmFn = async (content: string): Promise<boolean> => {
+            return new Promise<boolean>((resolve) => {
+              rl.question(
+                pc.dim(`  Remember: "${content}"? (y/N) `),
+                (answer) => resolve(answer.toLowerCase() === "y"),
+              );
+            });
+          };
+
+          const count = await runExtraction(
+            input, assistantText, client, mcpManager, extractorState, confirmFn,
+          );
+          if (count > 0) {
+            process.stdout.write(pc.dim(`  [${count} memory${count > 1 ? "ies" : ""} stored]\n`));
+          }
+        }
+      } else {
+        extractorState.turnsSinceLastExtraction++;
       }
     } catch (error) {
       const message =
@@ -244,8 +330,8 @@ async function saveConversationToMemory(
         role: msg.role,
         content: msg.content.slice(0, 5000),
       });
-    } catch {
-      // Skip individual failures
+    } catch (err) {
+      log.debug("agent", "memory_log write failed", err);
     }
   }
 }

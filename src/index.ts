@@ -178,6 +178,28 @@ program
     const mcpTools = mcpManager.getTools();
     if (mcpTools.length > 0) {
       p.log.success(`${mcpTools.length} MCP tools available`);
+
+      // Memory consolidation
+      if (mcpTools.some(t => t.name === "memory_consolidate")) {
+        try {
+          const consolidateResult = await mcpManager.callTool("memory_consolidate", { dry_run: false });
+          if (consolidateResult && !consolidateResult.startsWith("Error")) {
+            try {
+              const report = JSON.parse(consolidateResult);
+              if (report.merged > 0 || report.pruned > 0 || report.promoted > 0) {
+                p.log.info(
+                  `Memory health: ${report.healthScore ?? "?"}% ` +
+                  pc.dim(`(merged ${report.merged}, pruned ${report.pruned}, promoted ${report.promoted})`),
+                );
+              }
+            } catch {
+              // Non-JSON response
+            }
+          }
+        } catch {
+          // Consolidation is non-critical
+        }
+      }
     } else {
       p.log.info(
         "No MCP tools connected (install aman-mcp or amem for tool support)",

@@ -3,6 +3,26 @@ import * as p from "@clack/prompts";
 import type { McpManager } from "./mcp/client.js";
 import type { Message } from "./llm/types.js";
 import type { HooksConfig } from "./config.js";
+import { log } from "./logger.js";
+
+function getTimeContext(): string {
+  const now = new Date();
+  const hour = now.getHours();
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const day = days[now.getDay()];
+
+  let period: string;
+  if (hour < 6) period = "late-night";
+  else if (hour < 12) period = "morning";
+  else if (hour < 17) period = "afternoon";
+  else if (hour < 21) period = "evening";
+  else period = "night";
+
+  const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const dateStr = now.toLocaleDateString();
+
+  return `<time-context>\nCurrent time: ${dateStr} ${timeStr} (${period}, ${day})\nAdapt your tone naturally — don't announce the time, just be contextually appropriate.\n</time-context>`;
+}
 
 export interface HookContext {
   mcpManager: McpManager;
@@ -24,8 +44,8 @@ export async function onSessionStart(
       if (result && !result.startsWith("Error")) {
         greeting += result;
       }
-    } catch {
-      // skip silently
+    } catch (err) {
+      log.warn("hooks", "memory_context recall failed", err);
     } finally {
       isHookCall = false;
     }
@@ -39,11 +59,29 @@ export async function onSessionStart(
         if (greeting) greeting += "\n";
         greeting += result;
       }
-    } catch {
-      // skip silently
+    } catch (err) {
+      log.warn("hooks", "identity_summary failed", err);
     } finally {
       isHookCall = false;
     }
+  }
+
+  // Time context
+  const timeContext = getTimeContext();
+  if (greeting) greeting += "\n" + timeContext;
+  else greeting = timeContext;
+
+  // Check reminders
+  try {
+    isHookCall = true;
+    const reminderResult = await ctx.mcpManager.callTool("reminder_check", {});
+    if (reminderResult && !reminderResult.startsWith("Error") && !reminderResult.includes("No pending")) {
+      greeting += "\n\n<pending-reminders>\n" + reminderResult + "\n</pending-reminders>";
+    }
+  } catch (err) {
+    log.debug("hooks", "reminder_check failed", err);
+  } finally {
+    isHookCall = false;
   }
 
   if (greeting) {
@@ -86,12 +124,13 @@ export async function onBeforeToolExec(
           reason: parsed.violations.join("; "),
         };
       }
-    } catch {
-      // Parse error — allow
+    } catch (err) {
+      log.debug("hooks", "rules_check parse failed", err);
     }
 
     return { allow: true };
-  } catch {
+  } catch (err) {
+    log.warn("hooks", "rules_check call failed", err);
     return { allow: true };
   } finally {
     isHookCall = false;
@@ -148,7 +187,8 @@ export async function onWorkflowMatch(
     }
 
     return null;
-  } catch {
+  } catch (err) {
+    log.debug("hooks", "workflow_list failed", err);
     return null;
   } finally {
     isHookCall = false;
@@ -178,8 +218,8 @@ export async function onSessionEnd(
             role: msg.role,
             content: (msg.content as string).slice(0, 5000),
           });
-        } catch {
-          // Skip individual log failures
+        } catch (err) {
+          log.debug("hooks", "memory_log write failed for " + sessionId, err);
         } finally {
           isHookCall = false;
         }
@@ -239,7 +279,7 @@ export async function onSessionEnd(
         }
       }
     }
-  } catch {
-    // Skip if non-interactive or fails
+  } catch (err) {
+    log.warn("hooks", "session end hook failed", err);
   }
 }

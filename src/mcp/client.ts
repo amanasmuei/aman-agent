@@ -1,5 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { log } from "../logger.js";
+import { withRetry } from "../retry.js";
 
 interface McpConnection {
   name: string;
@@ -43,8 +45,8 @@ export class McpManager {
           serverName: name,
         });
       }
-    } catch {
-      // Server not available — skip silently
+    } catch (err) {
+      log.error("mcp", "Failed to connect to " + name + " MCP server", err);
       console.error(`  Warning: Could not connect to ${name} MCP server`);
     }
   }
@@ -64,10 +66,10 @@ export class McpManager {
     if (!conn) return `Error: server ${tool.serverName} not connected`;
 
     try {
-      const result = await conn.client.callTool({
-        name: toolName,
-        arguments: args,
-      });
+      const result = await withRetry(
+        () => conn.client.callTool({ name: toolName, arguments: args }),
+        { maxAttempts: 2, baseDelay: 500, retryable: (err) => err.message.includes("ETIMEDOUT") || err.message.includes("timeout") },
+      );
       // Extract text from result
       if (result.content && Array.isArray(result.content)) {
         return (result.content as Array<{ type: string; text?: string }>)
@@ -85,8 +87,8 @@ export class McpManager {
     for (const conn of this.connections) {
       try {
         await conn.client.close();
-      } catch {
-        /* ignore cleanup errors */
+      } catch (err) {
+        log.debug("mcp", "Cleanup error disconnecting " + conn.name, err);
       }
     }
     this.connections = [];

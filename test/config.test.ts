@@ -50,6 +50,7 @@ describe("config", () => {
           workflowSuggest: true,
           evalPrompt: true,
           autoSessionSave: true,
+          extractMemories: true,
         },
       });
     });

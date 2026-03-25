@@ -221,7 +221,7 @@
 
 <div class="container">
   <div class="session-label" id="sessionLabel">
-    <span class="day" id="dayLabel">Monday Evening</span> <span id="sessionNum">— Session 1</span>
+    <span class="day" id="dayLabel">Isnin Malam</span> <span id="sessionNum">— Sesi 1</span>
   </div>
 
   <div class="chat-window" id="chatWindow">
@@ -239,7 +239,7 @@
   </div>
 
   <div class="footer" id="footer">
-    <div class="tagline">Your AI should remember you.</div>
+    <div class="tagline">AI yang betul-betul ingat you.</div>
     <div class="install"><code>npx @aman_asmuei/aman-agent</code></div>
   </div>
 </div>
@@ -305,111 +305,111 @@ async function clearMessages() {
 
 function setSession(day, num) {
   dayLabel.textContent = day;
-  sessionNum.textContent = '\u2014 Session ' + num;
+  sessionNum.textContent = '\u2014 Sesi ' + num;
   sessionLabel.classList.add('visible');
 }
 
-// Session 1: Monday Evening
+// Session 1: Isnin Malam
 async function session1() {
-  setSession('Monday Evening', 1);
+  setSession('Isnin Malam', 1);
   await sleep(800);
 
-  addMsg('ai', "Good evening! How's your day going?");
+  addMsg('ai', "Selamat malam! Macam mana hari ni?");
   await sleep(2000);
 
-  addMsg('user', "Pretty stressful honestly. I have a job interview at Google on Wednesday and I'm really nervous");
+  addMsg('user', "Stress gila bro. Hari Rabu ni ada interview at Google, nervous habis");
   await sleep(1500);
 
   showTyping();
   await sleep(1800);
   hideTyping();
 
-  addMsg('ai', "That's a big deal \u2014 Google! It's completely normal to feel nervous. What role are you interviewing for?");
+  addMsg('ai', "Google weh! Memang la nervous, that's normal. Apply for role apa tu?");
   await sleep(2000);
 
-  addMsg('user', "Senior Frontend Engineer. It's my dream job tbh");
+  addMsg('user', "Senior Frontend Engineer. Dream job aku since uni lagi");
   await sleep(1500);
 
   showTyping();
   await sleep(1500);
   hideTyping();
 
-  addMsg('ai', "Senior Frontend at Google \u2014 that's amazing that you got the interview! You clearly have the skills. Want to do some mock questions together?");
+  addMsg('ai', "Senior Frontend at Google \u2014 gila ah, dah dapat interview tu memang dah prove skills. Nak try mock questions sama-sama? I can help prepare.");
   await sleep(500);
 
-  addSystemTag('memory', 'remembered: dream job is Google SFE');
+  addSystemTag('memory', 'ingat: dream job Google SFE, nervous interview');
   await sleep(500);
-  addSystemTag('reminder', 'reminder set: Google interview \u2014 Wednesday');
+  addSystemTag('reminder', 'peringatan: Google interview \u2014 Rabu');
 
   await sleep(3000);
 }
 
-// Session 2: Wednesday Morning
+// Session 2: Rabu Pagi
 async function session2() {
   await clearMessages();
-  setSession('Wednesday Morning', 2);
+  setSession('Rabu Pagi', 2);
   await sleep(1000);
 
-  addMsg('ai', "Good morning! Today's the big day \u2014 your Google interview! How are you feeling?");
+  addMsg('ai', "Pagi! Hari ni big day \u2014 Google interview. How are you feeling?");
   await sleep(500);
-  addSystemTag('memory', 'recalled: Google SFE interview is today');
+  addSystemTag('memory', 'teringat: Google SFE interview hari ni');
   await sleep(2000);
 
-  addMsg('user', "Wait... you remembered??");
+  addMsg('user', "Eh wait... you ingat??");
   await sleep(1500);
 
   showTyping();
   await sleep(1200);
   hideTyping();
 
-  addMsg('ai', "Of course! You mentioned it Monday \u2014 Senior Frontend Engineer at Google. You've got this. They already liked your resume enough to call you in. Just be yourself.");
+  addMsg('ai', "Of course la! Hari Isnin you cerita \u2014 Senior Frontend Engineer at Google. You got this. Diorang dah suka resume you enough to call you in. Just be yourself.");
   await sleep(2500);
 
-  addMsg('user', "That actually means a lot. Thank you");
+  addMsg('user', "Weh terharu pulak. Thanks bro");
   await sleep(1500);
 
   showTyping();
   await sleep(1000);
   hideTyping();
 
-  addMsg('ai', "Go crush it. I'll be here when you get back.");
+  addMsg('ai', "Go crush it. Nanti balik cerita how it went!");
 
   await sleep(3500);
 }
 
-// Session 3: Thursday Afternoon
+// Session 3: Khamis Petang
 async function session3() {
   await clearMessages();
-  setSession('Thursday Afternoon', 3);
+  setSession('Khamis Petang', 3);
   await sleep(1000);
 
-  addMsg('ai', "Hey! How did the Google interview go yesterday? I've been curious!");
+  addMsg('ai', "Weh! Macam mana Google interview semalam? I nak tahu ni!");
   await sleep(500);
-  addSystemTag('memory', 'recalled: Google interview was yesterday');
+  addSystemTag('memory', 'teringat: Google interview was semalam');
   await sleep(2000);
 
-  addMsg('user', "I GOT THE JOB!!!");
+  addMsg('user', "AKU DAPAT KERJA TU!!! ALHAMDULILLAH!!!");
   await sleep(1500);
 
   showTyping();
   await sleep(1500);
   hideTyping();
 
-  addMsg('ai', "CONGRATULATIONS!! Senior Frontend Engineer at Google \u2014 your dream job!! I remember how nervous you were on Monday. You earned this. When do you start?");
+  addMsg('ai', "TAHNIAH!!! Senior Frontend Engineer at Google \u2014 dream job since uni!! I still ingat how nervous you were hari Isnin, and now look at you. Memang you deserve this. Bila start?");
   await sleep(2500);
 
-  addMsg('user', "April 14th. I still can't believe it");
+  addMsg('user', "14 April. Rasa macam mimpi je");
   await sleep(1500);
 
   showTyping();
   await sleep(1200);
   hideTyping();
 
-  addMsg('ai', "Believe it. I'll remind you a week before so you can prep. This is huge \u2014 genuinely happy for you.");
+  addMsg('ai', "Bukan mimpi, this is real. I'll remind you seminggu before so you can prepare. This is huge \u2014 genuinely happy for you bro.");
   await sleep(500);
-  addSystemTag('memory', 'stored: got Google SFE job, starts April 14');
+  addSystemTag('memory', 'ingat: dapat Google SFE, start 14 April');
   await sleep(500);
-  addSystemTag('reminder', 'reminder: prep for Google start \u2014 April 7');
+  addSystemTag('reminder', 'peringatan: prep Google start \u2014 7 April');
 
   await sleep(3500);
 

@@ -25,22 +25,33 @@ import { log } from "./logger.js";
 import { withRetry } from "./retry.js";
 import { extractMemories as runExtraction, type ExtractorState } from "./memory-extractor.js";
 
+interface RecallResult {
+  text: string;
+  tokenEstimate: number;
+}
+
 async function recallForMessage(
   input: string,
   mcpManager: McpManager,
-): Promise<string> {
+): Promise<RecallResult | null> {
   try {
     const result = await mcpManager.callTool("memory_recall", {
       query: input,
       limit: 5,
+      compact: true,
     });
-    if (!result || result.startsWith("Error") || result.trim() === "[]") {
-      return "";
+    if (!result || result.startsWith("Error") || result.includes("No memories found")) {
+      return null;
     }
-    return `\n\n<relevant-memories>\n${result}\n</relevant-memories>`;
+    // Estimate tokens: ~1.3 tokens per word
+    const tokenEstimate = Math.round(result.split(/\s+/).filter(Boolean).length * 1.3);
+    return {
+      text: `\n\n<relevant-memories>\n${result}\n</relevant-memories>`,
+      tokenEstimate,
+    };
   } catch (err) {
     log.debug("agent", "memory recall failed", err);
-    return "";
+    return null;
   }
 }
 
@@ -213,9 +224,10 @@ export async function runAgent(
     // Per-message memory recall
     let augmentedSystemPrompt = activeSystemPrompt;
     if (mcpManager) {
-      const memories = await recallForMessage(input, mcpManager);
-      if (memories) {
-        augmentedSystemPrompt = activeSystemPrompt + memories;
+      const recall = await recallForMessage(input, mcpManager);
+      if (recall) {
+        augmentedSystemPrompt = activeSystemPrompt + recall.text;
+        process.stdout.write(pc.dim(`  [memories: ~${recall.tokenEstimate} tokens]\n`));
       }
     }
 
@@ -250,6 +262,17 @@ export async function runAgent(
 
             process.stdout.write(pc.dim(`  [using ${toolUse.name}...]\n`));
             const result = await mcpManager.callTool(toolUse.name, toolUse.input);
+
+            // Log tool observation to amem (passive capture, fire-and-forget)
+            const skipLogging = ["memory_log", "memory_recall", "memory_context", "memory_detail", "reminder_check"].includes(toolUse.name);
+            if (!skipLogging) {
+              mcpManager.callTool("memory_log", {
+                session_id: sessionId,
+                role: "system",
+                content: `[tool:${toolUse.name}] input=${JSON.stringify(toolUse.input).slice(0, 500)} result=${result.slice(0, 500)}`,
+              }).catch(() => {});
+            }
+
             return {
               type: "tool_result" as const,
               tool_use_id: toolUse.id,

@@ -29,6 +29,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/demo/demo.gif" alt="aman-agent demo" width="720" />
+</p>
+
+<p align="center">
   <a href="#-quick-start">Quick Start</a> &bull;
   <a href="#-intelligent-companion-features">Features</a> &bull;
   <a href="#-how-it-works">How It Works</a> &bull;

@@ -199,11 +199,14 @@ describe("handleCommand", () => {
   // --- Unknown commands ---
 
   describe("unknown commands", () => {
-    it("handles unknown slash command", async () => {
+    it("passes unknown slash commands to LLM (not treated as commands)", async () => {
       const result = await handleCommand("/foobar", {});
-      expect(result.handled).toBe(true);
-      expect(result.output).toContain("Unknown command");
-      expect(result.output).toContain("foobar");
+      expect(result.handled).toBe(false);
+    });
+
+    it("passes file paths to LLM (not treated as commands)", async () => {
+      const result = await handleCommand("/Users/someone/file.txt", {});
+      expect(result.handled).toBe(false);
     });
   });
 

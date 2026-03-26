@@ -268,8 +268,46 @@ export async function runAgent(
     // Auto-trim conversation if approaching token limits
     await trimConversation(messages, client);
 
+    // Detect and read file paths in user input
+    let enrichedInput = input;
+    const filePathMatch = input.match(/(\/[\w./-]+|~\/[\w./-]+)/);
+    if (filePathMatch) {
+      let filePath = filePathMatch[1];
+      if (filePath.startsWith("~/")) {
+        filePath = path.join(os.homedir(), filePath.slice(2));
+      }
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        const ext = path.extname(filePath).toLowerCase();
+        const textExts = new Set([
+          ".txt", ".md", ".json", ".js", ".ts", ".jsx", ".tsx", ".py",
+          ".html", ".css", ".yml", ".yaml", ".toml", ".xml", ".csv",
+          ".sh", ".bash", ".zsh", ".env", ".cfg", ".ini", ".log",
+          ".sql", ".graphql", ".rs", ".go", ".java", ".rb", ".php",
+          ".c", ".cpp", ".h", ".swift", ".kt", ".r", ".lua",
+        ]);
+        if (textExts.has(ext) || ext === "") {
+          try {
+            const content = fs.readFileSync(filePath, "utf-8");
+            const maxChars = 50000; // ~12K tokens
+            const trimmed = content.length > maxChars
+              ? content.slice(0, maxChars) + `\n\n[... truncated, ${content.length - maxChars} chars remaining]`
+              : content;
+            enrichedInput = `${input}\n\n<file path="${filePath}" size="${content.length} chars">\n${trimmed}\n</file>`;
+            process.stdout.write(pc.dim(`  [attached: ${path.basename(filePath)} (${(content.length / 1024).toFixed(1)}KB)]\n`));
+          } catch {
+            process.stdout.write(pc.dim(`  [could not read: ${filePath}]\n`));
+          }
+        } else if ([".docx", ".pdf", ".xlsx", ".pptx"].includes(ext)) {
+          process.stdout.write(pc.yellow(`  Binary file detected (${ext}). Text files supported — convert with:\n`));
+          if (ext === ".docx") process.stdout.write(pc.dim(`    textutil -convert txt "${filePath}"\n`));
+          else if (ext === ".pdf") process.stdout.write(pc.dim(`    pdftotext "${filePath}" -\n`));
+          else process.stdout.write(pc.dim(`    Convert to .txt or .csv first\n`));
+        }
+      }
+    }
+
     // Send to LLM
-    messages.push({ role: "user", content: input });
+    messages.push({ role: "user", content: enrichedInput });
 
     // Per-message memory recall
     let augmentedSystemPrompt = activeSystemPrompt;

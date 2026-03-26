@@ -29,7 +29,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/demo/demo.gif" alt="aman-agent demo" width="720" />
+  <img src="docs/demo/demo.gif?v=2" alt="aman-agent demo" width="720" />
 </p>
 
 <p align="center">

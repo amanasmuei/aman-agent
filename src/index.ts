@@ -379,7 +379,21 @@ program
       p.log.success(`${wfCount} workflow${wfCount > 1 ? "s" : ""} added`);
     }
 
-    p.outro(`Your companion is ready. Run: ${pc.bold("aman-agent")}`);
+    // Detect if running via npx (temp install)
+    const isNpx = process.argv[1]?.includes("_npx") || !process.argv[1]?.includes("node_modules/.bin");
+
+    p.outro("Your companion is ready.");
+
+    console.log("");
+    if (isNpx) {
+      console.log(`  ${pc.bold("Start chatting:")}  npx @aman_asmuei/aman-agent`);
+      console.log("");
+      console.log(`  ${pc.dim("Tip: Install globally to use")} ${pc.bold("aman-agent")} ${pc.dim("directly:")}`);
+      console.log(`  ${pc.dim("  npm install -g @aman_asmuei/aman-agent")}`);
+    } else {
+      console.log(`  ${pc.bold("Start chatting:")}  aman-agent`);
+    }
+    console.log("");
   });
 
 program.parse();

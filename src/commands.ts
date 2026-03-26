@@ -148,6 +148,26 @@ async function handleWorkflowsCommand(
   return { handled: true, output: pc.yellow(`Unknown action: /workflows ${action}. Use /workflows [add|remove].`) };
 }
 
+// akit registry — keep in sync with @aman_asmuei/akit/src/lib/registry.ts
+const AKIT_REGISTRY: Array<{ name: string; description: string; category: string }> = [
+  { name: "web-search", description: "Search the web for current information", category: "search" },
+  { name: "brave-search", description: "Private web search via Brave", category: "search" },
+  { name: "github", description: "Manage GitHub repos, PRs, issues", category: "development" },
+  { name: "git", description: "Git operations — log, diff, blame, branch", category: "development" },
+  { name: "filesystem", description: "Read, write, and search files", category: "development" },
+  { name: "linear", description: "Manage Linear issues and projects", category: "development" },
+  { name: "sentry", description: "Monitor and triage app errors", category: "development" },
+  { name: "postgres", description: "Query PostgreSQL databases", category: "data" },
+  { name: "sqlite", description: "Query local SQLite databases", category: "data" },
+  { name: "fetch", description: "HTTP requests to APIs", category: "automation" },
+  { name: "puppeteer", description: "Browser automation and scraping", category: "automation" },
+  { name: "docker", description: "Manage Docker containers", category: "automation" },
+  { name: "slack", description: "Send and read Slack messages", category: "communication" },
+  { name: "notion", description: "Read and write Notion pages", category: "communication" },
+  { name: "memory", description: "Persistent AI memory via amem", category: "memory" },
+  { name: "docling", description: "Convert PDF, DOCX, PPTX, XLSX to markdown", category: "documents" },
+];
+
 function handleAkitCommand(
   action: string | undefined,
 ): CommandResult {
@@ -177,38 +197,49 @@ function handleAkitCommand(
         `  ${pc.cyan("Remove a tool:")}    npx @aman_asmuei/akit remove <tool>`,
         `  ${pc.cyan("Search tools:")}     npx @aman_asmuei/akit search <query>`,
         `  ${pc.cyan("Custom MCP:")}       npx @aman_asmuei/akit add <name> --mcp <package>`,
-        "",
-        `  ${pc.dim("Available: github, filesystem, docling, web-search, brave-search,")}`,
-        `  ${pc.dim("  git, linear, sentry, postgres, sqlite, fetch, puppeteer,")}`,
-        `  ${pc.dim("  docker, slack, notion, memory + any custom MCP server")}`,
       ].join("\n"),
     };
   }
 
-  // Default: show installed tools
-  const lines: string[] = [pc.bold("Installed Tools"), ""];
+  const installedNames = new Set(installed.map(t => t.name));
+  const available = AKIT_REGISTRY.filter(t => !installedNames.has(t.name));
 
-  if (installed.length === 0) {
-    lines.push(pc.dim("  No tools installed yet."));
-    lines.push("");
-    lines.push(`  ${pc.bold("Get started:")}`);
-    lines.push(`    npx @aman_asmuei/akit add github`);
-    lines.push(`    npx @aman_asmuei/akit add filesystem`);
-    lines.push(`    npx @aman_asmuei/akit add docling`);
-    lines.push("");
-    lines.push(`  ${pc.dim("Search all:")} npx @aman_asmuei/akit search <query>`);
-  } else {
+  const lines: string[] = [pc.bold("akit — AI Tool Manager"), ""];
+
+  // Installed section
+  if (installed.length > 0) {
+    lines.push(`  ${pc.bold(`Installed (${installed.length})`)}`);
     for (const tool of installed) {
       const mcp = tool.mcpConfigured ? pc.green("MCP") : pc.dim("manual");
-      lines.push(`  ${pc.green("●")} ${pc.bold(tool.name.padEnd(16))} ${mcp}  ${pc.dim(`installed ${tool.installedAt}`)}`);
+      lines.push(`  ${pc.green("●")} ${pc.bold(tool.name.padEnd(16))} ${mcp}  ${pc.dim(tool.installedAt)}`);
     }
     lines.push("");
-    lines.push(`  ${installed.length} tool${installed.length > 1 ? "s" : ""} installed`);
-    lines.push("");
-    lines.push(`  ${pc.dim("Add more:")}    npx @aman_asmuei/akit add <tool>`);
-    lines.push(`  ${pc.dim("Remove:")}      npx @aman_asmuei/akit remove <tool>`);
-    lines.push(`  ${pc.dim("Search:")}      npx @aman_asmuei/akit search <query>`);
   }
+
+  // Available section
+  if (available.length > 0) {
+    lines.push(`  ${pc.bold(`Available (${available.length})`)}`);
+
+    // Group by category
+    const byCategory = new Map<string, typeof available>();
+    for (const tool of available) {
+      if (!byCategory.has(tool.category)) byCategory.set(tool.category, []);
+      byCategory.get(tool.category)!.push(tool);
+    }
+
+    for (const [category, tools] of byCategory) {
+      lines.push(`  ${pc.dim(category)}`);
+      for (const tool of tools) {
+        lines.push(`  ${pc.dim("○")} ${tool.name.padEnd(16)} ${pc.dim(tool.description)}`);
+      }
+    }
+    lines.push("");
+  }
+
+  // Commands
+  lines.push(`  ${pc.cyan("Add:")}     npx @aman_asmuei/akit add <tool>`);
+  lines.push(`  ${pc.cyan("Remove:")}  npx @aman_asmuei/akit remove <tool>`);
+  lines.push(`  ${pc.cyan("Custom:")}  npx @aman_asmuei/akit add <name> --mcp <npm-package>`);
 
   return { handled: true, output: lines.join("\n") };
 }

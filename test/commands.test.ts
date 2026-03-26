@@ -137,13 +137,13 @@ describe("handleCommand", () => {
     it("/tools aliases to /akit", async () => {
       const result = await handleCommand("/tools", {});
       expect(result.handled).toBe(true);
-      expect(result.output).toContain("Installed Tools");
+      expect(result.output).toContain("akit");
     });
 
-    it("shows get-started message when no tools installed", async () => {
+    it("shows available tools when none installed", async () => {
       const result = await handleCommand("/akit", {});
       expect(result.handled).toBe(true);
-      expect(result.output).toContain("No tools installed");
+      expect(result.output).toContain("Available");
       expect(result.output).toContain("akit add");
     });
   });

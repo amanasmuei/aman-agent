@@ -4,7 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import pc from "picocolors";
 import { marked } from "marked";
-import TerminalRenderer from "marked-terminal";
+import { markedTerminal } from "marked-terminal";
 import logUpdate from "log-update";
 import type {
   LLMClient,
@@ -30,9 +30,9 @@ import { extractMemories as runExtraction, type ExtractorState } from "./memory-
 import { humanizeError } from "./errors.js";
 import { getHint, loadShownHints, saveShownHints, type HintState } from "./hints.js";
 
-// marked-terminal types lag behind marked v14+ — cast is safe
+// markedTerminal() returns a MarkedExtension — types lag behind, cast is safe
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-marked.use({ renderer: new TerminalRenderer() as any });
+marked.use(markedTerminal() as any);
 
 interface RecallResult {
   text: string;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# aman-agent demo recording script
+# aman-agent v0.6.0 demo recording script
 # Usage: ./demo-script.sh
 #
 # This script simulates an aman-agent session for recording.
@@ -16,6 +16,7 @@ set -e
 # Colors
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
 DIM='\033[2m'
 BOLD='\033[1m'
 RED='\033[0;31m'
@@ -38,11 +39,6 @@ type_slow() {
   done
 }
 
-# Print instantly
-instant() {
-  printf '%s' "$1"
-}
-
 # Pause
 pause() {
   sleep "${1:-1}"
@@ -50,36 +46,33 @@ pause() {
 
 clear
 
-# ─── Startup ───────────────────────────────────────────
+# ─── Startup (v0.6.0: animated spinner sequence) ─────
 
 echo ""
-printf "${BOLD}  aman agent${RESET}${DIM} — starting your AI companion${RESET}\n"
+printf "${BOLD}  aman agent${RESET}${DIM} — your AI companion${RESET}\n"
+pause 0.4
+printf "${GREEN}  Auto-detected Anthropic API key. Using Claude Sonnet 4.6.${RESET}\n"
 pause 0.5
-printf "${GREEN}  Loaded: identity, guardrails, workflows, tools, skills ${DIM}(2,847 tokens)${RESET}\n"
-pause 0.3
-printf "  Model: ${DIM}claude-sonnet-4-6${RESET}\n"
-pause 0.3
-printf "  Connecting to MCP servers...\n"
-pause 0.6
-printf "${GREEN}  45 MCP tools available${RESET}\n"
-pause 0.3
-printf "  Memory health: ${GREEN}94%%${RESET} ${DIM}(merged 2 duplicates, pruned 1 stale)${RESET}\n"
-pause 0.3
-printf "${GREEN}  ${BOLD}Aman${RESET}${GREEN} is ready.${RESET}\n"
+printf "${GREEN}  ✓${RESET} Ecosystem ready: identity, guardrails, workflows ${DIM}(2,847 tokens)${RESET}\n"
+pause 0.4
+printf "${GREEN}  ✓${RESET} Connected 45 MCP tools, memory health 94%%\n"
+pause 0.4
+printf "${GREEN}  ${BOLD}Aman${RESET}${GREEN} is ready. Model: ${DIM}claude-sonnet-4-6${RESET}\n"
 pause 0.5
 
 echo ""
 printf "  Type a message, ${DIM}/help${RESET} for commands, or ${DIM}/quit${RESET} to exit.\n"
 pause 0.3
 
-# Session context (time + reminders)
-printf "${DIM}  Good evening, Aman. It's Thursday.${RESET}\n"
+# v0.6.0: Returning user greeting with resume topic
+printf "${DIM}  Welcome back. Last time we talked about the auth service.${RESET}\n"
 pause 0.3
-printf "${DIM}  [OVERDUE] Review PR #42 (was due Mar 25)${RESET}\n"
-printf "${DIM}  [TODAY] Deploy auth service to staging${RESET}\n"
+# v0.6.0: Visible reminders (not buried in context)
+printf "${YELLOW}  Reminder: Review PR #42 (overdue)${RESET}\n"
+printf "${YELLOW}  Reminder: Deploy auth service to staging (due today)${RESET}\n"
 pause 1.5
 
-# ─── Turn 1: Memory Recall ─────────────────────────────
+# ─── Turn 1: Memory Recall + Rich Output ─────────────
 
 echo ""
 printf "${GREEN}You > ${RESET}"
@@ -88,32 +81,33 @@ type_speed "Let's work on the auth service deployment"
 echo ""
 pause 0.8
 
-# Memory recall
-printf "${DIM}  [memories: ~47 tokens]${RESET}\n"
-pause 0.5
-
-printf "${CYAN}\nAman > ${RESET}"
+# v0.6.0: Response framing with dividers
+printf "\n ${CYAN}${BOLD}Aman${RESET} ${DIM}──────────────────────────────────────────────${RESET}\n"
+echo ""
 pause 0.3
-type_speed "Based on our previous decisions, I can see that:"
+type_speed "  Based on our previous decisions, I can see that:"
 echo ""
 pause 0.2
-type_speed "- The auth service uses **JWT tokens** (decided 2 weeks ago)"
+echo ""
+type_speed "  - The auth service uses **JWT tokens** (decided 2 weeks ago)"
 echo ""
 pause 0.2
-type_speed "- You prefer **PostgreSQL** for the database"
+type_speed "  - You prefer **PostgreSQL** for the database"
 echo ""
 pause 0.2
-type_speed "- The rewrite is driven by **compliance requirements**"
+type_speed "  - The rewrite is driven by **compliance requirements**"
 echo ""
 echo ""
 pause 0.2
-type_speed "I also see you have an overdue reminder to review PR #42."
+type_speed "  I also see you have an overdue reminder to review PR #42."
 echo ""
-type_speed "Want me to check the PR status first, or go straight to deployment?"
+type_speed "  Want me to check the PR status first, or go straight to deployment?"
 echo ""
+# v0.6.0: Footer with memory token count
+printf "${DIM} ────────────────────────────────────── memories: ~47 tokens${RESET}\n"
 pause 2
 
-# ─── Turn 2: Tool Use + Observation ───────────────────
+# ─── Turn 2: Tool Use + Silent Memory ────────────────
 
 echo ""
 printf "${GREEN}You > ${RESET}"
@@ -122,37 +116,29 @@ type_speed "Check the PR, then let's deploy"
 echo ""
 pause 0.8
 
-printf "${DIM}  [memories: ~32 tokens]${RESET}\n"
+printf "\n ${CYAN}${BOLD}Aman${RESET} ${DIM}──────────────────────────────────────────────${RESET}\n"
+echo ""
 pause 0.3
-
-printf "${CYAN}\nAman > ${RESET}"
-pause 0.3
-type_speed "Let me check that PR for you."
+type_speed "  Let me check that PR for you."
 echo ""
 pause 0.3
 printf "${DIM}  [using github_pr_status...]${RESET}\n"
 printf "${DIM}  [using deploy_staging...]${RESET}\n"
 pause 1.2
 echo ""
-type_speed "PR #42 has 2 approvals and all checks passing. I've merged it"
+type_speed "  PR #42 has 2 approvals and all checks passing. I've merged it"
 echo ""
-type_speed "and kicked off the staging deployment. ETA ~3 minutes."
+type_speed "  and kicked off the staging deployment. ETA ~3 minutes."
 echo ""
+printf "${DIM} ────────────────────────────────────── memories: ~32 tokens${RESET}\n"
 pause 0.5
 
-# Memory extraction
-printf "\n${DIM}  Remember: \"Auth service deployed to staging after PR #42 merge\"? (y/N) ${RESET}"
-pause 1
-type_slow "y"
-echo ""
+# v0.6.0: Silent memory — no more y/N prompts!
 printf "${DIM}  [1 memory stored]${RESET}\n"
-pause 0.5
-
-# Reminder completion
 printf "${DIM}  [reminder completed: Review PR #42]${RESET}\n"
 pause 2
 
-# ─── Turn 3: Preference Learning ──────────────────────
+# ─── Turn 3: Preference Learning + Hint ──────────────
 
 echo ""
 printf "${GREEN}You > ${RESET}"
@@ -161,52 +147,66 @@ type_speed "I prefer to always run integration tests before staging deploys"
 echo ""
 pause 0.8
 
-printf "${DIM}  [memories: ~28 tokens]${RESET}\n"
+printf "\n ${CYAN}${BOLD}Aman${RESET} ${DIM}──────────────────────────────────────────────${RESET}\n"
+echo ""
+pause 0.3
+type_speed "  Good practice. I'll make sure to run integration tests before"
+echo ""
+type_speed "  any future staging deployments. Noted as a workflow preference."
+echo ""
+printf "${DIM} ────────────────────────────────────── memories: ~28 tokens${RESET}\n"
 pause 0.3
 
-printf "${CYAN}\nAman > ${RESET}"
-pause 0.3
-type_speed "Good practice. I'll make sure to run integration tests before"
-echo ""
-type_speed "any future staging deployments. Noted as a workflow preference."
-echo ""
+# v0.6.0: Silent extraction (all types auto-stored)
+printf "${DIM}  [1 memory stored]${RESET}\n"
 pause 0.5
 
-# Silent extraction (preference - no confirmation needed)
-printf "\n${DIM}  [1 memory stored]${RESET}\n"
+# v0.6.0: Progressive feature hint
+printf "${DIM}  Tip: Teach me multi-step processes with /workflows add${RESET}\n"
 pause 2
 
-# ─── Decisions Command ─────────────────────────────────
+# ─── Memory Timeline (v0.6.0 new command) ────────────
 
 echo ""
 printf "${GREEN}You > ${RESET}"
 pause 0.5
-type_speed "/decisions"
+type_speed "/memory timeline"
 echo ""
 pause 0.5
 
-printf "${BOLD}Decision Log:${RESET}\n"
-pause 0.3
-printf "1. [decision] Auth service uses JWT tokens with RS256\n"
-printf "   Confidence: 95%% | Age: 14d | Tags: [auth, jwt]\n"
-pause 0.2
-printf "2. [decision] PostgreSQL for auth database (ACID compliance)\n"
-printf "   Confidence: 92%% | Age: 14d | Tags: [database, auth]\n"
-pause 0.2
-printf "3. [decision] Auth service deployed to staging after PR #42\n"
-printf "   Confidence: 90%% | Age: just now | Tags: [deploy, auth]\n"
+printf "${BOLD}Memory Timeline:${RESET}\n"
+echo ""
+printf "  Mar 24  ${GREEN}██░░░░░░░░${RESET}  12 memories\n"
+printf "  Mar 25  ${GREEN}█████░░░░░${RESET}  47 memories\n"
+printf "  Mar 26  ${GREEN}████████░░${RESET}  89 memories\n"
+echo ""
+printf "  Total: 148 memories\n"
+printf "  Top tags: #auth (34), #preferences (28), #deploy (22)\n"
 pause 2.5
 
-# ─── Export ────────────────────────────────────────────
+# ─── Doctor (v0.6.0 upgraded) ────────────────────────
 
 echo ""
 printf "${GREEN}You > ${RESET}"
 pause 0.5
-type_speed "/export"
+type_speed "/doctor"
 echo ""
 pause 0.5
-printf "${GREEN}Exported to ~/.aman-agent/exports/session-2026-03-26-2130.md${RESET}\n"
-pause 1.5
+
+printf "${BOLD}Aman Health Check${RESET}\n"
+echo ""
+printf "  ${GREEN}✓${RESET} Identity     ${GREEN}Aman — direct, technical, concise${RESET}\n"
+printf "  ${GREEN}✓${RESET} Rules        ${GREEN}3 safety, 2 behavioral${RESET}\n"
+printf "  ${GREEN}✓${RESET} Workflows    ${GREEN}2 workflows (debug, deploy)${RESET}\n"
+printf "  ${GREEN}✓${RESET} Tools        ${GREEN}5 tools configured${RESET}\n"
+printf "  ${YELLOW}⚠${RESET} Skills       ${YELLOW}empty${RESET}\n"
+printf "    ${DIM}→ Add with /skills install <name>${RESET}\n"
+echo ""
+printf "  ${GREEN}✓${RESET} MCP          ${GREEN}45 tools${RESET}\n"
+printf "  ${GREEN}✓${RESET} Memory       ${GREEN}connected${RESET}\n"
+echo ""
+printf "  Overall: 6/7 healthy. 1 suggestion.\n"
+pause 2.5
 
 # ─── Quit ──────────────────────────────────────────────
 

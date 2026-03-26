@@ -63,7 +63,7 @@ describe("handleCommand", () => {
       expect(result.output).toContain("/help");
       expect(result.output).toContain("/quit");
       expect(result.output).toContain("/identity");
-      expect(result.output).toContain("/tools");
+      expect(result.output).toContain("/akit");
       expect(result.output).toContain("/workflows");
       expect(result.output).toContain("/rules");
       expect(result.output).toContain("/skills");
@@ -120,22 +120,31 @@ describe("handleCommand", () => {
     });
   });
 
-  describe("/tools", () => {
-    it("shows kit.md content when file exists", async () => {
+  describe("/tools and /akit", () => {
+    it("shows installed tools when some exist", async () => {
       const dir = path.join(tmpHome, ".akit");
       fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, "kit.md"), "# My Tools", "utf-8");
+      fs.writeFileSync(path.join(dir, "installed.json"), JSON.stringify([
+        { name: "github", installedAt: "2026-03-26", mcpConfigured: true },
+      ]), "utf-8");
 
-      const result = await handleCommand("/tools", {});
+      const result = await handleCommand("/akit", {});
       expect(result.handled).toBe(true);
-      expect(result.output).toBe("# My Tools");
+      expect(result.output).toContain("github");
+      expect(result.output).toContain("MCP");
     });
 
-    it("shows not-found message when file is missing", async () => {
+    it("/tools aliases to /akit", async () => {
       const result = await handleCommand("/tools", {});
       expect(result.handled).toBe(true);
-      expect(result.output).toContain("No");
-      expect(result.output).toContain("tools");
+      expect(result.output).toContain("Installed Tools");
+    });
+
+    it("shows get-started message when no tools installed", async () => {
+      const result = await handleCommand("/akit", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("No tools installed");
+      expect(result.output).toContain("akit add");
     });
   });
 

@@ -516,11 +516,21 @@ function handleDebugCommand(): CommandResult {
 
 // --- Main Router ---
 
+const KNOWN_COMMANDS = new Set([
+  "quit", "exit", "q", "help", "clear", "model", "identity", "rules",
+  "workflows", "tools", "skills", "eval", "memory", "status", "doctor",
+  "save", "decisions", "export", "debug", "update-config", "reconfig",
+  "update", "upgrade",
+]);
+
 export async function handleCommand(input: string, ctx: CommandContext): Promise<CommandResult> {
   const trimmed = input.trim();
   if (!trimmed.startsWith("/")) return { handled: false };
 
   const { base, action, args } = parseCommand(trimmed);
+
+  // Don't treat file paths (e.g., /Users/...) as commands
+  if (!KNOWN_COMMANDS.has(base)) return { handled: false };
 
   switch (base) {
     case "quit":
@@ -566,6 +576,6 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
     case "upgrade":
       return handleUpdate();
     default:
-      return { handled: true, output: `Unknown command: /${base}. Type ${pc.cyan("/help")} for available commands.` };
+      return { handled: false }; // Pass to LLM if not matched
   }
 }

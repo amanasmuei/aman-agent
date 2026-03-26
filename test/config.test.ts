@@ -51,6 +51,7 @@ describe("config", () => {
           evalPrompt: true,
           autoSessionSave: true,
           extractMemories: true,
+          featureHints: true,
         },
       });
     });

@@ -148,34 +148,69 @@ async function handleWorkflowsCommand(
   return { handled: true, output: pc.yellow(`Unknown action: /workflows ${action}. Use /workflows [add|remove].`) };
 }
 
-async function handleToolsCommand(
+function handleAkitCommand(
   action: string | undefined,
-  args: string[],
-  ctx: CommandContext,
-): Promise<CommandResult> {
+): CommandResult {
   const home = os.homedir();
-  if (!action) {
-    const content = readEcosystemFile(path.join(home, ".akit", "kit.md"), "tools (akit)");
-    return { handled: true, output: content };
+  const installedPath = path.join(home, ".akit", "installed.json");
+
+  interface InstalledTool {
+    name: string;
+    installedAt: string;
+    mcpConfigured: boolean;
   }
-  if (action === "add") {
-    if (args.length < 3) {
-      return { handled: true, output: pc.yellow("Usage: /tools add <name> <type> <description...>") };
+
+  let installed: InstalledTool[] = [];
+  if (fs.existsSync(installedPath)) {
+    try {
+      installed = JSON.parse(fs.readFileSync(installedPath, "utf-8"));
+    } catch { /* ignore */ }
+  }
+
+  if (action === "help") {
+    return {
+      handled: true,
+      output: [
+        pc.bold("akit — Tool Management"),
+        "",
+        `  ${pc.cyan("Add a tool:")}       npx @aman_asmuei/akit add <tool>`,
+        `  ${pc.cyan("Remove a tool:")}    npx @aman_asmuei/akit remove <tool>`,
+        `  ${pc.cyan("Search tools:")}     npx @aman_asmuei/akit search <query>`,
+        `  ${pc.cyan("Custom MCP:")}       npx @aman_asmuei/akit add <name> --mcp <package>`,
+        "",
+        `  ${pc.dim("Available: github, filesystem, docling, web-search, brave-search,")}`,
+        `  ${pc.dim("  git, linear, sentry, postgres, sqlite, fetch, puppeteer,")}`,
+        `  ${pc.dim("  docker, slack, notion, memory + any custom MCP server")}`,
+      ].join("\n"),
+    };
+  }
+
+  // Default: show installed tools
+  const lines: string[] = [pc.bold("Installed Tools"), ""];
+
+  if (installed.length === 0) {
+    lines.push(pc.dim("  No tools installed yet."));
+    lines.push("");
+    lines.push(`  ${pc.bold("Get started:")}`);
+    lines.push(`    npx @aman_asmuei/akit add github`);
+    lines.push(`    npx @aman_asmuei/akit add filesystem`);
+    lines.push(`    npx @aman_asmuei/akit add docling`);
+    lines.push("");
+    lines.push(`  ${pc.dim("Search all:")} npx @aman_asmuei/akit search <query>`);
+  } else {
+    for (const tool of installed) {
+      const mcp = tool.mcpConfigured ? pc.green("MCP") : pc.dim("manual");
+      lines.push(`  ${pc.green("●")} ${pc.bold(tool.name.padEnd(16))} ${mcp}  ${pc.dim(`installed ${tool.installedAt}`)}`);
     }
-    const name = args[0];
-    const type = args[1];
-    const description = args.slice(2).join(" ");
-    const output = await mcpWrite(ctx, "tools", "tools_add", { name, type, description });
-    return { handled: true, output };
+    lines.push("");
+    lines.push(`  ${installed.length} tool${installed.length > 1 ? "s" : ""} installed`);
+    lines.push("");
+    lines.push(`  ${pc.dim("Add more:")}    npx @aman_asmuei/akit add <tool>`);
+    lines.push(`  ${pc.dim("Remove:")}      npx @aman_asmuei/akit remove <tool>`);
+    lines.push(`  ${pc.dim("Search:")}      npx @aman_asmuei/akit search <query>`);
   }
-  if (action === "remove") {
-    if (args.length < 1) {
-      return { handled: true, output: pc.yellow("Usage: /tools remove <name>") };
-    }
-    const output = await mcpWrite(ctx, "tools", "tools_remove", { name: args.join(" ") });
-    return { handled: true, output };
-  }
-  return { handled: true, output: pc.yellow(`Unknown action: /tools ${action}. Use /tools [add|remove].`) };
+
+  return { handled: true, output: lines.join("\n") };
 }
 
 async function handleSkillsCommand(
@@ -403,7 +438,7 @@ function handleHelp(): CommandResult {
       `  ${pc.cyan("/identity")}     View identity [update <section>]`,
       `  ${pc.cyan("/rules")}        View rules [add|remove|toggle ...]`,
       `  ${pc.cyan("/workflows")}    View workflows [add|remove ...]`,
-      `  ${pc.cyan("/tools")}        View tools [add|remove ...]`,
+      `  ${pc.cyan("/akit")}         View installed tools & add more`,
       `  ${pc.cyan("/skills")}       View skills [install|uninstall ...]`,
       `  ${pc.cyan("/eval")}         View evaluation [milestone ...]`,
       `  ${pc.cyan("/memory")}       View recent memories [search|clear|timeline]`,
@@ -518,7 +553,7 @@ function handleDebugCommand(): CommandResult {
 
 const KNOWN_COMMANDS = new Set([
   "quit", "exit", "q", "help", "clear", "model", "identity", "rules",
-  "workflows", "tools", "skills", "eval", "memory", "status", "doctor",
+  "workflows", "tools", "akit", "skills", "eval", "memory", "status", "doctor",
   "save", "decisions", "export", "debug", "update-config", "reconfig",
   "update", "upgrade",
 ]);
@@ -550,7 +585,8 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
     case "workflows":
       return handleWorkflowsCommand(action, args, ctx);
     case "tools":
-      return handleToolsCommand(action, args, ctx);
+    case "akit":
+      return handleAkitCommand(action);
     case "skills":
       return handleSkillsCommand(action, args, ctx);
     case "eval":

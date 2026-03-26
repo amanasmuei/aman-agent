@@ -427,16 +427,20 @@ function handleSave(): CommandResult {
 }
 
 function handleReconfig(): CommandResult {
-  const configPath = path.join(os.homedir(), ".aman-agent", "config.json");
+  const configDir = path.join(os.homedir(), ".aman-agent");
+  const configPath = path.join(configDir, "config.json");
   if (fs.existsSync(configPath)) {
     fs.unlinkSync(configPath);
   }
+  // Write marker to skip auto-detect on next run → force interactive prompt
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.writeFileSync(path.join(configDir, ".reconfig"), "", "utf-8");
   return {
     handled: true,
     quit: true,
     output: [
       pc.green("Config reset."),
-      `Run ${pc.bold("npx @aman_asmuei/aman-agent")} again to reconfigure your LLM provider, model, and API key.`,
+      "Next run will prompt you to choose your LLM provider.",
     ].join("\n"),
   };
 }

@@ -22,6 +22,13 @@ interface AutoDetectedConfig {
 }
 
 async function autoDetectConfig(): Promise<AutoDetectedConfig | null> {
+  // Skip auto-detect if user just ran /reconfig
+  const reconfigMarker = path.join(os.homedir(), ".aman-agent", ".reconfig");
+  if (fs.existsSync(reconfigMarker)) {
+    fs.unlinkSync(reconfigMarker);
+    return null; // Force interactive prompt
+  }
+
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   if (anthropicKey) {
     return { provider: "anthropic", apiKey: anthropicKey, model: "claude-sonnet-4-6" };

@@ -267,11 +267,19 @@ program
     const mcpSpinner = p.spinner();
     mcpSpinner.start("Connecting to MCP servers");
 
-    // Connect to aman-mcp (identity, tools, workflows, rules, eval)
+    // Core MCP servers (always connect)
     await mcpManager.connect("aman", "npx", ["-y", "@aman_asmuei/aman-mcp"]);
-
-    // Connect to amem (memory)
     await mcpManager.connect("amem", "npx", ["-y", "@aman_asmuei/amem"]);
+
+    // Connect custom MCP servers from config
+    // Users add these via: ~/.aman-agent/config.json → "mcpServers": { "name": { command, args } }
+    // Or via akit: akit add docling → then add to config
+    if (config.mcpServers) {
+      for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
+        if (name === "aman" || name === "amem") continue;
+        await mcpManager.connect(name, serverConfig.command, serverConfig.args);
+      }
+    }
 
     const mcpTools = mcpManager.getTools();
 

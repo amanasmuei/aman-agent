@@ -30,13 +30,21 @@ async function autoDetectConfig(): Promise<AutoDetectedConfig | null> {
   if (openaiKey) {
     return { provider: "openai", apiKey: openaiKey, model: "gpt-4o" };
   }
+  // Check Ollama — verify it's running AND has at least one model
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 1000);
-    const res = await fetch("http://localhost:11434/", { signal: controller.signal });
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch("http://localhost:11434/api/tags", { signal: controller.signal });
     clearTimeout(timeout);
     if (res.ok) {
-      return { provider: "ollama", apiKey: "ollama", model: "llama3.2" };
+      const data = await res.json() as { models?: Array<{ name: string }> };
+      const models = data.models || [];
+      if (models.length > 0) {
+        // Pick the first available model
+        const modelName = models[0].name.replace(/:latest$/, "");
+        return { provider: "ollama", apiKey: "ollama", model: modelName };
+      }
+      // Ollama running but no models downloaded — skip
     }
   } catch { /* Ollama not available */ }
   return null;
@@ -101,10 +109,9 @@ program
         const providerLabel =
           detected.provider === "anthropic" ? "Anthropic API key" :
           detected.provider === "openai" ? "OpenAI API key" : "Ollama";
-        const modelLabel =
-          detected.provider === "anthropic" ? "Claude Sonnet 4.6" :
-          detected.provider === "openai" ? "GPT-4o" : "Llama 3.2";
-        p.log.success(`Auto-detected ${providerLabel}. Using ${modelLabel}.`);
+        p.log.success(`Auto-detected ${providerLabel}. Using ${pc.bold(detected.model)}.`);
+        p.log.info(pc.dim("Change anytime with /reconfig"));
+        saveConfig(config);
       } else {
         p.log.info("First-time setup — configure your LLM connection.");
 

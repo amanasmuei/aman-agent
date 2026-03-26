@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>aman-agent — Track Duit Raya Anak-Anak</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0a;
+    color: #e5e5e5;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  .container {
+    width: 420px;
+    max-width: 95vw;
+  }
+
+  .session-label {
+    text-align: center;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 12px;
+    opacity: 0;
+    transition: opacity 0.5s;
+  }
+
+  .session-label.visible { opacity: 1; }
+
+  .session-label .day {
+    color: #f59e0b;
+    font-weight: 600;
+  }
+
+  .chat-window {
+    background: #1a1a1a;
+    border-radius: 20px;
+    padding: 20px;
+    min-height: 380px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border: 1px solid #2a2a2a;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #2a2a2a;
+    margin-bottom: 4px;
+  }
+
+  .avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
+    color: white;
+  }
+
+  .header-text { flex: 1; }
+
+  .header-name {
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  .header-status {
+    font-size: 11px;
+    color: #4ade80;
+  }
+
+  .messages {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+  }
+
+  .msg {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 16px;
+    font-size: 14px;
+    line-height: 1.45;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.4s, transform 0.4s;
+    white-space: pre-line;
+  }
+
+  .msg.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .msg.user {
+    align-self: flex-end;
+    background: #15803d;
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+
+  .msg.ai {
+    align-self: flex-start;
+    background: #2a2a2a;
+    color: #e5e5e5;
+    border-bottom-left-radius: 4px;
+  }
+
+  .msg.system {
+    align-self: center;
+    background: transparent;
+    color: #666;
+    font-size: 12px;
+    padding: 4px 12px;
+  }
+
+  .tag-memory {
+    display: inline-block;
+    background: #4ade8033;
+    color: #4ade80;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 8px;
+  }
+
+  .tag-reminder {
+    display: inline-block;
+    background: #f59e0b33;
+    color: #f59e0b;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 8px;
+  }
+
+  .tag-total {
+    display: inline-block;
+    background: #a78bfa33;
+    color: #a78bfa;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 8px;
+  }
+
+  .typing {
+    align-self: flex-start;
+    padding: 10px 14px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .typing.visible { opacity: 1; }
+
+  .typing span {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: #666;
+    border-radius: 50%;
+    margin: 0 2px;
+    animation: bounce 1.2s infinite;
+  }
+
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-6px); }
+  }
+
+  .footer {
+    text-align: center;
+    margin-top: 20px;
+    opacity: 0;
+    transition: opacity 0.8s;
+  }
+
+  .footer.visible { opacity: 1; }
+
+  .footer .tagline {
+    font-size: 17px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 4px;
+  }
+
+  .footer .subtitle {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 8px;
+  }
+
+  .footer .install {
+    font-size: 13px;
+    color: #666;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+
+  .footer .install code {
+    color: #f59e0b;
+    background: #1a1a1a;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid #2a2a2a;
+  }
+
+  .chat-window.fading .messages .msg,
+  .chat-window.fading .typing {
+    opacity: 0 !important;
+    transform: translateY(10px) !important;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="session-label" id="sessionLabel">
+    <span class="day" id="dayLabel">1 Syawal - Pagi Raya</span> <span id="sessionNum"></span>
+  </div>
+
+  <div class="chat-window" id="chatWindow">
+    <div class="header">
+      <div class="avatar">A</div>
+      <div class="header-text">
+        <div class="header-name">Aman</div>
+        <div class="header-status">Your AI companion</div>
+      </div>
+    </div>
+    <div class="messages" id="messages"></div>
+    <div class="typing" id="typing">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+
+  <div class="footer" id="footer">
+    <div class="tagline">AI yang ingat, supaya you tak lupa.</div>
+    <div class="subtitle">Selamat Hari Raya Aidilfitri, Maaf Zahir dan Batin</div>
+    <div class="install"><code>npx @aman_asmuei/aman-agent</code></div>
+  </div>
+</div>
+
+<script>
+var messagesEl = document.getElementById('messages');
+var typingEl = document.getElementById('typing');
+var sessionLabel = document.getElementById('sessionLabel');
+var dayLabel = document.getElementById('dayLabel');
+var sessionNum = document.getElementById('sessionNum');
+var chatWindow = document.getElementById('chatWindow');
+var footerEl = document.getElementById('footer');
+
+function sleep(ms) {
+  return new Promise(function(r) { setTimeout(r, ms); });
+}
+
+function addMsg(type, text) {
+  var div = document.createElement('div');
+  div.className = 'msg ' + type;
+  div.textContent = text;
+  messagesEl.appendChild(div);
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() { div.classList.add('visible'); });
+  });
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return div;
+}
+
+function addSystemTag(tagType, tagText) {
+  var div = document.createElement('div');
+  div.className = 'msg system';
+  var tag = document.createElement('span');
+  if (tagType === 'memory') tag.className = 'tag-memory';
+  else if (tagType === 'total') tag.className = 'tag-total';
+  else tag.className = 'tag-reminder';
+  tag.textContent = tagText;
+  div.appendChild(tag);
+  messagesEl.appendChild(div);
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() { div.classList.add('visible'); });
+  });
+}
+
+function showTyping() { typingEl.classList.add('visible'); }
+function hideTyping() { typingEl.classList.remove('visible'); }
+
+function setSession(day, label) {
+  dayLabel.textContent = day;
+  sessionNum.textContent = label ? ('\u2014 ' + label) : '';
+  sessionLabel.classList.add('visible');
+}
+
+async function clearMessages() {
+  chatWindow.classList.add('fading');
+  await sleep(500);
+  messagesEl.textContent = '';
+  chatWindow.classList.remove('fading');
+}
+
+// ─── Sesi 1: Pagi Raya ───────────────────────────
+
+async function session1() {
+  setSession('1 Syawal \u2014 Pagi Raya', '');
+  await sleep(800);
+
+  addMsg('ai', "Selamat Hari Raya Aidilfitri! Maaf zahir dan batin. Semoga Raya tahun ni penuh berkat untuk sekeluarga.");
+  await sleep(2500);
+
+  addMsg('user', "Selamat Hari Raya! Eh Aman, tolong track kan duit raya anak-anak I boleh? 3 orang anak, tiap rumah bagi lain-lain, nanti lupa");
+  await sleep(2000);
+
+  showTyping();
+  await sleep(1500);
+  hideTyping();
+
+  addMsg('ai', "Boleh, dengan senang hati! Anak-anak nama apa dan umur berapa? Nanti I track kan setiap duit raya yang masuk.");
+  await sleep(2000);
+
+  addMsg('user', "Aisyah 8 tahun, Imran 6 tahun, Hana 3 tahun");
+  await sleep(1500);
+
+  showTyping();
+  await sleep(1200);
+  hideTyping();
+
+  addMsg('ai', "Noted! Aisyah (8), Imran (6), Hana (3). Nanti setiap kali dapat duit raya, bagitahu je siapa bagi dan berapa. I settlekan tracking dia.");
+  await sleep(500);
+
+  addSystemTag('memory', 'ingat: 3 anak \u2014 Aisyah 8, Imran 6, Hana 3');
+  await sleep(3000);
+
+  addMsg('user', "Ok jom! Rumah Tok Wan tadi, Tok bagi RM50 sorang");
+  await sleep(1500);
+
+  showTyping();
+  await sleep(1200);
+  hideTyping();
+
+  addMsg('ai', "Alhamdulillah, murah rezeki! Dah record:\n\nTok Wan:\n\u2022 Aisyah: RM50\n\u2022 Imran: RM50\n\u2022 Hana: RM50");
+  await sleep(500);
+
+  addSystemTag('memory', 'ingat: Tok Wan bagi RM50 x 3 anak');
+  await sleep(500);
+  addSystemTag('total', 'jumlah setakat ni: RM150');
+
+  await sleep(2500);
+
+  addMsg('user', "Lepas tu rumah Mak Long, dia bagi Aisyah RM20, Imran RM20, Hana RM10 sebab kecik lagi hehe");
+  await sleep(1500);
+
+  showTyping();
+  await sleep(1200);
+  hideTyping();
+
+  addMsg('ai', "Hehe comel je Hana. Dah update:\n\nMak Long:\n\u2022 Aisyah: RM20\n\u2022 Imran: RM20\n\u2022 Hana: RM10\n\nTotal hari ni setakat ni:\n\u2022 Aisyah: RM70\n\u2022 Imran: RM70\n\u2022 Hana: RM60");
+  await sleep(500);
+
+  addSystemTag('memory', 'ingat: Mak Long bagi RM20/20/10');
+  await sleep(500);
+  addSystemTag('total', 'jumlah keseluruhan: RM200');
+
+  await sleep(3500);
+}
+
+// ─── Sesi 2: Petang Raya ─────────────────────────
+
+async function session2() {
+  await clearMessages();
+  setSession('1 Syawal \u2014 Petang Raya', '');
+  await sleep(1000);
+
+  addMsg('ai', "Selamat petang! Macam mana beraya lagi? Setakat pagi tadi, duit raya anak-anak dah RM200 kesemuanya.");
+  await sleep(500);
+  addSystemTag('memory', 'teringat: tracking duit raya 3 anak');
+  await sleep(2000);
+
+  addMsg('user', "Haa you ingat lagi! Tadi rumah Pak Ngah, dia generous, bagi RM100 sorang");
+  await sleep(1500);
+
+  showTyping();
+  await sleep(1200);
+  hideTyping();
+
+  addMsg('ai', "MasyaAllah murah hati Pak Ngah! Updated:\n\nPak Ngah:\n\u2022 Aisyah: RM100\n\u2022 Imran: RM100\n\u2022 Hana: RM100\n\nTotal keseluruhan:\n\u2022 Aisyah: RM170\n\u2022 Imran: RM170\n\u2022 Hana: RM160\n\nJumlah besar: RM500!");
+  await sleep(500);
+
+  addSystemTag('memory', 'ingat: Pak Ngah bagi RM100 x 3');
+  await sleep(500);
+  addSystemTag('total', 'jumlah keseluruhan: RM500');
+
+  await sleep(2500);
+
+  addMsg('user', "Rumah Mak Cik Siti pulak, dia bagi envelope sorang RM30");
+  await sleep(1500);
+
+  showTyping();
+  await sleep(1000);
+  hideTyping();
+
+  addMsg('ai', "Baik hati Mak Cik Siti. Updated:\n\nTotal terkini:\n\u2022 Aisyah: RM200\n\u2022 Imran: RM200\n\u2022 Hana: RM190\n\nJumlah besar: RM590");
+  await sleep(500);
+
+  addSystemTag('total', 'jumlah keseluruhan: RM590');
+
+  await sleep(3500);
+}
+
+// ─── Sesi 3: Raya Kedua ──────────────────────────
+
+async function session3() {
+  await clearMessages();
+  setSession('2 Syawal \u2014 Raya Kedua', '');
+  await sleep(1000);
+
+  addMsg('ai', "Selamat pagi! Hari kedua Raya ni. Semalam anak-anak berjaya kumpul RM590 dari 4 rumah. Nak sambung track hari ni?");
+  await sleep(500);
+  addSystemTag('memory', 'teringat: semalam RM590 dari Tok Wan, Mak Long, Pak Ngah, Mak Cik Siti');
+  await sleep(2500);
+
+  addMsg('user', "Yes please! Rumah Tok Su tadi, dia bagi RM50 sorang. Lepas tu rumah kawan Abah, Uncle Rizal bagi RM10 sorang je tapi anak-anak happy je hehe");
+  await sleep(1800);
+
+  showTyping();
+  await sleep(1500);
+  hideTyping();
+
+  addMsg('ai', "Rezeki anak-anak! Tak kira banyak mana, semua duit raya tu berkat. Updated:\n\nTok Su: RM50 x 3\nUncle Rizal: RM10 x 3\n\nTotal keseluruhan Raya:\n\u2022 Aisyah: RM260\n\u2022 Imran: RM260\n\u2022 Hana: RM250\n\nJumlah besar: RM770 dari 6 rumah!");
+  await sleep(500);
+
+  addSystemTag('total', 'jumlah besar: RM770 dari 6 rumah');
+
+  await sleep(2500);
+
+  addMsg('user', "Weh terima kasih Aman. Kalau tak memang dah lupa siapa bagi berapa haha");
+  await sleep(1500);
+
+  showTyping();
+  await sleep(1200);
+  hideTyping();
+
+  addMsg('ai', "Sama-sama! Nanti nak I buatkan summary penuh untuk simpan? Senang nak refer balik tahun depan, boleh ucap terima kasih kat semua orang yang bagi.");
+  await sleep(2000);
+
+  addMsg('user', "That would be amazing. Tolong ye");
+  await sleep(1500);
+
+  showTyping();
+  await sleep(1500);
+  hideTyping();
+
+  addMsg('ai', "Done! Summary Duit Raya 2026:\n\n1. Tok Wan \u2014 RM150 (RM50 x 3)\n2. Mak Long \u2014 RM50 (RM20/20/10)\n3. Pak Ngah \u2014 RM300 (RM100 x 3)\n4. Mak Cik Siti \u2014 RM90 (RM30 x 3)\n5. Tok Su \u2014 RM150 (RM50 x 3)\n6. Uncle Rizal \u2014 RM30 (RM10 x 3)\n\nAisyah: RM260 | Imran: RM260 | Hana: RM250\nTotal: RM770\n\nSimpan elok-elok untuk anak-anak!");
+  await sleep(500);
+
+  addSystemTag('memory', 'ingat: summary Duit Raya 2026 \u2014 RM770');
+  await sleep(500);
+  addSystemTag('reminder', 'peringatan: Raya 2027 \u2014 tanya nak track duit raya lagi');
+
+  await sleep(3500);
+
+  footerEl.classList.add('visible');
+}
+
+// Run
+async function run() {
+  await sleep(500);
+  await session1();
+  await session2();
+  await session3();
+}
+
+run();
+</script>
+</body>
+</html>

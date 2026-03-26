@@ -43,6 +43,26 @@
 
 ---
 
+## What's New in v0.6.0
+
+> **Zero to Wow** — the first 60 seconds are now magical.
+
+| Feature | Before | After |
+|:---|:---|:---|
+| **Onboarding** | 3-4 prompts for API key/model | Auto-detects from env vars |
+| **Ecosystem setup** | Manual, separate CLI | `aman-agent init` wizard with persona presets |
+| **First session** | Empty prompt | Agent introduces itself, asks your name |
+| **Returning session** | Raw context dump | "Welcome back. Last time we talked about..." |
+| **Memory storage** | "Remember X? (y/N)" interruptions | Silent auto-store, undo with `/memory clear` |
+| **Output** | Raw text | Markdown rendering with response framing |
+| **Errors** | "401 Unauthorized" | "API key invalid. Run /reconfig to fix." |
+| **Feature discovery** | Read the README | Progressive hints at the right moment |
+| **New commands** | — | `/memory timeline`, upgraded `/doctor` |
+
+<a href="https://github.com/amanasmuei/aman-agent/releases/tag/v0.6.0">Full release notes</a>
+
+---
+
 ## The Problem
 
 AI coding assistants forget everything between sessions. You re-explain your stack, preferences, and boundaries every time. There's no single place where your AI loads its full context and just *works*.

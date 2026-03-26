@@ -91,7 +91,25 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: 340px;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+  }
+
+  .messages::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .messages::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .messages::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
   }
 
   .msg {
@@ -274,15 +292,21 @@ function sleep(ms) {
   return new Promise(function(r) { setTimeout(r, ms); });
 }
 
+function scrollToBottom() {
+  messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: 'smooth' });
+}
+
 function addMsg(type, text) {
   var div = document.createElement('div');
   div.className = 'msg ' + type;
   div.textContent = text;
   messagesEl.appendChild(div);
   requestAnimationFrame(function() {
-    requestAnimationFrame(function() { div.classList.add('visible'); });
+    requestAnimationFrame(function() {
+      div.classList.add('visible');
+      scrollToBottom();
+    });
   });
-  messagesEl.scrollTop = messagesEl.scrollHeight;
   return div;
 }
 
@@ -297,7 +321,10 @@ function addSystemTag(tagType, tagText) {
   div.appendChild(tag);
   messagesEl.appendChild(div);
   requestAnimationFrame(function() {
-    requestAnimationFrame(function() { div.classList.add('visible'); });
+    requestAnimationFrame(function() {
+      div.classList.add('visible');
+      scrollToBottom();
+    });
   });
 }
 

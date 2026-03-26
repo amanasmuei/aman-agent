@@ -24,11 +24,18 @@ const DEFAULT_HOOKS: HooksConfig = {
   featureHints: true,
 };
 
+export interface McpServerEntry {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+}
+
 export interface AgentConfig {
   provider: "anthropic" | "openai" | "ollama";
   apiKey: string;
   model: string;
   hooks?: HooksConfig;
+  mcpServers?: Record<string, McpServerEntry>;
 }
 
 const CONFIG_DIR = path.join(os.homedir(), ".aman-agent");

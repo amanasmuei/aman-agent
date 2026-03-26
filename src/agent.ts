@@ -297,12 +297,9 @@ export async function runAgent(
           } catch {
             process.stdout.write(pc.dim(`  [could not read: ${filePath}]\n`));
           }
-        } else if ([".docx", ".pdf", ".xlsx", ".pptx"].includes(ext)) {
-          process.stdout.write(pc.yellow(`  Binary file detected (${ext}). Text files supported — convert with:\n`));
-          if (ext === ".docx") process.stdout.write(pc.dim(`    textutil -convert txt "${filePath}"\n`));
-          else if (ext === ".pdf") process.stdout.write(pc.dim(`    pdftotext "${filePath}" -\n`));
-          else process.stdout.write(pc.dim(`    Convert to .txt or .csv first\n`));
         }
+        // Binary docs (.docx, .pdf, etc) are handled by the doc_convert MCP tool —
+        // the LLM will call it naturally when it sees a file path in the message.
       }
     }
 

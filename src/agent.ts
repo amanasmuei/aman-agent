@@ -297,9 +297,27 @@ export async function runAgent(
           } catch {
             process.stdout.write(pc.dim(`  [could not read: ${filePath}]\n`));
           }
+        } else if ([".docx", ".doc", ".pdf", ".pptx", ".ppt", ".xlsx", ".xls", ".odt", ".rtf", ".epub"].includes(ext)) {
+          // Binary document — try converting via MCP doc_convert tool inline
+          if (mcpManager) {
+            try {
+              process.stdout.write(pc.dim(`  [converting: ${path.basename(filePath)}...]\n`));
+              const converted = await mcpManager.callTool("doc_convert", { path: filePath });
+              if (converted && !converted.startsWith("Error") && !converted.includes("Could not convert")) {
+                enrichedInput = `${input}\n\n<file path="${filePath}" format="${ext}">\n${converted.slice(0, 50000)}\n</file>`;
+                process.stdout.write(pc.dim(`  [attached: ${path.basename(filePath)} (converted from ${ext})]\n`));
+              } else {
+                // Conversion failed — pass the error info to LLM
+                enrichedInput = `${input}\n\n<file-error path="${filePath}">\n${converted}\n</file-error>`;
+                process.stdout.write(pc.yellow(`  [conversion note: ${converted.split("\n")[0]}]\n`));
+              }
+            } catch {
+              process.stdout.write(pc.dim(`  [could not convert: ${path.basename(filePath)}]\n`));
+            }
+          } else {
+            process.stdout.write(pc.yellow(`  Binary file (${ext}) — install Docling for document support: pip install docling\n`));
+          }
         }
-        // Binary docs (.docx, .pdf, etc) are handled by the doc_convert MCP tool —
-        // the LLM will call it naturally when it sees a file path in the message.
       }
     }
 

@@ -18,7 +18,7 @@
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
   &nbsp;
-  <img src="https://img.shields.io/badge/node-%E2%89%A518-brightgreen?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js 18+" />
+  <img src="https://img.shields.io/badge/node-%E2%89%A520-brightgreen?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js 20+" />
   &nbsp;
   <a href="https://github.com/amanasmuei/aman"><img src="https://img.shields.io/badge/part_of-aman_ecosystem-ff6b35?style=for-the-badge" alt="aman ecosystem" /></a>
 </p>
@@ -73,9 +73,28 @@ npx @aman_asmuei/aman-agent
 npm install -g @aman_asmuei/aman-agent
 ```
 
-### 2. Configure
+**Zero config if you already have an API key in your environment:**
 
-First run prompts for your LLM provider, API key, and model. Config saved to `~/.aman-agent/config.json`.
+```bash
+# aman-agent auto-detects these (in priority order):
+export ANTHROPIC_API_KEY="sk-ant-..."   # → uses Claude Sonnet 4.6
+export OPENAI_API_KEY="sk-..."          # → uses GPT-4o
+# Or if Ollama is running locally      # → uses llama3.2
+```
+
+No env var? First run prompts for your LLM provider, API key, and model.
+
+### 2. (Optional) Set up your companion
+
+```bash
+# Guided wizard — pick a persona preset
+aman-agent init
+
+# Choose from: Coding Partner, Creative Collaborator,
+# Personal Assistant, Learning Buddy, or Minimal
+```
+
+Or just skip this — aman-agent auto-creates a default profile on first run.
 
 ### 3. Talk
 
@@ -109,18 +128,64 @@ Aman > Based on our previous decisions, I'll set up JWT-based auth
        with PostgreSQL, keeping the compliance requirements in mind...
 ```
 
-### Hybrid Memory Extraction
+### Silent Memory Extraction
 
-After every response, the agent analyzes the conversation and extracts memories worth keeping. Preferences, facts, patterns, and topology are stored silently. Decisions and corrections require your confirmation.
+After every response, the agent analyzes the conversation and extracts memories worth keeping — preferences, facts, patterns, decisions, corrections, and topology are all stored automatically. No confirmation prompts interrupting your flow.
 
 ```
 You > I think we should go with microservices for the payment system
 
 Aman > That makes sense given the compliance isolation requirements...
 
-  Remember: "Payment system will use microservices architecture"? (y/N) y
   [1 memory stored]
 ```
+
+Don't want something remembered? Use `/memory search` to find it and `/memory clear` to remove it.
+
+### Rich Terminal Output
+
+Responses are rendered with full markdown formatting — **bold**, *italic*, `code`, code blocks, tables, lists, and headings all display beautifully in your terminal. Responses are framed with visual dividers:
+
+```
+ Aman ──────────────────────────────────────────────
+
+  Here's how to set up Docker for this project...
+
+ ──────────────────────────────── memories: ~45 tokens
+```
+
+### First-Run & Returning Greeting
+
+**First session:** Your companion introduces itself and asks your name — the relationship starts naturally.
+
+**Returning sessions:** A warm one-liner greets you with context from your last conversation:
+
+```
+  Welcome back. Last time we talked about your Duit Raya tracker.
+  Reminder: Submit PR for auth refactor (due today)
+```
+
+### Progressive Feature Discovery
+
+aman-agent surfaces tips about features you haven't tried yet, at the right moment:
+
+```
+  Tip: Teach me multi-step processes with /workflows add
+```
+
+One hint per session, never repeated. Disable with `hooks.featureHints: false`.
+
+### Human-Readable Errors
+
+No more cryptic API errors. Every known error maps to an actionable message:
+
+```
+  API key invalid. Run /reconfig to fix.
+  Rate limited. I'll retry automatically.
+  Network error. Check your internet connection.
+```
+
+Failed messages are preserved — just press Enter to retry naturally.
 
 ### LLM-Powered Context Summarization
 
@@ -217,7 +282,7 @@ Every operation that can fail logs to `~/.aman-agent/debug.log` with structured 
 │   │ 4. Execute tools in parallel (with guardrails) │     │
 │   │ 5. Extract memories from response              │     │
 │   │    - Auto-store: preferences, facts, patterns  │     │
-│   │    - Confirm: decisions, corrections           │     │
+│   │    - All types auto-stored silently             │     │
 │   └────────────────────────────────────────────────┘     │
 │                                                          │
 │   Context Management                                     │
@@ -257,7 +322,7 @@ Every operation that can fail logs to `~/.aman-agent/debug.log` with structured 
 | `/tools` | View tools `[add\|remove ...]` |
 | `/skills` | View skills `[install\|uninstall ...]` |
 | `/eval` | View evaluation `[milestone ...]` |
-| `/memory` | View memories `[search\|clear ...]` |
+| `/memory` | View memories `[search\|clear\|timeline]` |
 | `/decisions` | View decision log `[<project>]` |
 | `/export` | Export conversation to markdown |
 | `/debug` | Show debug log (last 20 entries) |
@@ -327,7 +392,8 @@ Config is stored in `~/.aman-agent/config.json`:
     "workflowSuggest": true,
     "evalPrompt": true,
     "autoSessionSave": true,
-    "extractMemories": true
+    "extractMemories": true,
+    "featureHints": true
   }
 }
 ```
@@ -350,6 +416,7 @@ All hooks are on by default. Disable any in `config.json`:
 | `evalPrompt` | Session rating on exit |
 | `autoSessionSave` | Save conversation to amem on exit |
 | `extractMemories` | Auto-extract memories from conversation |
+| `featureHints` | Show progressive feature discovery tips |
 
 > Treat the config file like a credential — it contains your API key.
 
@@ -398,7 +465,7 @@ aman
 | Identity system | 7 portable layers | None | None |
 | Memory | amem (SQLite + embeddings + graph) | Postgres + embeddings | None |
 | Per-message recall | Progressive disclosure (~10x token savings) | Yes | No |
-| Learns from conversation | Auto-extract (hybrid confirm) | Requires configuration | No |
+| Learns from conversation | Auto-extract (silent) | Requires configuration | No |
 | Guardrail enforcement | Runtime tool blocking | None | None |
 | Reminders | Persistent, deadline-aware | None | None |
 | Context compression | LLM-powered summarization | Archival system | Truncation |
@@ -433,7 +500,7 @@ aman
 git clone https://github.com/amanasmuei/aman-agent.git
 cd aman-agent && npm install
 npm run build   # zero errors
-npm test        # 84 tests pass
+npm test        # 111 tests pass
 ```
 
 PRs welcome. See [Issues](https://github.com/amanasmuei/aman-agent/issues).

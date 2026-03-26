@@ -10,6 +10,7 @@ export interface HooksConfig {
   evalPrompt?: boolean;
   autoSessionSave?: boolean;
   extractMemories?: boolean;
+  featureHints?: boolean;
 }
 
 const DEFAULT_HOOKS: HooksConfig = {
@@ -20,6 +21,7 @@ const DEFAULT_HOOKS: HooksConfig = {
   evalPrompt: true,
   autoSessionSave: true,
   extractMemories: true,
+  featureHints: true,
 };
 
 export interface AgentConfig {

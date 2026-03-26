@@ -416,6 +416,9 @@ program
       console.log(`  ${pc.bold("Start chatting:")}  aman-agent`);
     }
     console.log("");
+    console.log(`  ${pc.dim("Add tools:")}  npx @aman_asmuei/akit add github`);
+    console.log(`  ${pc.dim("Browse:")}     npx @aman_asmuei/akit search <query>`);
+    console.log("");
   });
 
 program.parse();

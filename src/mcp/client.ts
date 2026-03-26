@@ -26,12 +26,19 @@ export class McpManager {
     args: string[],
   ): Promise<void> {
     try {
-      const transport = new StdioClientTransport({ command, args });
+      const transport = new StdioClientTransport({ command, args, stderr: "pipe" });
       const client = new Client({
         name: `aman-agent-${name}`,
         version: "0.1.0",
       });
       await client.connect(transport);
+
+      // Redirect stderr to debug log instead of terminal
+      if (transport.stderr) {
+        transport.stderr.on("data", (chunk: Buffer) => {
+          log.debug("mcp", `[${name} stderr] ${chunk.toString().trim()}`);
+        });
+      }
 
       this.connections.push({ name, client, transport });
 

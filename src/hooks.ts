@@ -33,10 +33,50 @@ let isHookCall = false;
 
 export async function onSessionStart(
   ctx: HookContext,
-): Promise<{ greeting?: string; contextInjection?: string }> {
+): Promise<{ greeting?: string; contextInjection?: string; firstRun?: boolean; visibleReminders?: string[]; resumeTopic?: string }> {
   let greeting = "";
   let contextInjection = "";
+  let firstRun = false;
+  let resumeTopic: string | undefined;
+  const visibleReminders: string[] = [];
 
+  // Detect first run via memory_recall
+  try {
+    isHookCall = true;
+    const recallResult = await ctx.mcpManager.callTool("memory_recall", { query: "*", limit: 1 });
+    if (!recallResult || recallResult.startsWith("Error") || recallResult.includes("No memories found")) {
+      firstRun = true;
+    }
+  } catch {
+    firstRun = true;
+  } finally {
+    isHookCall = false;
+  }
+
+  if (firstRun) {
+    // First-run context injection
+    contextInjection = `<first-session>
+This is your FIRST conversation with this user. Introduce yourself warmly:
+- Share your name and that you're their personal AI companion
+- Mention you'll remember what matters across conversations
+- Ask what they'd like to be called
+- Keep it to 3-4 sentences, natural tone
+</first-session>`;
+
+    // Still add time context
+    const timeContext = getTimeContext();
+    contextInjection = `<session-context>\n${timeContext}\n</session-context>\n${contextInjection}`;
+
+    return {
+      greeting: undefined,
+      contextInjection,
+      firstRun,
+      visibleReminders,
+      resumeTopic: undefined,
+    };
+  }
+
+  // Returning user flow
   if (ctx.config.memoryRecall) {
     try {
       isHookCall = true;
@@ -58,6 +98,12 @@ export async function onSessionStart(
       if (result && !result.startsWith("Error")) {
         if (greeting) greeting += "\n";
         greeting += result;
+
+        // Extract resume topic
+        const topicMatch = result.match(/(?:resume|last|topic)[:\s]*(.+?)(?:\n|$)/i);
+        if (topicMatch) {
+          resumeTopic = topicMatch[1].trim();
+        }
       }
     } catch (err) {
       log.warn("hooks", "identity_summary failed", err);
@@ -77,6 +123,12 @@ export async function onSessionStart(
     const reminderResult = await ctx.mcpManager.callTool("reminder_check", {});
     if (reminderResult && !reminderResult.startsWith("Error") && !reminderResult.includes("No pending")) {
       greeting += "\n\n<pending-reminders>\n" + reminderResult + "\n</pending-reminders>";
+
+      // Parse reminder lines into visible reminders
+      const lines = reminderResult.split("\n").filter((l: string) => l.trim().length > 0);
+      for (const line of lines) {
+        visibleReminders.push(line.trim());
+      }
     }
   } catch (err) {
     log.debug("hooks", "reminder_check failed", err);
@@ -91,6 +143,9 @@ export async function onSessionStart(
   return {
     greeting: greeting || undefined,
     contextInjection: contextInjection || undefined,
+    firstRun,
+    visibleReminders,
+    resumeTopic,
   };
 }
 

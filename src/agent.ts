@@ -3,6 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import pc from "picocolors";
+import { marked } from "marked";
+import { markedTerminal } from "marked-terminal";
+import logUpdate from "log-update";
 import type {
   LLMClient,
   Message,
@@ -24,6 +27,11 @@ import { trimConversation } from "./context-manager.js";
 import { log } from "./logger.js";
 import { withRetry } from "./retry.js";
 import { extractMemories as runExtraction, type ExtractorState } from "./memory-extractor.js";
+import { humanizeError } from "./errors.js";
+import { getHint, loadShownHints, saveShownHints, type HintState } from "./hints.js";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+marked.use(markedTerminal() as any);
 
 interface RecallResult {
   text: string;
@@ -74,6 +82,11 @@ export async function runAgent(
   const messages: Message[] = [];
   const sessionId = generateSessionId();
   const extractorState: ExtractorState = { turnsSinceLastExtraction: 0, lastExtractionCount: 0 };
+  const hintState: HintState = {
+    turnCount: 0,
+    shownHints: loadShownHints(),
+    hintShownThisSession: false,
+  };
 
   const isRetryable = (err: Error) =>
     err.message.includes("Rate limit") ||
@@ -82,12 +95,30 @@ export async function runAgent(
     err.message.includes("ETIMEDOUT") ||
     err.message.includes("fetch failed");
 
+  let responseBuffer = "";
+
   const onChunkHandler = (chunk: StreamChunk) => {
     if (chunk.type === "text" && chunk.text) {
-      process.stdout.write(chunk.text);
+      responseBuffer += chunk.text;
+      if (process.stdout.isTTY) {
+        logUpdate(responseBuffer);
+      } else {
+        process.stdout.write(chunk.text);
+      }
     }
     if (chunk.type === "done") {
-      process.stdout.write("\n");
+      if (process.stdout.isTTY && responseBuffer.trim()) {
+        try {
+          const rendered = marked(responseBuffer.trim()) as string;
+          logUpdate(rendered);
+          logUpdate.done();
+        } catch {
+          logUpdate.done();
+        }
+      } else {
+        process.stdout.write("\n");
+      }
+      responseBuffer = "";
     }
   };
 
@@ -125,10 +156,28 @@ export async function runAgent(
     const hookCtx: HookContext = { mcpManager, config: hooksConfig };
     try {
       const session = await onSessionStart(hookCtx);
-      if (session.greeting) console.log(pc.dim(session.greeting));
+
+      if (!session.firstRun) {
+        if (session.resumeTopic) {
+          console.log(pc.dim(`  Welcome back. Last time we talked about ${session.resumeTopic}`));
+        } else {
+          console.log(pc.dim("  Welcome back."));
+        }
+      }
+
+      if (session.visibleReminders && session.visibleReminders.length > 0) {
+        for (const reminder of session.visibleReminders) {
+          console.log(pc.yellow(`  Reminder: ${reminder}`));
+        }
+      }
+
       if (session.contextInjection) {
         messages.push({ role: "user", content: session.contextInjection });
-        messages.push({ role: "assistant", content: "I have context from our previous sessions. How can I help?" });
+        if (session.firstRun) {
+          messages.push({ role: "assistant", content: "acknowledged" });
+        } else {
+          messages.push({ role: "assistant", content: "I have context from our previous sessions. How can I help?" });
+        }
       }
     } catch (err) { log.warn("agent", "session start hook failed", err); }
   }
@@ -223,15 +272,17 @@ export async function runAgent(
 
     // Per-message memory recall
     let augmentedSystemPrompt = activeSystemPrompt;
+    let memoryTokens = 0;
     if (mcpManager) {
       const recall = await recallForMessage(input, mcpManager);
       if (recall) {
         augmentedSystemPrompt = activeSystemPrompt + recall.text;
-        process.stdout.write(pc.dim(`  [memories: ~${recall.tokenEstimate} tokens]\n`));
+        memoryTokens = recall.tokenEstimate;
       }
     }
 
-    process.stdout.write(pc.cyan(`\n${aiName} > `));
+    const divider = "─".repeat(Math.min(process.stdout.columns || 60, 60) - aiName.length - 2);
+    process.stdout.write(`\n ${pc.cyan(pc.bold(aiName))} ${pc.dim(divider)}\n\n`);
 
     try {
       let response = await withRetry(
@@ -297,6 +348,13 @@ export async function runAgent(
         messages.push(response.message);
       }
 
+      // Response footer
+      const footerParts: string[] = [];
+      if (memoryTokens > 0) footerParts.push(`memories: ~${memoryTokens} tokens`);
+      const footer = footerParts.length > 0 ? ` ${footerParts.join(" | ")}` : "";
+      const footerDivider = "─".repeat(Math.min(process.stdout.columns || 60, 60) - footer.length - 1);
+      process.stdout.write(pc.dim(` ${footerDivider}${footer}\n`));
+
       // Memory extraction (runs silently after response)
       if (mcpManager && hooksConfig?.extractMemories) {
         const assistantText = typeof response.message.content === "string"
@@ -317,12 +375,23 @@ export async function runAgent(
       } else {
         extractorState.turnsSinceLastExtraction++;
       }
+
+      // Progressive hints
+      if (hooksConfig?.featureHints) {
+        hintState.turnCount++;
+        const hasWorkflows = fs.existsSync(path.join(os.homedir(), ".aflow", "flow.md"));
+        const memoryCount = memoryTokens > 0 ? Math.floor(memoryTokens / 5) : 0;
+        const hint = getHint(hintState, { hasWorkflows, memoryCount });
+        if (hint) {
+          process.stdout.write(pc.dim(`  ${hint}\n`));
+          saveShownHints(hintState.shownHints);
+        }
+      }
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unknown error occurred";
-      console.error(pc.red(`\nError: ${message}`));
-      // Remove the user message that failed
-      messages.pop();
+      const rawMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      const friendly = humanizeError(rawMessage);
+      console.error(pc.red(`\n  ${friendly}`));
+      // Don't remove the user message — keep for retry
     }
   }
 }

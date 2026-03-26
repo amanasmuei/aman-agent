@@ -17,7 +17,7 @@ Set WindowBar Colorful
 Set WindowBarSize 40
 Set BorderRadius 8
 Set Framerate 30
-Set LoopOffset 80%
+Set LoopOffset 0%
 Set MarginFill "#1e1e2e"
 Set Margin 20
 

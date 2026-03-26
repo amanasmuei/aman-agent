@@ -307,17 +307,8 @@ export async function runAgent(
               .join("");
 
         if (assistantText) {
-          const confirmFn = async (content: string): Promise<boolean> => {
-            return new Promise<boolean>((resolve) => {
-              rl.question(
-                pc.dim(`  Remember: "${content}"? (y/N) `),
-                (answer) => resolve(answer.toLowerCase() === "y"),
-              );
-            });
-          };
-
           const count = await runExtraction(
-            input, assistantText, client, mcpManager, extractorState, confirmFn,
+            input, assistantText, client, mcpManager, extractorState,
           );
           if (count > 0) {
             process.stdout.write(pc.dim(`  [${count} memory${count > 1 ? "ies" : ""} stored]\n`));

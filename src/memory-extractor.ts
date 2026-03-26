@@ -10,9 +10,7 @@ export interface ExtractionCandidate {
   scope: string;
 }
 
-const AUTO_STORE_TYPES = new Set(["preference", "fact", "pattern", "topology"]);
-const CONFIRM_TYPES = new Set(["decision", "correction"]);
-const VALID_TYPES = new Set([...AUTO_STORE_TYPES, ...CONFIRM_TYPES]);
+const VALID_TYPES = new Set(["preference", "fact", "pattern", "topology", "decision", "correction"]);
 const MIN_RESPONSE_LENGTH = 50;
 const MIN_TURNS_BETWEEN_EMPTY = 3;
 
@@ -32,8 +30,8 @@ Type guide:
 - "fact" = objective information about systems, people, projects
 - "pattern" = recurring behavior, coding style, approach
 - "topology" = how systems/components connect to each other
-- "decision" = explicit choice between alternatives (requires confirmation)
-- "correction" = user correcting a prior wrong assumption (requires confirmation)
+- "decision" = explicit choice between alternatives
+- "correction" = user correcting a prior wrong assumption
 
 Rules:
 - Only extract genuinely useful LONG-TERM information
@@ -86,7 +84,6 @@ export async function extractMemories(
   client: LLMClient,
   mcpManager: McpManager,
   state: ExtractorState,
-  confirmFn: (content: string) => Promise<boolean>,
 ): Promise<number> {
   if (!shouldExtract(assistantResponse, state.turnsSinceLastExtraction, state.lastExtractionCount)) {
     state.turnsSinceLastExtraction++;
@@ -130,12 +127,6 @@ export async function extractMemories(
           } catch { /* Parse failed, proceed */ }
         }
       } catch { /* Dedup failed, proceed */ }
-
-      // Confirm decisions/corrections
-      if (CONFIRM_TYPES.has(candidate.type)) {
-        const confirmed = await confirmFn(candidate.content);
-        if (!confirmed) continue;
-      }
 
       // Store
       try {

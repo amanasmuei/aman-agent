@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldExtract, parseExtractionResult } from "../src/memory-extractor.js";
+import { shouldExtract, parseExtractionResult, extractMemories } from "../src/memory-extractor.js";
 
 describe("memory-extractor", () => {
   describe("shouldExtract", () => {
@@ -58,6 +58,23 @@ describe("memory-extractor", () => {
       const result = parseExtractionResult(wrapped);
       expect(result).toHaveLength(1);
       expect(result[0].content).toBe("test");
+    });
+
+    it("accepts decision and correction types", () => {
+      const json = JSON.stringify([
+        { content: "User chose PostgreSQL over MySQL", type: "decision", tags: ["db"], confidence: 0.9, scope: "global" },
+        { content: "User corrected: project uses pnpm not npm", type: "correction", tags: ["tooling"], confidence: 0.95, scope: "global" },
+      ]);
+      const result = parseExtractionResult(json);
+      expect(result).toHaveLength(2);
+      expect(result[0].type).toBe("decision");
+      expect(result[1].type).toBe("correction");
+    });
+  });
+
+  describe("extractMemories signature", () => {
+    it("accepts 5 parameters (no confirmFn)", () => {
+      expect(extractMemories.length).toBeLessThanOrEqual(5);
     });
   });
 });

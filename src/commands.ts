@@ -260,7 +260,61 @@ async function handleMemoryCommand(
     const output = await mcpWrite(ctx, "memory", "memory_forget", { category: args[0] });
     return { handled: true, output };
   }
-  return { handled: true, output: pc.yellow(`Unknown action: /memory ${action}. Use /memory [search|clear].`) };
+  if (action === "timeline") {
+    if (!ctx.mcpManager) {
+      return { handled: true, output: pc.red("Memory not available: MCP not connected.") };
+    }
+    try {
+      const result = await ctx.mcpManager.callTool("memory_recall", { query: "*", limit: 500 });
+      if (result.startsWith("Error") || result.includes("No memories found")) {
+        return { handled: true, output: pc.dim("No memories yet. Start chatting and I'll remember what matters.") };
+      }
+      try {
+        const memories = JSON.parse(result);
+        if (Array.isArray(memories) && memories.length > 0) {
+          const byDate = new Map<string, number>();
+          for (const mem of memories) {
+            const date = mem.created_at
+              ? new Date(mem.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+              : "Unknown";
+            byDate.set(date, (byDate.get(date) || 0) + 1);
+          }
+          const maxCount = Math.max(...byDate.values());
+          const barWidth = 10;
+          const lines: string[] = [pc.bold("Memory Timeline:"), ""];
+          for (const [date, count] of byDate) {
+            const filled = Math.round((count / maxCount) * barWidth);
+            const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
+            lines.push(`  ${date.padEnd(8)} ${bar}  ${count} memories`);
+          }
+          const tags = new Map<string, number>();
+          for (const mem of memories) {
+            if (Array.isArray(mem.tags)) {
+              for (const tag of mem.tags) {
+                tags.set(tag, (tags.get(tag) || 0) + 1);
+              }
+            }
+          }
+          lines.push("");
+          lines.push(`  Total: ${memories.length} memories`);
+          if (tags.size > 0) {
+            const topTags = [...tags.entries()]
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 5)
+              .map(([tag, count]) => `#${tag} (${count})`)
+              .join(", ");
+            lines.push(`  Top tags: ${topTags}`);
+          }
+          return { handled: true, output: lines.join("\n") };
+        }
+      } catch { /* Non-JSON response */ }
+      const lineCount = result.split("\n").filter((l: string) => l.trim()).length;
+      return { handled: true, output: `Total memories: ~${lineCount} entries.` };
+    } catch {
+      return { handled: true, output: pc.red("Failed to retrieve memory timeline.") };
+    }
+  }
+  return { handled: true, output: pc.yellow(`Unknown action: /memory ${action}. Use /memory [search|clear|timeline].`) };
 }
 
 function handleStatusCommand(ctx: CommandContext): CommandResult {
@@ -290,17 +344,52 @@ function handleDoctorCommand(ctx: CommandContext): CommandResult {
   const status = getEcosystemStatus(mcpToolCount, amemConnected);
 
   const lines: string[] = [pc.bold("Aman Health Check"), ""];
+  let healthy = 0;
+  let fixes = 0;
+  let suggestions = 0;
 
   for (const layer of status.layers) {
-    const check = layer.exists ? pc.green("✓") : pc.red("✗");
-    const name = layer.name.padEnd(12);
-    const detail = layer.exists ? pc.green(layer.summary) : pc.red("missing");
-    lines.push(`  ${check} ${name} ${detail}`);
+    if (layer.exists) {
+      lines.push(`  ${pc.green("✓")} ${layer.name.padEnd(12)} ${pc.green(layer.summary)}`);
+      healthy++;
+    } else {
+      const isRequired = ["identity", "rules"].includes(layer.name.toLowerCase());
+      if (isRequired) {
+        lines.push(`  ${pc.red("✗")} ${layer.name.padEnd(12)} ${pc.red("missing")}`);
+        lines.push(`    ${pc.dim("→ Fix: aman-agent init")}`);
+        fixes++;
+      } else {
+        lines.push(`  ${pc.yellow("⚠")} ${layer.name.padEnd(12)} ${pc.yellow("empty")}`);
+        const cmd = layer.name.toLowerCase() === "workflows" ? "/workflows add <name>"
+          : layer.name.toLowerCase() === "tools" ? "/tools add <name> <type> <desc>"
+          : layer.name.toLowerCase() === "skills" ? "/skills install <name>"
+          : "";
+        if (cmd) lines.push(`    ${pc.dim(`→ Add with ${cmd}`)}`);
+        suggestions++;
+      }
+    }
   }
 
   lines.push("");
   lines.push(`  ${status.mcpConnected ? pc.green("✓") : pc.red("✗")} ${"MCP".padEnd(12)} ${status.mcpConnected ? pc.green(`${status.mcpToolCount} tools`) : pc.red("not connected")}`);
+  if (!status.mcpConnected) {
+    lines.push(`    ${pc.dim("→ Fix: ensure npx is available and network is connected")}`);
+    fixes++;
+  } else {
+    healthy++;
+  }
+
   lines.push(`  ${status.amemConnected ? pc.green("✓") : pc.red("✗")} ${"Memory".padEnd(12)} ${status.amemConnected ? pc.green("connected") : pc.red("not connected")}`);
+  if (!status.amemConnected) {
+    lines.push(`    ${pc.dim("→ Fix: npx @aman_asmuei/amem")}`);
+    fixes++;
+  } else {
+    healthy++;
+  }
+
+  const total = healthy + fixes + suggestions;
+  lines.push("");
+  lines.push(`  Overall: ${healthy}/${total} healthy.${fixes > 0 ? ` ${fixes} fix${fixes > 1 ? "es" : ""} needed.` : ""}${suggestions > 0 ? ` ${suggestions} suggestion${suggestions > 1 ? "s" : ""}.` : ""}`);
 
   return { handled: true, output: lines.join("\n") };
 }
@@ -317,7 +406,7 @@ function handleHelp(): CommandResult {
       `  ${pc.cyan("/tools")}        View tools [add|remove ...]`,
       `  ${pc.cyan("/skills")}       View skills [install|uninstall ...]`,
       `  ${pc.cyan("/eval")}         View evaluation [milestone ...]`,
-      `  ${pc.cyan("/memory")}       View recent memories [search|clear ...]`,
+      `  ${pc.cyan("/memory")}       View recent memories [search|clear|timeline]`,
       `  ${pc.cyan("/status")}       Ecosystem dashboard`,
       `  ${pc.cyan("/doctor")}       Health check all layers`,
       `  ${pc.cyan("/decisions")}    View decision log [<project>]`,

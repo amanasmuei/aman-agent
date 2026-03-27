@@ -465,7 +465,19 @@ async function handleMemoryCommand(
         output: pc.red("Memory not available: aman-mcp not connected. Start it with: npx @aman_asmuei/aman-mcp"),
       };
     }
-    const result = await ctx.mcpManager.callTool("memory_context", { topic: "general overview" });
+    const result = await ctx.mcpManager.callTool("memory_context", { topic: "recent context" });
+    if (result.startsWith("Error")) {
+      return { handled: true, output: pc.red(result) };
+    }
+    return { handled: true, output: result };
+  }
+  // /memory <topic> — shortcut for context on a specific topic
+  if (action && !["search", "clear", "timeline"].includes(action)) {
+    if (!ctx.mcpManager) {
+      return { handled: true, output: pc.red("Memory not available: MCP not connected.") };
+    }
+    const topic = [action, ...args].join(" ");
+    const result = await ctx.mcpManager.callTool("memory_context", { topic });
     if (result.startsWith("Error")) {
       return { handled: true, output: pc.red(result) };
     }

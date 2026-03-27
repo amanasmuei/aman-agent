@@ -465,7 +465,7 @@ async function handleMemoryCommand(
         output: pc.red("Memory not available: aman-mcp not connected. Start it with: npx @aman_asmuei/aman-mcp"),
       };
     }
-    const result = await ctx.mcpManager.callTool("memory_context", {});
+    const result = await ctx.mcpManager.callTool("memory_context", { topic: "general overview" });
     if (result.startsWith("Error")) {
       return { handled: true, output: pc.red(result) };
     }

@@ -80,7 +80,7 @@ This is your FIRST conversation with this user. Introduce yourself warmly:
   if (ctx.config.memoryRecall) {
     try {
       isHookCall = true;
-      const result = await ctx.mcpManager.callTool("memory_context", {});
+      const result = await ctx.mcpManager.callTool("memory_context", { topic: "session context" });
       if (result && !result.startsWith("Error")) {
         greeting += result;
       }

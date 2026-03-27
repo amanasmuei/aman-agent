@@ -226,47 +226,98 @@ function handleAkitCommand(
   const installed = loadAkitInstalled();
   const installedNames = new Set(installed.map(t => t.name));
 
-  // /akit add <tool>
+  // /akit add [number|name|custom]
   if (action === "add") {
+    const available = AKIT_REGISTRY.filter(t => !installedNames.has(t.name));
+
+    // No argument — show numbered list
     if (args.length < 1) {
-      return { handled: true, output: pc.yellow("Usage: /akit add <tool>") };
+      if (available.length === 0) {
+        return { handled: true, output: pc.green("All tools are installed!") };
+      }
+      const lines: string[] = [pc.bold("Select a tool to install:"), ""];
+      available.forEach((tool, i) => {
+        const num = pc.cyan(String(i + 1).padStart(2));
+        lines.push(`  ${num}  ${tool.name.padEnd(16)} ${pc.dim(tool.description)}`);
+      });
+      lines.push("");
+      lines.push(`  Type: ${pc.cyan("/akit add <number>")} or ${pc.cyan("/akit add <name>")}`);
+      lines.push(`  Custom: ${pc.cyan("/akit add custom <name> <command> <args...>")}`);
+      return { handled: true, output: lines.join("\n") };
     }
-    const toolName = args[0].toLowerCase();
-    const tool = AKIT_REGISTRY.find(t => t.name === toolName);
+
+    // /akit add custom <name> <command> <args...>
+    if (args[0].toLowerCase() === "custom") {
+      if (args.length < 3) {
+        return { handled: true, output: pc.yellow("Usage: /akit add custom <name> <command> <args...>\nExample: /akit add custom my-tool npx -y @org/my-mcp-server") };
+      }
+      const customName = args[1];
+      const customCommand = args[2];
+      const customArgs = args.slice(3);
+
+      if (installedNames.has(customName)) {
+        return { handled: true, output: pc.yellow(`${customName} is already installed.`) };
+      }
+
+      installed.push({
+        name: customName,
+        installedAt: new Date().toISOString().split("T")[0],
+        mcpConfigured: true,
+      });
+      saveAkitInstalled(installed);
+      addToAmanAgentConfig(customName, { command: customCommand, args: customArgs });
+
+      return {
+        handled: true,
+        output: [
+          pc.green(`✓ Added ${pc.bold(customName)}`) + pc.dim(` (custom MCP: ${customCommand} ${customArgs.join(" ")})`),
+          pc.dim("  Restart aman-agent to load the new tool."),
+        ].join("\n"),
+      };
+    }
+
+    // Resolve by number or name
+    const input = args[0].toLowerCase();
+    let tool: AkitTool | undefined;
+
+    const num = parseInt(input, 10);
+    if (!isNaN(num) && num >= 1 && num <= available.length) {
+      tool = available[num - 1];
+    } else {
+      tool = AKIT_REGISTRY.find(t => t.name === input);
+    }
 
     if (!tool) {
       return {
         handled: true,
         output: [
-          pc.red(`Tool "${toolName}" not found in registry.`),
-          "",
-          pc.dim("Available tools: " + AKIT_REGISTRY.map(t => t.name).join(", ")),
+          pc.red(`Tool "${input}" not found.`),
+          `Type ${pc.cyan("/akit add")} to see available tools.`,
         ].join("\n"),
       };
     }
 
-    if (installedNames.has(toolName)) {
-      return { handled: true, output: pc.yellow(`${toolName} is already installed.`) };
+    if (installedNames.has(tool.name)) {
+      return { handled: true, output: pc.yellow(`${tool.name} is already installed.`) };
     }
 
-    // Add to installed.json
+    // Install
     installed.push({
-      name: toolName,
+      name: tool.name,
       installedAt: new Date().toISOString().split("T")[0],
       mcpConfigured: tool.mcp !== null,
     });
     saveAkitInstalled(installed);
 
-    // Add to aman-agent config.json → mcpServers
     if (tool.mcp) {
-      addToAmanAgentConfig(toolName, {
+      addToAmanAgentConfig(tool.name, {
         command: tool.mcp.command,
         args: tool.mcp.args,
       });
     }
 
     const lines: string[] = [
-      pc.green(`✓ Added ${pc.bold(toolName)}`) + (tool.mcp ? pc.dim(` (MCP: ${tool.mcp.package})`) : ""),
+      pc.green(`✓ Added ${pc.bold(tool.name)}`) + (tool.mcp ? pc.dim(` (MCP: ${tool.mcp.package})`) : ""),
     ];
     if (tool.envHint) {
       lines.push(pc.yellow(`  ⚠ ${tool.envHint}`));

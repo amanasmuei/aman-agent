@@ -287,7 +287,7 @@ describe("handleCommand", () => {
       const mcp = createMockMcpManager();
       const result = await handleCommand("/memory", { mcpManager: mcp });
       expect(result.handled).toBe(true);
-      expect(mcp.callTool).toHaveBeenCalledWith("memory_context", { topic: "general overview" });
+      expect(mcp.callTool).toHaveBeenCalledWith("memory_context", { topic: "recent context" });
       expect(result.output).toContain("Mock result for memory_context");
     });
 

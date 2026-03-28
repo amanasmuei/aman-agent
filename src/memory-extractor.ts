@@ -1,6 +1,7 @@
 import type { LLMClient } from "./llm/types.js";
 import type { McpManager } from "./mcp/client.js";
 import { log } from "./logger.js";
+import { matchPatternToSkill, enrichSkill } from "./skill-engine.js";
 
 export interface ExtractionCandidate {
   content: string;
@@ -140,6 +141,14 @@ export async function extractMemories(
         });
         stored++;
         log.debug("extractor", "Stored " + candidate.type + ": " + candidate.content);
+
+        // Self-improving skills: enrich skills with learned patterns
+        if (candidate.type === "pattern" || candidate.type === "preference") {
+          const skillMatch = matchPatternToSkill(candidate.content, candidate.tags);
+          if (skillMatch) {
+            enrichSkill(skillMatch, candidate.content);
+          }
+        }
       } catch (err) {
         log.warn("extractor", "Failed to store: " + candidate.content, err);
       }

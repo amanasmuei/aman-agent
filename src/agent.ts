@@ -35,6 +35,7 @@ import { trimConversation } from "./context-manager.js";
 import { log } from "./logger.js";
 import { withRetry } from "./retry.js";
 import { extractMemories as runExtraction, type ExtractorState } from "./memory-extractor.js";
+import { autoTriggerSkills, matchKnowledge } from "./skill-engine.js";
 import { humanizeError } from "./errors.js";
 import { getHint, loadShownHints, saveShownHints, type HintState } from "./hints.js";
 
@@ -271,6 +272,26 @@ export async function runAgent(
           }
         }
       } catch (err) { log.debug("agent", "workflow match failed", err); }
+    }
+
+    // Auto-trigger skills based on conversation context
+    if (mcpManager) {
+      try {
+        const skillContext = await autoTriggerSkills(input, mcpManager);
+        if (skillContext) {
+          activeSystemPrompt += "\n\n" + skillContext;
+        }
+      } catch (err) { log.debug("agent", "skill auto-trigger failed", err); }
+
+      // Auto-suggest knowledge library items
+      const knowledgeItem = matchKnowledge(input);
+      if (knowledgeItem) {
+        activeSystemPrompt += `\n\n<knowledge name="${knowledgeItem.name}" category="${knowledgeItem.category}">
+${knowledgeItem.description}
+
+${knowledgeItem.content}
+</knowledge>`;
+      }
     }
 
     // Auto-trim conversation if approaching token limits

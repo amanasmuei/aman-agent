@@ -43,23 +43,25 @@
 
 ---
 
-## What's New in v0.6.0
+## What's New in v0.13.0
 
-> **Zero to Wow** — the first 60 seconds are now magical.
+> **The AI that learns how you work.**
 
-| Feature | Before | After |
-|:---|:---|:---|
-| **Onboarding** | 3-4 prompts for API key/model | Auto-detects from env vars |
-| **Ecosystem setup** | Manual, separate CLI | `aman-agent init` wizard with persona presets |
-| **First session** | Empty prompt | Agent introduces itself, asks your name |
-| **Returning session** | Raw context dump | "Welcome back. Last time we talked about..." |
-| **Memory storage** | "Remember X? (y/N)" interruptions | Silent auto-store, undo with `/memory clear` |
-| **Output** | Raw text | Markdown rendering with response framing |
-| **Errors** | "401 Unauthorized" | "API key invalid. Run /reconfig to fix." |
-| **Feature discovery** | Read the README | Progressive hints at the right moment |
-| **New commands** | — | `/memory timeline`, upgraded `/doctor` |
+| Feature | What it does |
+|:---|:---|
+| **Image support** | Reference local images or URLs — auto base64-encoded and sent as vision content |
+| **Ollama tool use** | Function calling for supported Ollama models (Llama 3.1+, Mistral, Qwen) |
+| **Personality engine** | Adaptive tone based on time of day, session duration, and energy curve |
+| **Sentiment detection** | Reads frustration, excitement, confusion, fatigue from your messages — zero latency |
+| **Wellbeing nudges** | 6 nudge types: sleep guardian, break suggestions, frustration support |
+| **Skill engine** | Skills auto-trigger by conversation context, level up with use (Lv.1→Lv.5) |
+| **Self-improving skills** | Memory extraction enriches skills with your specific patterns |
+| **Knowledge library** | 10 curated reference items (security headers, Docker, CI, Zod, Prisma, etc.) |
+| **Persistent plans** | Multi-step plans with checkboxes that survive session resets |
+| **Project-aware exit** | Auto-updates `.acore/context.md` with session state on departure |
+| **Background tasks** | Long-running tools execute concurrently without blocking conversation |
 
-<a href="https://github.com/amanasmuei/aman-agent/releases/tag/v0.6.0">Full release notes</a>
+<a href="https://github.com/amanasmuei/aman-agent/releases">Full release history</a>
 
 ---
 
@@ -231,9 +233,52 @@ Every memory recall shows how many tokens it costs, so you always know the overh
   [memories: ~47 tokens]
 ```
 
-### Time-Aware Greetings
+### Personality Engine
 
-The agent knows the time of day and day of week. It adapts its tone naturally — you'll notice the difference between a morning and a late-night session.
+The agent adapts its personality in real-time based on signals:
+
+- **Time of day**: morning (high-drive) → afternoon (steady) → night (reflective)
+- **Session duration**: gradually shifts from energetic to mellow
+- **User sentiment**: detects frustration, excitement, confusion, fatigue from keywords
+- **Wellbeing nudges**: suggests breaks when you've been at it too long, gently mentions sleep during late-night sessions
+
+All state syncs to acore's Dynamics section — works across aman-agent, achannel, and aman-plugin.
+
+### Auto-Triggered Skills
+
+When you talk about security, the security skill activates. Debugging? The debugging skill loads. No commands needed.
+
+- 12 skill domains with keyword matching
+- **Skill leveling** (Lv.1→Lv.5): adapts explanation depth to your demonstrated mastery
+- **Self-improving**: memory extraction enriches skills with your specific patterns over time
+- **Knowledge library**: 10 curated reference items auto-suggested when relevant
+
+### Persistent Plans
+
+Create multi-step plans that survive session resets:
+
+```
+/plan create Auth | Add JWT auth | Design schema, Implement middleware, Add tests, Deploy
+
+Plan: Auth (active)
+Goal: Add JWT auth
+Progress: [████████░░░░░░░░░░░░] 2/5 (40%)
+
+   1. [✓] Design schema
+   2. [✓] Implement middleware
+   3. [ ] Add tests         ← Next
+   4. [ ] Deploy
+```
+
+Plans stored as markdown in `.acore/plans/` — git-trackable, project-local.
+
+### Background Task Execution
+
+Long-running tools (tests, builds, Docker) run in the background while the conversation continues. Results appear when ready.
+
+### Project-Aware Sessions
+
+The agent detects your project from the current directory. On exit, it auto-updates `.acore/context.md` with session state. Next time you open the same project, the AI picks up where you left off.
 
 ### Reminders
 
@@ -324,10 +369,11 @@ Every operation that can fail logs to `~/.aman-agent/debug.log` with structured 
 
 | Phase | What happens |
 |:---|:---|
-| **Start** | Load ecosystem, connect MCP, consolidate memory, check reminders, inject time context |
-| **Each turn** | Recall relevant memories, stream response, execute tools in parallel, extract new memories |
+| **Start** | Load ecosystem, connect MCP, consolidate memory, check reminders, compute personality state, load active plan |
+| **Each turn** | Recall memories, auto-trigger skills, inject active plan, detect sentiment, stream response, execute tools (parallel + background), extract memories, enrich skills |
+| **Every 5 turns** | Refresh personality state, check wellbeing, sync to acore |
 | **Auto-trim** | LLM-powered summarization when approaching 80K tokens |
-| **Exit** | Save conversation to amem, update session resume, optional session rating |
+| **Exit** | Save conversation to amem, update session resume, persist personality state, update project context.md, optional session rating |
 
 ---
 
@@ -336,6 +382,7 @@ Every operation that can fail logs to `~/.aman-agent/debug.log` with structured 
 | Command | Description |
 |:---|:---|
 | `/help` | Show available commands |
+| `/plan` | Show active plan `[create\|done\|undo\|list\|switch\|show]` |
 | `/identity` | View identity `[update <section>]` |
 | `/rules` | View guardrails `[add\|remove\|toggle ...]` |
 | `/workflows` | View workflows `[add\|remove ...]` |
@@ -370,7 +417,9 @@ On every session start, aman-agent assembles your full AI context:
 | **Workflows** | `~/.aflow/flow.md` | Multi-step processes (code review, bug fix) |
 | **Guardrails** | `~/.arules/rules.md` | Safety boundaries and permissions |
 | **Skills** | `~/.askill/skills.md` | Deep domain expertise |
-| **Time** | System clock | Time of day, day of week for tone adaptation |
+| **Plans** | `.acore/plans/` | Active plan with progress and next step |
+| **Project** | `.acore/context.md` | Project-specific tech stack, session state, patterns |
+| **Time** | System clock | Time of day, day of week for tone and personality adaptation |
 
 All layers are optional — the agent works with whatever you've set up.
 
@@ -463,6 +512,7 @@ All hooks are on by default. Disable any in `config.json`:
 | `autoSessionSave` | Save conversation to amem on exit |
 | `extractMemories` | Auto-extract memories from conversation |
 | `featureHints` | Show progressive feature discovery tips |
+| `personalityAdapt` | Adapt tone based on time, sentiment, and session signals |
 
 > Treat the config file like a credential — it contains your API key.
 
@@ -511,14 +561,19 @@ aman
 | Identity system | 7 portable layers | None | None |
 | Memory | amem (SQLite + embeddings + graph) | Postgres + embeddings | None |
 | Per-message recall | Progressive disclosure (~10x token savings) | Yes | No |
-| Learns from conversation | Auto-extract (silent) | Requires configuration | No |
+| Learns from conversation | Auto-extract (silent) + skill enrichment | Requires configuration | No |
+| Personality adaptation | Sentiment-aware, time-based, energy curve | None | None |
+| Wellbeing awareness | 6 nudge types (sleep, breaks, frustration) | None | None |
+| Skill leveling | Lv.1→Lv.5, auto-triggered by context | None | None |
+| Plan tracking | Persistent checkboxes, survives resets | None | None |
+| Vision / multimodal | Images via base64 (local + URL) | None | None |
+| Background tasks | Long-running tools run concurrently | None | None |
 | Guardrail enforcement | Runtime tool blocking | None | None |
 | Reminders | Persistent, deadline-aware | None | None |
 | Context compression | LLM-powered summarization | Archival system | Truncation |
-| Tool observation capture | Passive logging of all tool calls | None | None |
-| Token cost visibility | Shows memory injection cost per turn | None | None |
-| Multi-LLM | Anthropic, OpenAI, Ollama | OpenAI-focused | Single provider |
-| Tool execution | Parallel with guardrails | Sequential | None |
+| Multi-LLM | Anthropic, OpenAI, Ollama (all with tools) | OpenAI-focused | Single provider |
+| Tool execution | Parallel + background with guardrails | Sequential | None |
+| Project awareness | Auto-detect project, scoped memory, context.md | None | None |
 
 ### amem vs other memory layers
 

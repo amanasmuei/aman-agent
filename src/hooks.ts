@@ -4,6 +4,11 @@ import type { McpManager } from "./mcp/client.js";
 import type { Message } from "./llm/types.js";
 import type { HooksConfig } from "./config.js";
 import { log } from "./logger.js";
+import {
+  computePersonality,
+  syncPersonalityToCore,
+  formatSleepNudge,
+} from "./personality.js";
 
 function getTimeContext(): string {
   const now = new Date();
@@ -30,6 +35,11 @@ export interface HookContext {
 }
 
 let isHookCall = false;
+let sessionStartTime: number = Date.now();
+
+export function getSessionStartTime(): number {
+  return sessionStartTime;
+}
 
 export async function onSessionStart(
   ctx: HookContext,
@@ -134,6 +144,32 @@ This is your FIRST conversation with this user. Introduce yourself warmly:
     log.debug("hooks", "reminder_check failed", err);
   } finally {
     isHookCall = false;
+  }
+
+  // Compute initial personality state
+  if (ctx.config.personalityAdapt !== false) {
+    sessionStartTime = Date.now();
+    const hour = new Date().getHours();
+    let period: string;
+    if (hour < 6) period = "late-night";
+    else if (hour < 12) period = "morning";
+    else if (hour < 17) period = "afternoon";
+    else if (hour < 21) period = "evening";
+    else period = "night";
+
+    const state = computePersonality({
+      timePeriod: period,
+      sessionMinutes: 0,
+      turnCount: 0,
+    });
+
+    // Sync to acore (fire-and-forget)
+    syncPersonalityToCore(state, ctx.mcpManager).catch(() => {});
+
+    // Add sleep nudge to context if applicable
+    if (state.sleepReminder) {
+      greeting += "\n" + formatSleepNudge();
+    }
   }
 
   if (greeting) {
@@ -306,6 +342,32 @@ export async function onSessionEnd(
       }
 
       console.log(pc.dim(`  Saved ${textMessages.length} messages (session: ${sessionId})`));
+    }
+
+    // Persist final personality state
+    if (ctx.config.personalityAdapt !== false) {
+      const sessionMinutes = Math.round((Date.now() - sessionStartTime) / 60000);
+      const hour = new Date().getHours();
+      let period: string;
+      if (hour < 6) period = "late-night";
+      else if (hour < 12) period = "morning";
+      else if (hour < 17) period = "afternoon";
+      else if (hour < 21) period = "evening";
+      else period = "night";
+
+      const turnCount = messages.filter((m) => m.role === "user").length;
+      const finalState = computePersonality({
+        timePeriod: period,
+        sessionMinutes,
+        turnCount,
+      });
+
+      try {
+        isHookCall = true;
+        await syncPersonalityToCore(finalState, ctx.mcpManager);
+      } finally {
+        isHookCall = false;
+      }
     }
 
     // Session rating prompt

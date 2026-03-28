@@ -28,7 +28,7 @@ import {
 import {
   computePersonality,
   syncPersonalityToCore,
-  formatSleepNudge,
+  formatWellbeingNudge,
 } from "./personality.js";
 import type { HooksConfig } from "./config.js";
 import { trimConversation } from "./context-manager.js";
@@ -414,9 +414,9 @@ export async function runAgent(
       }
     }
 
-    // Periodic personality refresh (every 10 turns)
+    // Personality refresh with sentiment (every 5 turns)
     const userTurnCount = messages.filter((m) => m.role === "user").length;
-    if (mcpManager && hooksConfig?.personalityAdapt !== false && userTurnCount > 0 && userTurnCount % 10 === 0) {
+    if (mcpManager && hooksConfig?.personalityAdapt !== false && userTurnCount > 0 && userTurnCount % 5 === 0) {
       const hour = new Date().getHours();
       let period: string;
       if (hour < 6) period = "late-night";
@@ -425,17 +425,25 @@ export async function runAgent(
       else if (hour < 21) period = "evening";
       else period = "night";
 
+      // Collect recent user messages for sentiment analysis
+      const recentUserMsgs = messages
+        .filter((m) => m.role === "user" && typeof m.content === "string")
+        .slice(-5)
+        .map((m) => m.content as string);
+
       const sessionMinutes = Math.round((Date.now() - getSessionStartTime()) / 60000);
       const state = computePersonality({
         timePeriod: period,
         sessionMinutes,
         turnCount: userTurnCount,
+        recentMessages: recentUserMsgs,
       });
 
       syncPersonalityToCore(state, mcpManager).catch(() => {});
 
-      if (state.sleepReminder) {
-        augmentedSystemPrompt += "\n" + formatSleepNudge();
+      const nudge = formatWellbeingNudge(state);
+      if (nudge) {
+        augmentedSystemPrompt += "\n" + nudge;
       }
     }
 

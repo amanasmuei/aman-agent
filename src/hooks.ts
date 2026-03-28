@@ -7,7 +7,7 @@ import { log } from "./logger.js";
 import {
   computePersonality,
   syncPersonalityToCore,
-  formatSleepNudge,
+  formatWellbeingNudge,
 } from "./personality.js";
 
 function getTimeContext(): string {
@@ -166,9 +166,10 @@ This is your FIRST conversation with this user. Introduce yourself warmly:
     // Sync to acore (fire-and-forget)
     syncPersonalityToCore(state, ctx.mcpManager).catch(() => {});
 
-    // Add sleep nudge to context if applicable
-    if (state.sleepReminder) {
-      greeting += "\n" + formatSleepNudge();
+    // Add wellbeing nudge to context if applicable
+    const nudge = formatWellbeingNudge(state);
+    if (nudge) {
+      greeting += "\n" + nudge;
     }
   }
 

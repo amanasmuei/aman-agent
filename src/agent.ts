@@ -38,6 +38,8 @@ import { extractMemories as runExtraction, type ExtractorState } from "./memory-
 import { autoTriggerSkills, matchKnowledge } from "./skill-engine.js";
 import { BackgroundTaskManager, shouldRunInBackground } from "./background.js";
 import { getActivePlan, formatPlanForPrompt } from "./plans.js";
+import { delegateTask } from "./delegate.js";
+import { listProfiles } from "./prompt.js";
 import { humanizeError } from "./errors.js";
 import { getHint, loadShownHints, saveShownHints, type HintState } from "./hints.js";
 
@@ -95,6 +97,26 @@ export async function runAgent(
   const sessionId = generateSessionId();
   const extractorState: ExtractorState = { turnsSinceLastExtraction: 0, lastExtractionCount: 0 };
   const bgTasks = new BackgroundTaskManager();
+
+  // Add delegate_task virtual tool if profiles exist
+  const profiles = listProfiles();
+  if (profiles.length > 0 && tools) {
+    tools = [
+      ...tools,
+      {
+        name: "delegate_task",
+        description: `Delegate a task to a specialist sub-agent with a different profile. Available profiles: ${profiles.map((p) => `${p.name} (${p.personality})`).join(", ")}. IMPORTANT: Always ask the user for permission before delegating. Say something like "This looks like a [type] task. Want me to delegate to the [profile] profile?" and only call this tool after the user confirms.`,
+        input_schema: {
+          type: "object",
+          properties: {
+            profile: { type: "string", description: "Profile name to delegate to" },
+            task: { type: "string", description: "The task description for the sub-agent" },
+          },
+          required: ["profile", "task"],
+        },
+      },
+    ];
+  }
   const hintState: HintState = {
     turnCount: 0,
     shownHints: loadShownHints(),
@@ -518,6 +540,21 @@ ${knowledgeItem.content}
                   is_error: true,
                 };
               }
+            }
+
+            // Handle delegate_task virtual tool
+            if (toolUse.name === "delegate_task" && mcpManager) {
+              const input = toolUse.input as { profile: string; task: string };
+              process.stdout.write(pc.dim(`\n  [delegating to ${input.profile}...]\n\n`));
+              const result = await delegateTask(input.task, input.profile, client, mcpManager, { tools });
+              const output = result.success
+                ? `[${input.profile}] completed:\n\n${result.response}`
+                : `[${input.profile}] failed: ${result.error}`;
+              return {
+                type: "tool_result" as const,
+                tool_use_id: toolUse.id,
+                content: output,
+              };
             }
 
             // Check if tool should run in background

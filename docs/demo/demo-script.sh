@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# aman-agent v0.6.0 — Professional Demo Script
-# Two scenes: "First Run Magic" + "Returning User Power"
+# aman-agent v0.13.0 — Demo Script
+# Three scenes: "First Run" + "Returning User + Skills" + "Plans + Wellbeing"
 #
-# Used by VHS tape or standalone:
+# Used by VHS tape:
 #   vhs docs/demo/demo.tape
-#   OR: bash docs/demo/demo-script.sh
 
 set -e
 
@@ -16,6 +15,7 @@ D='\033[2m'       # dim
 B='\033[1m'       # bold
 R='\033[0m'       # reset
 W='\033[37m'      # white
+M='\033[0;35m'    # magenta
 
 # ── Typing ──
 t() {
@@ -36,7 +36,6 @@ ts() {
 
 p() { sleep "${1:-1}"; }
 
-# ── Divider ──
 div() {
   printf "${D}─────────────────────────────────────────────────────────────${R}\n"
 }
@@ -52,48 +51,6 @@ printf "  ${D}SCENE 1${R}  ${B}First Run — Zero to Wow${R}\n"
 div
 p 1.5
 
-# Init wizard
-printf "\n"
-printf "  ${D}\$${R} "
-t "aman-agent init"
-printf "\n"
-p 0.6
-
-printf "\n"
-printf "  ${B}aman agent init${R}${D} — set up your companion${R}\n"
-p 0.5
-
-printf "\n"
-printf "  ${W}What should your companion be called?${R}\n"
-printf "  ${D}(Aman)${R} "
-p 0.8
-t "Aman"
-printf "\n"
-p 0.5
-
-printf "\n"
-printf "  ${W}What kind of companion do you need?${R}\n"
-printf "  ${G}>${R} ${B}Coding Partner${R}    ${D}direct, technical, concise${R}\n"
-printf "    Creative Collaborator  ${D}warm, imaginative${R}\n"
-printf "    Personal Assistant     ${D}organized, action-oriented${R}\n"
-printf "    Learning Buddy         ${D}patient, Socratic${R}\n"
-printf "    Minimal                ${D}just chat${R}\n"
-p 1.2
-
-printf "\n"
-printf "  ${G}✓${R} Identity created — direct, technical, concise\n"
-p 0.3
-printf "  ${G}✓${R} 3 rules set\n"
-p 0.3
-printf "  ${G}✓${R} 1 workflow added\n"
-p 0.4
-printf "\n"
-printf "  Your companion is ready. Run: ${B}aman-agent${R}\n"
-p 2
-
-clear
-
-# First chat session
 printf "\n"
 printf "  ${D}\$${R} "
 t "aman-agent"
@@ -105,53 +62,69 @@ printf "  ${B}aman agent${R}${D} — your AI companion${R}\n"
 p 0.4
 printf "  ${G}✓${R} Auto-detected Anthropic API key. Using ${B}Claude Sonnet 4.6${R}.\n"
 p 0.3
-printf "  ${G}✓${R} Ecosystem ready: identity, guardrails ${D}(1,204 tokens)${R}\n"
+printf "  ${G}✓${R} Ecosystem: identity, guardrails, 3 skills ${D}(1,847 tokens)${R}\n"
 p 0.3
 printf "  ${G}✓${R} Connected 30 MCP tools\n"
 p 0.3
+printf "  ${G}✓${R} Personality: ${D}morning session, high-drive energy${R}\n"
+p 0.3
 printf "  ${G}${B}Aman${R}${G} is ready.${R} Model: ${D}claude-sonnet-4-6${R}\n"
-p 0.6
-
-printf "\n"
-printf "  Type a message, ${D}/help${R} for commands, or ${D}/quit${R} to exit.\n"
 p 1
 
 # First message
-printf "\n"
-printf "${G}You > ${R}"
+printf "\n${G}You > ${R}"
 p 0.5
-t "Hey, what can you do?"
+t "Hey! I'm building a REST API, help me set up auth"
 printf "\n"
 p 0.8
 
-# First-run greeting (agent introduces itself)
+# Auto-triggered skills
+printf "\n  ${D}[skill: api-design Lv.1 activated]${R}\n"
+printf "  ${D}[skill: security Lv.1 activated]${R}\n"
+p 0.3
+
 printf "\n ${C}${B}Aman${R} ${D}──────────────────────────────────────────────${R}\n"
 printf "\n"
 p 0.3
-ts "  Hey! I'm Aman, your personal AI companion. Unlike regular"
-printf "\n"
-ts "  chatbots, I'll remember our conversations and grow with you"
-printf "\n"
-ts "  over time — your preferences, decisions, and patterns all"
-printf "\n"
-ts "  persist across sessions."
+ts "  Hey! I'm Aman, your AI companion. Let's get your auth set up."
 printf "\n\n"
 p 0.2
-ts "  What should I call you?"
+ts "  Here's a solid approach for REST API authentication:"
+printf "\n\n"
+p 0.15
+ts "  1. **JWT with RS256** — asymmetric, rotatable keys"
+printf "\n"
+p 0.1
+ts "  2. **Refresh token rotation** — short-lived access, long-lived refresh"
+printf "\n"
+p 0.1
+ts "  3. **Rate limiting** on auth endpoints"
+printf "\n\n"
+p 0.15
+ts "  Security headers you'll want:"
+printf "\n"
+p 0.1
+printf "  ${D}"
+ts "  Content-Security-Policy: default-src 'self'"
+printf "\n"
+ts "  Strict-Transport-Security: max-age=31536000"
+printf "${R}\n\n"
+p 0.15
+ts "  Want me to scaffold this? What's your tech stack?"
 printf "\n"
 printf "${D} ──────────────────────────────────────────────────────────${R}\n"
 p 0.3
-printf "${D}  [1 memory stored]${R}\n"
+printf "${D}  [1 memory stored] [knowledge: security-headers suggested]${R}\n"
 p 2.5
 
 clear
 
 # ╔═══════════════════════════════════════════════════════════╗
-# ║  SCENE 2: Returning User — The Companion That Grows     ║
+# ║  SCENE 2: Returning User — Skills + Image               ║
 # ╚═══════════════════════════════════════════════════════════╝
 
 printf "\n"
-printf "  ${D}SCENE 2${R}  ${B}Returning User — The Companion That Grows${R}\n"
+printf "  ${D}SCENE 2${R}  ${B}Returning User — Skills That Level Up${R}\n"
 div
 p 1.5
 
@@ -164,105 +137,181 @@ p 0.8
 printf "\n"
 printf "  ${B}aman agent${R}${D} — your AI companion${R}\n"
 p 0.3
-printf "  ${G}✓${R} Ecosystem ready: identity, guardrails, workflows ${D}(2,847 tokens)${R}\n"
+printf "  ${G}✓${R} Ecosystem: identity, guardrails, workflows, 5 skills ${D}(3,124 tokens)${R}\n"
 p 0.3
-printf "  ${G}✓${R} Connected 45 MCP tools, memory health 94%%\n"
+printf "  ${G}✓${R} Connected 45 MCP tools, memory health 96%%\n"
 p 0.3
-printf "  ${G}${B}Aman${R}${G} is ready.${R} Model: ${D}claude-sonnet-4-6${R}\n"
-p 0.5
-
-printf "\n"
-printf "  Type a message, ${D}/help${R} for commands, or ${D}/quit${R} to exit.\n"
+printf "  ${G}✓${R} Personality: ${D}afternoon session, steady energy${R}\n"
 p 0.3
-
-# Returning greeting + reminders
-printf "\n"
-printf "  ${D}Welcome back. Last time we talked about the auth service.${R}\n"
-printf "  ${Y}Reminder: Review PR #42 (overdue)${R}\n"
-printf "  ${Y}Reminder: Deploy auth service to staging (due today)${R}\n"
+printf "  ${G}${B}Aman${R}${G} is ready.${R}\n"
+p 0.4
+printf "\n  ${D}Welcome back. Last time we set up JWT auth for the API.${R}\n"
+printf "  ${Y}Reminder: Write integration tests for auth (due today)${R}\n"
 p 1.5
 
-# Turn 1: Memory recall
+# Image attachment
 printf "\n${G}You > ${R}"
 p 0.4
-t "Let's deploy the auth service"
+t "Can you review this schema? ~/Desktop/schema.png"
 printf "\n"
-p 0.7
+p 0.3
+printf "  ${D}[attached image: schema.png (142.7KB)]${R}\n"
+printf "  ${D}[skill: database Lv.3 activated]${R}\n"
+p 0.6
 
 printf "\n ${C}${B}Aman${R} ${D}──────────────────────────────────────────────${R}\n"
 printf "\n"
 p 0.3
-ts "  Based on our previous sessions:"
+ts "  Looking at your schema — a few observations:"
 printf "\n\n"
 p 0.15
-ts "  - Auth service uses **JWT tokens with RS256**"
+ts "  - The \`users\` table looks solid. Add a \`deleted_at\` for soft deletes."
 printf "\n"
-p 0.15
-ts "  - Database: **PostgreSQL** (your preference)"
+p 0.1
+ts "  - Missing index on \`refresh_tokens.user_id\` — this will be a"
 printf "\n"
-p 0.15
-ts "  - Driven by **compliance requirements**"
-printf "\n\n"
-p 0.15
-ts "  I see PR #42 is overdue. Let me check and deploy."
+ts "    hot query path."
 printf "\n"
-p 0.3
-printf "\n  ${D}[using github_pr_status...]${R}\n"
-printf "  ${D}[using deploy_staging...]${R}\n"
-p 1
+p 0.1
+ts "  - Consider a composite index on \`(user_id, expires_at)\`."
 printf "\n"
-ts "  PR merged, staging deploy started. ETA ~3 minutes."
-printf "\n"
-printf "${D} ──────────────────────────────────── memories: ~47 tokens${R}\n"
+printf "${D} ──────────────────────────────── memories: ~52 tokens${R}\n"
 p 0.3
 printf "${D}  [1 memory stored]${R}\n"
-printf "${D}  [reminder completed: Review PR #42]${R}\n"
 p 2
 
-# Turn 2: Preference + hint
+# Plan creation
 printf "\n${G}You > ${R}"
 p 0.4
-t "Always run integration tests before staging deploys"
-printf "\n"
-p 0.7
-
-printf "\n ${C}${B}Aman${R} ${D}──────────────────────────────────────────────${R}\n"
-printf "\n"
-p 0.3
-ts "  Got it. I'll run integration tests before any future staging"
-printf "\n"
-ts "  deployments. Noted as a workflow preference."
-printf "\n"
-printf "${D} ──────────────────────────────────── memories: ~28 tokens${R}\n"
-p 0.3
-printf "${D}  [1 memory stored]${R}\n"
-p 0.3
-printf "${D}  Tip: Teach me multi-step processes with /workflows add${R}\n"
-p 2
-
-# Memory timeline
-printf "\n${G}You > ${R}"
-p 0.4
-t "/memory timeline"
+t "/plan create Auth API | Ship JWT auth to production | Design schema, Implement endpoints, Write tests, Deploy staging, Deploy prod"
 printf "\n"
 p 0.5
 
-printf "\n  ${B}Memory Timeline:${R}\n\n"
-printf "  Mar 24  ${G}██░░░░░░░░${R}  12 memories\n"
-printf "  Mar 25  ${G}█████░░░░░${R}  47 memories\n"
-printf "  Mar 26  ${G}████████░░${R}  89 memories\n"
+printf "\n  ${G}Plan created!${R}\n\n"
+printf "  Plan: Auth API (active)\n"
+printf "  Goal: Ship JWT auth to production\n"
+printf "  Progress: [${D}░░░░░░░░░░░░░░░░░░░░${R}] 0/5 (0%%)\n\n"
+printf "   1. [ ] Design schema\n"
+printf "   2. [ ] Implement endpoints\n"
+printf "   3. [ ] Write tests\n"
+printf "   4. [ ] Deploy staging\n"
+printf "   5. [ ] Deploy prod\n\n"
+printf "  Next: Step 1 — Design schema\n"
+p 2
+
+# Mark step done
+printf "\n${G}You > ${R}"
+p 0.4
+t "/plan done"
 printf "\n"
-printf "  Total: 148 memories\n"
-printf "  Top tags: #auth (34), #preferences (28), #deploy (22)\n"
+p 0.3
+
+printf "\n  ${G}Step 1 done!${R}\n\n"
+printf "  Plan: Auth API (active)\n"
+printf "  Goal: Ship JWT auth to production\n"
+printf "  Progress: [${G}████${R}${D}░░░░░░░░░░░░░░░░${R}] 1/5 (20%%)\n\n"
+printf "   1. [${G}✓${R}] Design schema\n"
+printf "   2. [ ] Implement endpoints\n"
+printf "   3. [ ] Write tests\n"
+printf "   4. [ ] Deploy staging\n"
+printf "   5. [ ] Deploy prod\n\n"
+printf "  Next: Step 2 — Implement endpoints\n"
+p 2.5
+
+clear
+
+# ╔═══════════════════════════════════════════════════════════╗
+# ║  SCENE 3: Late Night — Wellbeing + Sentiment             ║
+# ╚═══════════════════════════════════════════════════════════╝
+
+printf "\n"
+printf "  ${D}SCENE 3${R}  ${B}Late Night — An AI That Cares${R}\n"
+div
+p 1.5
+
+printf "\n"
+printf "  ${D}\$${R} "
+t "aman-agent"
+printf "\n"
+p 0.8
+
+printf "\n"
+printf "  ${B}aman agent${R}${D} — your AI companion${R}\n"
+p 0.3
+printf "  ${G}✓${R} Personality: ${M}late-night session, reflective energy${R}\n"
+p 0.3
+printf "  ${G}✓${R} Active plan: Auth API (3/5 steps)\n"
+p 0.3
+printf "  ${G}${B}Aman${R}${G} is ready.${R}\n"
+p 0.4
+printf "\n  ${D}Welcome back. You're on step 4 of Auth API — Deploy staging.${R}\n"
+p 1.5
+
+# Frustrated user
+printf "\n${G}You > ${R}"
+p 0.4
+t "ugh the tests keep failing, tried everything and nothing works!!"
+printf "\n"
+p 0.3
+printf "  ${D}[skill: debugging Lv.2 activated]${R}\n"
+printf "  ${D}[sentiment: frustrated]${R}\n"
+p 0.5
+
+printf "\n ${C}${B}Aman${R} ${D}──────────────────────────────────────────────${R}\n"
+printf "\n"
+p 0.3
+ts "  That sounds frustrating. Let's step back and try a different"
+printf "\n"
+ts "  angle — instead of looking at the failing tests, let's check"
+printf "\n"
+ts "  what changed since they last passed."
+printf "\n\n"
+p 0.2
+ts "  Can you share the error output? Sometimes the second or third"
+printf "\n"
+ts "  line in a stack trace tells you more than the first."
+printf "\n"
+printf "${D} ──────────────────────────────────────────────────────────${R}\n"
+p 2
+
+# More frustration + late night = wellbeing nudge
+printf "\n${G}You > ${R}"
+p 0.4
+t "same error again, I've been at this for 2 hours"
+printf "\n"
+p 0.5
+
+printf "\n ${C}${B}Aman${R} ${D}──────────────────────────────────────────────${R}\n"
+printf "\n"
+p 0.3
+ts "  I know this is maddening, but here's the thing — it's 1am and"
+printf "\n"
+ts "  you've been debugging for two hours. Fresh eyes in the morning"
+printf "\n"
+ts "  genuinely solve what late-night persistence can't."
+printf "\n\n"
+p 0.2
+ts "  Save what you know so far and pick it up tomorrow. The bug"
+printf "\n"
+ts "  isn't going anywhere."
+printf "\n"
+printf "${D} ──────────────────────────────────────────────────────────${R}\n"
+p 0.3
+printf "${D}  [personality: sleep-frustrated nudge]${R}\n"
 p 3
 
 # End card
 clear
-printf "\n\n\n\n"
-printf "  ${B}aman-agent${R}\n"
+printf "\n\n\n"
+printf "  ${B}aman-agent v0.13.0${R}\n"
 printf "  ${D}The AI companion that actually remembers you.${R}\n"
 printf "\n"
 printf "  ${G}npx @aman_asmuei/aman-agent${R}\n"
+printf "\n"
+printf "  ${W}Features:${R}\n"
+printf "  ${D}Persistent memory   Adaptive personality   Skill leveling${R}\n"
+printf "  ${D}Image support       Plan tracking          Wellbeing nudges${R}\n"
+printf "  ${D}Background tasks    Project-aware sessions  Knowledge library${R}\n"
 printf "\n"
 printf "  ${D}MIT Licensed  |  github.com/amanasmuei/aman-agent${R}\n"
 printf "\n\n\n"

@@ -2,7 +2,7 @@ import { Command } from "commander";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { loadConfig, saveConfig } from "./config.js";
-import { assembleSystemPrompt } from "./prompt.js";
+import { assembleSystemPrompt, getProfileAiName } from "./prompt.js";
 import { createAnthropicClient } from "./llm/anthropic.js";
 import { createOpenAIClient } from "./llm/openai.js";
 import { createOllamaClient } from "./llm/ollama.js";
@@ -104,6 +104,7 @@ program
   .version(__VERSION__)
   .option("--model <model>", "Override LLM model")
   .option("--budget <tokens>", "Token budget for system prompt (default: 8000)", parseInt)
+  .option("--profile <name>", "Use a specific agent profile (e.g., coder, writer, researcher)")
   .action(async (options) => {
     p.intro(pc.bold("aman agent") + pc.dim(" — your AI companion"));
 
@@ -230,9 +231,15 @@ program
 
     bootstrapEcosystem();
 
+    // Resolve profile
+    const profile = options.profile || process.env.AMAN_PROFILE || undefined;
+    if (profile) {
+      p.log.info(`Profile: ${pc.bold(profile)}`);
+    }
+
     // Assemble system prompt from ecosystem with token budget
     const budget = options.budget || undefined;
-    const { prompt: systemPrompt, layers, truncated, totalTokens } = assembleSystemPrompt(budget);
+    const { prompt: systemPrompt, layers, truncated, totalTokens } = assembleSystemPrompt(budget, profile);
 
     s.stop("Ecosystem loaded");
 
@@ -253,13 +260,7 @@ program
     }
 
     // Extract AI name from core.md
-    const corePath = path.join(os.homedir(), ".acore", "core.md");
-    let aiName = "Assistant";
-    if (fs.existsSync(corePath)) {
-      const content = fs.readFileSync(corePath, "utf-8");
-      const match = content.match(/^# (.+)$/m);
-      if (match) aiName = match[1];
-    }
+    const aiName = getProfileAiName(profile);
 
     // Start MCP servers
     const mcpManager = new McpManager();

@@ -1,5 +1,5 @@
-# aman-agent v0.13.0 — Professional Demo
-# Three scenes: "First Run" + "Skills + Plans" + "Late Night Wellbeing"
+# aman-agent v0.13.0 — Comprehensive Demo
+# 5 scenes covering ALL features
 #
 # Record: vhs docs/demo/demo.tape
 
@@ -7,11 +7,11 @@ Output docs/demo/demo.gif
 Output docs/demo/demo.mp4
 
 Set Shell "bash"
-Set FontSize 18
+Set FontSize 17
 Set Width 1100
 Set Height 700
 Set Padding 20
-Set TypingSpeed 40ms
+Set TypingSpeed 35ms
 Set Theme "Catppuccin Mocha"
 Set WindowBar Colorful
 Set WindowBarSize 40
@@ -28,4 +28,4 @@ Enter
 Sleep 1s
 Show
 
-Sleep 80s
+Sleep 120s

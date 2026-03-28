@@ -57,10 +57,29 @@ function toOpenAIMessages(
           }
         }
       } else {
-        const text = m.content
-          .map((b) => ("text" in b ? b.text : ""))
-          .join("");
-        result.push({ role: "user", content: text });
+        // User message — may contain text + images
+        const hasImages = m.content.some((b) => b.type === "image");
+        if (hasImages) {
+          const parts: Array<Record<string, unknown>> = [];
+          for (const b of m.content) {
+            if (b.type === "text") {
+              parts.push({ type: "text", text: b.text });
+            } else if (b.type === "image") {
+              parts.push({
+                type: "image_url",
+                image_url: {
+                  url: `data:${b.source.media_type};base64,${b.source.data}`,
+                },
+              });
+            }
+          }
+          result.push({ role: "user", content: parts as never });
+        } else {
+          const text = m.content
+            .map((b) => ("text" in b ? b.text : ""))
+            .join("");
+          result.push({ role: "user", content: text });
+        }
       }
     }
   }

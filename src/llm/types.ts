@@ -3,8 +3,18 @@ export interface Message {
   content: string | ContentBlock[];
 }
 
+export interface ImageBlock {
+  type: "image";
+  source: {
+    type: "base64";
+    media_type: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+    data: string;
+  };
+}
+
 export type ContentBlock =
   | TextBlock
+  | ImageBlock
   | ToolUseBlock
   | ToolResultBlock;
 

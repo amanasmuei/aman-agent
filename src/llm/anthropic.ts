@@ -15,12 +15,22 @@ function toAnthropicMessages(
     if (typeof m.content === "string") {
       return { role: m.role, content: m.content };
     }
-    // Complex content blocks (tool_use, tool_result, etc.)
+    // Complex content blocks (text, image, tool_use, tool_result)
     return {
       role: m.role,
       content: m.content.map((block) => {
         if (block.type === "text") {
           return { type: "text" as const, text: block.text };
+        }
+        if (block.type === "image") {
+          return {
+            type: "image" as const,
+            source: {
+              type: "base64" as const,
+              media_type: block.source.media_type,
+              data: block.source.data,
+            },
+          };
         }
         if (block.type === "tool_use") {
           return {

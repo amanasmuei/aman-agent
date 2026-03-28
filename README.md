@@ -392,7 +392,33 @@ Default budget: 8,000 tokens. Override with `--budget`.
 |:---|:---|:---|:---|
 | **Anthropic** | Claude Sonnet 4.6, Opus 4.6, Haiku 4.5 | Full | Full (with tools) |
 | **OpenAI** | GPT-4o, GPT-4o Mini, o3 | Full | Full (with tools) |
-| **Ollama** | Llama, Mistral, Gemma, any local model | Text only | Full |
+| **Ollama** | Llama, Mistral, Gemma, any local model | Model-dependent | Full (with tools) |
+
+### Image Support (Vision)
+
+Reference image files or URLs in your message and they'll be sent as vision content to the LLM:
+
+```
+You > What's in this screenshot? ~/Desktop/screenshot.png
+  [attached image: screenshot.png (245.3KB)]
+```
+
+**Supported formats:** `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`
+
+**Image URLs** are also supported — paste any `https://...png` URL and it will be fetched and attached.
+
+**Multiple files** can be referenced in a single message (images, text files, and documents together).
+
+**Size limit:** 20MB per image.
+
+**Vision model requirements:**
+| Provider | Vision Models |
+|:---|:---|
+| **Anthropic** | All Claude models (Sonnet, Opus, Haiku) |
+| **OpenAI** | GPT-4o, GPT-4o Mini |
+| **Ollama** | LLaVA, Llama 3.2 Vision, Moondream, BakLLaVA |
+
+Non-vision models will receive the image but may not be able to interpret it.
 
 ---
 

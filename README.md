@@ -43,23 +43,24 @@
 
 ---
 
-## What's New in v0.13.0
+## What's New in v0.16.0
 
-> **The AI that learns how you work.**
+> **Multi-agent AI companion with teams, delegation, and profiles.**
 
 | Feature | What it does |
 |:---|:---|
+| **Agent profiles** | Multiple AI identities: `--profile coder`, `--profile writer`, `--profile researcher` |
+| **Agent delegation** | Delegate tasks to sub-agents: `/delegate writer Write a blog post` |
+| **Agent teams** | Named teams with pipeline, parallel, and coordinator modes |
+| **Auto-delegation** | AI suggests delegation/teams when appropriate — asks permission first |
 | **Image support** | Reference local images or URLs — auto base64-encoded and sent as vision content |
-| **Ollama tool use** | Function calling for supported Ollama models (Llama 3.1+, Mistral, Qwen) |
-| **Personality engine** | Adaptive tone based on time of day, session duration, and energy curve |
-| **Sentiment detection** | Reads frustration, excitement, confusion, fatigue from your messages — zero latency |
-| **Wellbeing nudges** | 6 nudge types: sleep guardian, break suggestions, frustration support |
-| **Skill engine** | Skills auto-trigger by conversation context, level up with use (Lv.1→Lv.5) |
-| **Self-improving skills** | Memory extraction enriches skills with your specific patterns |
-| **Knowledge library** | 10 curated reference items (security headers, Docker, CI, Zod, Prisma, etc.) |
+| **Personality engine** | Adaptive tone based on time, sentiment, and energy curve |
+| **Skill engine** | Skills auto-trigger, level up (Lv.1→Lv.5), self-improve from your patterns |
 | **Persistent plans** | Multi-step plans with checkboxes that survive session resets |
-| **Project-aware exit** | Auto-updates `.acore/context.md` with session state on departure |
 | **Background tasks** | Long-running tools execute concurrently without blocking conversation |
+| **Project-aware sessions** | Auto-detects project, scoped memory, context persistence on exit |
+| **Social media posting** | Post to Bluesky, X, Threads, Facebook, Instagram via aman-social |
+| **Docker deployment** | `aman deploy` — deploy anywhere with Docker, Ollama, or systemd |
 
 <a href="https://github.com/amanasmuei/aman-agent/releases">Full release history</a>
 
@@ -411,6 +412,91 @@ aman-agent init
 
 Set any to `false` to disable.
 
+### Agent Profiles
+
+Run different AI personalities for different tasks:
+
+```bash
+aman-agent --profile coder      # direct, code-first
+aman-agent --profile writer     # creative, story-driven
+aman-agent --profile researcher # analytical, citation-focused
+```
+
+Each profile has its own identity, rules, and skills — but shares the same memory. Create profiles:
+
+```
+/profile create coder       Install built-in template
+/profile create mybot       Create custom profile
+/profile list               Show all profiles
+```
+
+### Agent Delegation
+
+Delegate tasks to sub-agents with specialist profiles:
+
+```
+/delegate writer Write a blog post about AI companions
+
+  [delegating to writer...]
+
+  [writer] ✓ (2 tool turns)
+  # Building AI Companions That Actually Remember You
+  ...
+```
+
+**Pipeline delegation** — chain agents sequentially:
+
+```
+/delegate pipeline writer,researcher Write and fact-check an article
+
+  [writer] ✓ — drafted article
+  [researcher] ✓ — verified claims, added citations
+```
+
+The AI also **auto-suggests delegation** when it recognizes a task matches a specialist profile — always asks for your permission first.
+
+### Agent Teams
+
+Named teams of agents that collaborate on complex tasks:
+
+```
+/team create content-team        Install built-in team
+/team run content-team Write a blog post about AI
+
+  Team: content-team (pipeline)
+  Members: writer → researcher
+
+  [writer: drafting...] ✓
+  [researcher: fact-checking...] ✓
+
+  Final output with verified claims.
+```
+
+**3 execution modes:**
+
+| Mode | How it works |
+|:---|:---|
+| `pipeline` | Sequential: agent1 → agent2 → agent3 |
+| `parallel` | All agents work concurrently, coordinator merges |
+| `coordinator` | AI plans how to split the task, assigns to members |
+
+**Built-in teams:**
+
+| Team | Mode | Members |
+|:---|:---|:---|
+| `content-team` | pipeline | writer → researcher |
+| `dev-team` | pipeline | coder → researcher |
+| `research-team` | pipeline | researcher → writer |
+
+Create custom teams:
+
+```
+/team create review-squad pipeline coder:implement,researcher:review
+/team run review-squad Build a rate limiter in TypeScript
+```
+
+The AI auto-suggests teams when appropriate — always asks permission first.
+
 ### Daily Workflow Summary
 
 Here's what a typical day looks like with aman-agent:
@@ -694,6 +780,9 @@ Every operation that can fail logs to `~/.aman-agent/debug.log` with structured 
 |:---|:---|
 | `/help` | Show available commands |
 | `/plan` | Show active plan `[create\|done\|undo\|list\|switch\|show]` |
+| `/profile` | Manage agent profiles `[create\|list\|show\|delete]` |
+| `/delegate` | Delegate task to a profile `[<profile> <task>\|pipeline]` |
+| `/team` | Manage agent teams `[create\|run\|list\|show\|delete]` |
 | `/identity` | View identity `[update <section>]` |
 | `/rules` | View guardrails `[add\|remove\|toggle ...]` |
 | `/workflows` | View workflows `[add\|remove ...]` |

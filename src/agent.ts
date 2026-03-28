@@ -40,6 +40,7 @@ import { BackgroundTaskManager, shouldRunInBackground } from "./background.js";
 import { getActivePlan, formatPlanForPrompt } from "./plans.js";
 import { delegateTask } from "./delegate.js";
 import { listProfiles } from "./prompt.js";
+import { listTeams, loadTeam, runTeam, formatTeamResult } from "./teams.js";
 import { humanizeError } from "./errors.js";
 import { getHint, loadShownHints, saveShownHints, type HintState } from "./hints.js";
 
@@ -98,14 +99,16 @@ export async function runAgent(
   const extractorState: ExtractorState = { turnsSinceLastExtraction: 0, lastExtractionCount: 0 };
   const bgTasks = new BackgroundTaskManager();
 
-  // Add delegate_task virtual tool if profiles exist
+  // Add virtual tools for delegation and teams
   const profiles = listProfiles();
-  if (profiles.length > 0 && tools) {
-    tools = [
-      ...tools,
-      {
+  const teams = listTeams();
+  if (tools && (profiles.length > 0 || teams.length > 0)) {
+    const virtualTools: ToolDefinition[] = [];
+
+    if (profiles.length > 0) {
+      virtualTools.push({
         name: "delegate_task",
-        description: `Delegate a task to a specialist sub-agent with a different profile. Available profiles: ${profiles.map((p) => `${p.name} (${p.personality})`).join(", ")}. IMPORTANT: Always ask the user for permission before delegating. Say something like "This looks like a [type] task. Want me to delegate to the [profile] profile?" and only call this tool after the user confirms.`,
+        description: `Delegate a task to a specialist sub-agent with a different profile. Available profiles: ${profiles.map((p) => `${p.name} (${p.personality})`).join(", ")}. IMPORTANT: Always ask the user for permission before delegating.`,
         input_schema: {
           type: "object",
           properties: {
@@ -114,8 +117,25 @@ export async function runAgent(
           },
           required: ["profile", "task"],
         },
-      },
-    ];
+      });
+    }
+
+    if (teams.length > 0) {
+      virtualTools.push({
+        name: "team_run",
+        description: `Run a task with a named agent team. Available teams: ${teams.map((t) => `${t.name} (${t.workflow}: ${t.members.map((m) => m.profile).join("→")})`).join(", ")}. IMPORTANT: Always ask the user for permission before running a team.`,
+        input_schema: {
+          type: "object",
+          properties: {
+            team: { type: "string", description: "Team name" },
+            task: { type: "string", description: "The task for the team" },
+          },
+          required: ["team", "task"],
+        },
+      });
+    }
+
+    tools = [...tools, ...virtualTools];
   }
   const hintState: HintState = {
     turnCount: 0,
@@ -554,6 +574,28 @@ ${knowledgeItem.content}
                 type: "tool_result" as const,
                 tool_use_id: toolUse.id,
                 content: output,
+              };
+            }
+
+            // Handle team_run virtual tool
+            if (toolUse.name === "team_run" && mcpManager) {
+              const input = toolUse.input as { team: string; task: string };
+              const team = loadTeam(input.team);
+              if (!team) {
+                return {
+                  type: "tool_result" as const,
+                  tool_use_id: toolUse.id,
+                  content: `Team not found: ${input.team}`,
+                  is_error: true,
+                };
+              }
+              const result = await runTeam(team, input.task, client, mcpManager, tools);
+              return {
+                type: "tool_result" as const,
+                tool_use_id: toolUse.id,
+                content: result.success
+                  ? formatTeamResult(result)
+                  : `Team execution failed: ${result.finalOutput}`,
               };
             }
 

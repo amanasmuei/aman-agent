@@ -1,5 +1,7 @@
 import pc from "picocolors";
 import * as p from "@clack/prompts";
+import fs from "node:fs";
+import path from "node:path";
 import type { McpManager } from "./mcp/client.js";
 import type { Message } from "./llm/types.js";
 import type { HooksConfig } from "./config.js";
@@ -343,6 +345,35 @@ export async function onSessionEnd(
       }
 
       console.log(pc.dim(`  Saved ${textMessages.length} messages (session: ${sessionId})`));
+    }
+
+    // Update per-project .acore/context.md if it exists
+    const projectContextPath = path.join(process.cwd(), ".acore", "context.md");
+    if (fs.existsSync(projectContextPath) && messages.length > 2) {
+      try {
+        let contextContent = fs.readFileSync(projectContextPath, "utf-8");
+        const now = new Date().toISOString().split("T")[0];
+
+        // Extract last user message for resume
+        let lastUserMsg = "";
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === "user" && typeof messages[i].content === "string") {
+            lastUserMsg = (messages[i].content as string).slice(0, 200);
+            break;
+          }
+        }
+
+        // Update Session section in context.md
+        const sessionPattern = /## Session\n[\s\S]*?(?=\n## |$)/;
+        if (sessionPattern.test(contextContent)) {
+          const newSession = `## Session\n- Last updated: ${now}\n- Resume: ${lastUserMsg || "See conversation history"}\n- Active topics: [see memory]\n- Recent decisions: [see memory]\n- Temp notes: [cleared]`;
+          contextContent = contextContent.replace(sessionPattern, newSession);
+          fs.writeFileSync(projectContextPath, contextContent, "utf-8");
+          log.debug("hooks", `Updated project context: ${projectContextPath}`);
+        }
+      } catch (err) {
+        log.debug("hooks", "project context update failed", err);
+      }
     }
 
     // Persist final personality state

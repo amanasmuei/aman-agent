@@ -22,8 +22,14 @@ import {
   onBeforeToolExec,
   onWorkflowMatch,
   onSessionEnd,
+  getSessionStartTime,
   type HookContext,
 } from "./hooks.js";
+import {
+  computePersonality,
+  syncPersonalityToCore,
+  formatSleepNudge,
+} from "./personality.js";
 import type { HooksConfig } from "./config.js";
 import { trimConversation } from "./context-manager.js";
 import { log } from "./logger.js";
@@ -405,6 +411,31 @@ export async function runAgent(
       if (recall) {
         augmentedSystemPrompt = activeSystemPrompt + recall.text;
         memoryTokens = recall.tokenEstimate;
+      }
+    }
+
+    // Periodic personality refresh (every 10 turns)
+    const userTurnCount = messages.filter((m) => m.role === "user").length;
+    if (mcpManager && hooksConfig?.personalityAdapt !== false && userTurnCount > 0 && userTurnCount % 10 === 0) {
+      const hour = new Date().getHours();
+      let period: string;
+      if (hour < 6) period = "late-night";
+      else if (hour < 12) period = "morning";
+      else if (hour < 17) period = "afternoon";
+      else if (hour < 21) period = "evening";
+      else period = "night";
+
+      const sessionMinutes = Math.round((Date.now() - getSessionStartTime()) / 60000);
+      const state = computePersonality({
+        timePeriod: period,
+        sessionMinutes,
+        turnCount: userTurnCount,
+      });
+
+      syncPersonalityToCore(state, mcpManager).catch(() => {});
+
+      if (state.sleepReminder) {
+        augmentedSystemPrompt += "\n" + formatSleepNudge();
       }
     }
 

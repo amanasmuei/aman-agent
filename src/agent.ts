@@ -9,8 +9,10 @@ import logUpdate from "log-update";
 import type {
   LLMClient,
   Message,
+  ContentBlock,
   ToolDefinition,
   ToolResultBlock,
+  ImageBlock,
   StreamChunk,
 } from "./llm/types.js";
 import { handleCommand } from "./commands.js";
@@ -268,61 +270,132 @@ export async function runAgent(
     // Auto-trim conversation if approaching token limits
     await trimConversation(messages, client);
 
-    // Detect and read file paths in user input
-    let enrichedInput = input;
-    const filePathMatch = input.match(/(\/[\w./-]+|~\/[\w./-]+)/);
-    if (filePathMatch) {
-      let filePath = filePathMatch[1];
+    // Detect and process file paths + image URLs in user input
+    const textExts = new Set([
+      ".txt", ".md", ".json", ".js", ".ts", ".jsx", ".tsx", ".py",
+      ".html", ".css", ".yml", ".yaml", ".toml", ".xml", ".csv",
+      ".sh", ".bash", ".zsh", ".env", ".cfg", ".ini", ".log",
+      ".sql", ".graphql", ".rs", ".go", ".java", ".rb", ".php",
+      ".c", ".cpp", ".h", ".swift", ".kt", ".r", ".lua",
+    ]);
+    const imageExts = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]);
+    const docExts = new Set([".docx", ".doc", ".pdf", ".pptx", ".ppt", ".xlsx", ".xls", ".odt", ".rtf", ".epub"]);
+    const mimeMap: Record<string, ImageBlock["source"]["media_type"]> = {
+      ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+      ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/png",
+    };
+    const maxImageBytes = 20 * 1024 * 1024; // 20MB
+
+    let textContent = input;
+    const imageBlocks: ImageBlock[] = [];
+
+    // Detect all local file paths
+    const filePathMatches = [...input.matchAll(/(\/[\w./-]+|~\/[\w./-]+)/g)];
+    for (const match of filePathMatches) {
+      let filePath = match[1];
       if (filePath.startsWith("~/")) {
         filePath = path.join(os.homedir(), filePath.slice(2));
       }
-      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-        const ext = path.extname(filePath).toLowerCase();
-        const textExts = new Set([
-          ".txt", ".md", ".json", ".js", ".ts", ".jsx", ".tsx", ".py",
-          ".html", ".css", ".yml", ".yaml", ".toml", ".xml", ".csv",
-          ".sh", ".bash", ".zsh", ".env", ".cfg", ".ini", ".log",
-          ".sql", ".graphql", ".rs", ".go", ".java", ".rb", ".php",
-          ".c", ".cpp", ".h", ".swift", ".kt", ".r", ".lua",
-        ]);
-        if (textExts.has(ext) || ext === "") {
+      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) continue;
+
+      const ext = path.extname(filePath).toLowerCase();
+
+      if (imageExts.has(ext)) {
+        // Image file — base64 encode
+        try {
+          const stat = fs.statSync(filePath);
+          if (stat.size > maxImageBytes) {
+            process.stdout.write(pc.yellow(`  [skipped: ${path.basename(filePath)} — exceeds 20MB limit]\n`));
+            continue;
+          }
+          const data = fs.readFileSync(filePath).toString("base64");
+          const mediaType = mimeMap[ext] || "image/png";
+          imageBlocks.push({
+            type: "image",
+            source: { type: "base64", media_type: mediaType, data },
+          });
+          process.stdout.write(pc.dim(`  [attached image: ${path.basename(filePath)} (${(stat.size / 1024).toFixed(1)}KB)]\n`));
+        } catch {
+          process.stdout.write(pc.dim(`  [could not read image: ${filePath}]\n`));
+        }
+      } else if (textExts.has(ext) || ext === "") {
+        // Text file — inline as XML
+        try {
+          const content = fs.readFileSync(filePath, "utf-8");
+          const maxChars = 50000;
+          const trimmed = content.length > maxChars
+            ? content.slice(0, maxChars) + `\n\n[... truncated, ${content.length - maxChars} chars remaining]`
+            : content;
+          textContent += `\n\n<file path="${filePath}" size="${content.length} chars">\n${trimmed}\n</file>`;
+          process.stdout.write(pc.dim(`  [attached: ${path.basename(filePath)} (${(content.length / 1024).toFixed(1)}KB)]\n`));
+        } catch {
+          process.stdout.write(pc.dim(`  [could not read: ${filePath}]\n`));
+        }
+      } else if (docExts.has(ext)) {
+        // Binary document — convert via MCP
+        if (mcpManager) {
           try {
-            const content = fs.readFileSync(filePath, "utf-8");
-            const maxChars = 50000; // ~12K tokens
-            const trimmed = content.length > maxChars
-              ? content.slice(0, maxChars) + `\n\n[... truncated, ${content.length - maxChars} chars remaining]`
-              : content;
-            enrichedInput = `${input}\n\n<file path="${filePath}" size="${content.length} chars">\n${trimmed}\n</file>`;
-            process.stdout.write(pc.dim(`  [attached: ${path.basename(filePath)} (${(content.length / 1024).toFixed(1)}KB)]\n`));
-          } catch {
-            process.stdout.write(pc.dim(`  [could not read: ${filePath}]\n`));
-          }
-        } else if ([".docx", ".doc", ".pdf", ".pptx", ".ppt", ".xlsx", ".xls", ".odt", ".rtf", ".epub"].includes(ext)) {
-          // Binary document — try converting via MCP doc_convert tool inline
-          if (mcpManager) {
-            try {
-              process.stdout.write(pc.dim(`  [converting: ${path.basename(filePath)}...]\n`));
-              const converted = await mcpManager.callTool("doc_convert", { path: filePath });
-              if (converted && !converted.startsWith("Error") && !converted.includes("Could not convert")) {
-                enrichedInput = `${input}\n\n<file path="${filePath}" format="${ext}">\n${converted.slice(0, 50000)}\n</file>`;
-                process.stdout.write(pc.dim(`  [attached: ${path.basename(filePath)} (converted from ${ext})]\n`));
-              } else {
-                // Conversion failed — pass the error info to LLM
-                enrichedInput = `${input}\n\n<file-error path="${filePath}">\n${converted}\n</file-error>`;
-                process.stdout.write(pc.yellow(`  [conversion note: ${converted.split("\n")[0]}]\n`));
-              }
-            } catch {
-              process.stdout.write(pc.dim(`  [could not convert: ${path.basename(filePath)}]\n`));
+            process.stdout.write(pc.dim(`  [converting: ${path.basename(filePath)}...]\n`));
+            const converted = await mcpManager.callTool("doc_convert", { path: filePath });
+            if (converted && !converted.startsWith("Error") && !converted.includes("Could not convert")) {
+              textContent += `\n\n<file path="${filePath}" format="${ext}">\n${converted.slice(0, 50000)}\n</file>`;
+              process.stdout.write(pc.dim(`  [attached: ${path.basename(filePath)} (converted from ${ext})]\n`));
+            } else {
+              textContent += `\n\n<file-error path="${filePath}">\n${converted}\n</file-error>`;
+              process.stdout.write(pc.yellow(`  [conversion note: ${converted.split("\n")[0]}]\n`));
             }
-          } else {
-            process.stdout.write(pc.yellow(`  Binary file (${ext}) — install Docling for document support: pip install docling\n`));
+          } catch {
+            process.stdout.write(pc.dim(`  [could not convert: ${path.basename(filePath)}]\n`));
           }
+        } else {
+          process.stdout.write(pc.yellow(`  Binary file (${ext}) — install Docling for document support: pip install docling\n`));
         }
       }
     }
 
-    // Send to LLM
-    messages.push({ role: "user", content: enrichedInput });
+    // Detect image URLs in user input
+    const urlImageMatches = [...input.matchAll(/https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp)(?:\?\S*)?/gi)];
+    for (const match of urlImageMatches) {
+      const url = match[0];
+      try {
+        process.stdout.write(pc.dim(`  [fetching image: ${url.slice(0, 60)}...]\n`));
+        const response = await fetch(url);
+        if (!response.ok) {
+          process.stdout.write(pc.yellow(`  [could not fetch: HTTP ${response.status}]\n`));
+          continue;
+        }
+        const buffer = Buffer.from(await response.arrayBuffer());
+        if (buffer.length > maxImageBytes) {
+          process.stdout.write(pc.yellow(`  [skipped: image URL exceeds 20MB limit]\n`));
+          continue;
+        }
+        const contentType = response.headers.get("content-type") || "";
+        let mediaType: ImageBlock["source"]["media_type"] = "image/png";
+        if (contentType.includes("jpeg") || contentType.includes("jpg")) mediaType = "image/jpeg";
+        else if (contentType.includes("gif")) mediaType = "image/gif";
+        else if (contentType.includes("webp")) mediaType = "image/webp";
+        else if (contentType.includes("png")) mediaType = "image/png";
+
+        imageBlocks.push({
+          type: "image",
+          source: { type: "base64", media_type: mediaType, data: buffer.toString("base64") },
+        });
+        process.stdout.write(pc.dim(`  [attached image URL: (${(buffer.length / 1024).toFixed(1)}KB)]\n`));
+      } catch {
+        process.stdout.write(pc.dim(`  [could not fetch image: ${url}]\n`));
+      }
+    }
+
+    // Build user message: structured ContentBlock[] if images present, string otherwise
+    if (imageBlocks.length > 0) {
+      const blocks: ContentBlock[] = [
+        { type: "text", text: textContent },
+        ...imageBlocks,
+      ];
+      messages.push({ role: "user", content: blocks });
+    } else {
+      messages.push({ role: "user", content: textContent });
+    }
 
     // Per-message memory recall
     let augmentedSystemPrompt = activeSystemPrompt;

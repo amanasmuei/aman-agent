@@ -36,6 +36,7 @@ import { log } from "./logger.js";
 import { withRetry } from "./retry.js";
 import { extractMemories as runExtraction, type ExtractorState } from "./memory-extractor.js";
 import { autoTriggerSkills, matchKnowledge } from "./skill-engine.js";
+import { BackgroundTaskManager, shouldRunInBackground } from "./background.js";
 import { humanizeError } from "./errors.js";
 import { getHint, loadShownHints, saveShownHints, type HintState } from "./hints.js";
 
@@ -92,6 +93,7 @@ export async function runAgent(
   const messages: Message[] = [];
   const sessionId = generateSessionId();
   const extractorState: ExtractorState = { turnsSinceLastExtraction: 0, lastExtractionCount: 0 };
+  const bgTasks = new BackgroundTaskManager();
   const hintState: HintState = {
     turnCount: 0,
     shownHints: loadShownHints(),
@@ -139,6 +141,11 @@ export async function runAgent(
 
   // Handle Ctrl+C gracefully
   rl.on("SIGINT", async () => {
+    // Wait for background tasks before exiting
+    if (bgTasks.pendingCount > 0) {
+      await bgTasks.waitAll();
+      bgTasks.displayCompleted();
+    }
     if (mcpManager && hooksConfig) {
       try {
         const hookCtx: HookContext = { mcpManager, config: hooksConfig };
@@ -193,6 +200,14 @@ export async function runAgent(
   }
 
   while (true) {
+    // Check for completed background tasks
+    if (bgTasks.hasCompleted) {
+      const bgOutputs = bgTasks.displayCompleted();
+      for (const output of bgOutputs) {
+        messages.push({ role: "user", content: output });
+      }
+    }
+
     const input = await prompt();
     if (!input.trim()) continue;
 
@@ -496,6 +511,16 @@ ${knowledgeItem.content}
                   is_error: true,
                 };
               }
+            }
+
+            // Check if tool should run in background
+            if (shouldRunInBackground(toolUse.name)) {
+              const task = bgTasks.launch(toolUse.name, toolUse.id, mcpManager, toolUse.input);
+              return {
+                type: "tool_result" as const,
+                tool_use_id: toolUse.id,
+                content: `[${toolUse.name} launched in background (${task.id}). Results will appear when ready. Continue with other work.]`,
+              };
             }
 
             process.stdout.write(pc.dim(`  [using ${toolUse.name}...]\n`));

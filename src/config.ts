@@ -11,6 +11,7 @@ export interface HooksConfig {
   autoSessionSave?: boolean;
   extractMemories?: boolean;
   featureHints?: boolean;
+  personalityAdapt?: boolean;
 }
 
 const DEFAULT_HOOKS: HooksConfig = {
@@ -22,6 +23,7 @@ const DEFAULT_HOOKS: HooksConfig = {
   autoSessionSave: true,
   extractMemories: true,
   featureHints: true,
+  personalityAdapt: true,
 };
 
 export interface McpServerEntry {

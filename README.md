@@ -130,6 +130,317 @@ aman-agent --budget 12000
 
 ---
 
+## Usage Guide
+
+A step-by-step walkthrough of how to use aman-agent day-to-day.
+
+### Your First Conversation
+
+On first run, the agent introduces itself and asks your name. Just talk naturally:
+
+```
+$ aman-agent
+
+  aman agent — your AI companion
+  ✓ Auto-detected Anthropic API key. Using Claude Sonnet 4.6.
+  ✓ Ecosystem ready: identity, guardrails (1,204 tokens)
+  ✓ Connected 30 MCP tools
+  ✓ Personality: morning session, high-drive energy
+  Aman is ready.
+
+You > Hey, I'm working on a Node.js API
+
+ Aman ──────────────────────────────────────────────
+
+  Nice to meet you! I'm Aman, your AI companion. I'll remember
+  what matters across our conversations — your preferences,
+  decisions, and patterns.
+
+  What kind of API are you building? I can help with architecture,
+  auth, database design, or whatever you need.
+
+ ────────────────────────────────────── [1 memory stored]
+```
+
+That's it. No setup required. The agent remembers your stack from this point forward.
+
+### How Memory Works
+
+Memory is automatic. You don't need to do anything — the agent silently extracts important information from every conversation:
+
+- **Preferences** — "I prefer Vitest over Jest" → remembered
+- **Decisions** — "Let's use PostgreSQL" → remembered
+- **Patterns** — "User always writes tests first" → remembered
+- **Facts** — "The auth service is in /services/auth" → remembered
+
+Memory shows up naturally in responses:
+
+```
+You > Let's add a new endpoint
+
+ Aman ──────────────────────────────────────────────
+
+  Based on your previous decisions, I'll set it up with:
+  - PostgreSQL (your preference)
+  - JWT auth (decided last session)
+  - Vitest for tests
+
+ ──────────────────────────────── memories: ~47 tokens
+```
+
+**Useful memory commands:**
+
+```
+/memory search auth      Search your memories
+/memory timeline         See memory growth over time
+/decisions               View your decision log
+```
+
+### Working with Files & Images
+
+Reference any file path in your message — it gets attached automatically:
+
+```
+You > Review this code ~/projects/api/src/auth.ts
+
+  [attached: auth.ts (3.2KB)]
+
+ Aman ──────────────────────────────────────────────
+  Looking at your auth middleware...
+```
+
+**Images** work the same way — the agent can see them:
+
+```
+You > What's wrong with this schema? ~/Desktop/schema.png
+
+  [attached image: schema.png (142.7KB)]
+
+ Aman ──────────────────────────────────────────────
+  I see a few issues with your schema...
+```
+
+**Supported files:**
+- **Code/text:** `.ts`, `.js`, `.py`, `.go`, `.rs`, `.md`, `.json`, `.yaml`, and 30+ more
+- **Images:** `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp` (also URLs)
+- **Documents:** `.pdf`, `.docx`, `.xlsx`, `.pptx` (via Docling)
+
+Multiple files in one message work too.
+
+### Working with Plans
+
+Plans help you track multi-step work that spans sessions.
+
+**Create a plan:**
+
+```
+You > /plan create Auth API | Ship JWT auth | Design schema, Build endpoints, Write tests, Deploy
+
+  Plan created!
+
+  Plan: Auth API (active)
+  Goal: Ship JWT auth
+  Progress: [░░░░░░░░░░░░░░░░░░░░] 0/4 (0%)
+
+     1. [ ] Design schema
+     2. [ ] Build endpoints
+     3. [ ] Write tests
+     4. [ ] Deploy
+
+  Next: Step 1 — Design schema
+```
+
+**Mark progress as you work:**
+
+```
+You > /plan done
+
+  Step 1 done!
+
+  Plan: Auth API (active)
+  Progress: [█████░░░░░░░░░░░░░░░] 1/4 (25%)
+
+     1. [✓] Design schema
+     2. [ ] Build endpoints      ← Next
+     3. [ ] Write tests
+     4. [ ] Deploy
+```
+
+**The AI knows your plan.** Every turn, the active plan is injected into context. The AI knows which step you're on and reminds you to commit after completing steps.
+
+**Resume across sessions.** Close the terminal, come back tomorrow — your plan is still there:
+
+```
+$ aman-agent
+
+  Welcome back. You're on step 2 of Auth API — Build endpoints.
+```
+
+**All plan commands:**
+
+```
+/plan                Show active plan
+/plan done [step#]   Mark step complete (next if no number)
+/plan undo <step#>   Unmark a step
+/plan list           Show all plans
+/plan switch <name>  Switch active plan
+/plan show <name>    View a specific plan
+```
+
+Plans are stored as markdown in `.acore/plans/` — they're git-trackable.
+
+### Skills in Action
+
+Skills activate automatically based on what you're talking about. No commands needed.
+
+```
+You > How should I handle SQL injection in this query?
+
+  [skill: security Lv.3 activated]
+  [skill: database Lv.2 activated]
+
+ Aman ──────────────────────────────────────────────
+  Use parameterized queries — never interpolate user input...
+```
+
+**Skills level up as you use them:**
+
+| Level | Label | What changes |
+|:---|:---|:---|
+| Lv.1 | Learning | Detailed explanations, examples |
+| Lv.2 | Familiar | Brief reasoning, show patterns |
+| Lv.3 | Proficient | Task-focused, skip basics |
+| Lv.4 | Advanced | Edge cases, proactive suggestions |
+| Lv.5 | Expert | Just execute, no hand-holding |
+
+Skills also self-improve — when the agent learns your patterns (e.g., "user prefers Prisma over raw SQL"), it enriches the skill with your preferences.
+
+**12 built-in skill domains:** testing, api-design, security, performance, code-review, documentation, git-workflow, debugging, refactoring, database, typescript, accessibility
+
+**10 knowledge library items** auto-suggested when relevant: security-headers, docker-node, github-actions, env-config, error-handling, rate-limiter, prisma-setup, zod-validation, testing-patterns, git-hooks
+
+### Project Workflow
+
+aman-agent is project-aware. When you run it in a project directory, it loads project-specific context.
+
+**Set up a project:**
+
+```bash
+cd ~/my-project
+npx @aman_asmuei/acore        # Creates .acore/context.md with detected stack
+aman-agent                     # Loads project context automatically
+```
+
+**What gets scoped to your project:**
+- Decisions and topology (stored in amem with `project:my-project` scope)
+- Session state (saved to `.acore/context.md` on exit)
+- Plans (stored in `.acore/plans/`)
+
+**Switch projects naturally:**
+
+```bash
+cd ~/project-a && aman-agent   # Loads project-a context + memories
+cd ~/project-b && aman-agent   # Loads project-b context + memories
+```
+
+Global preferences (coding style, tool choices) carry across all projects.
+
+### Personality & Wellbeing
+
+The agent adapts its tone based on time of day and how you're doing:
+
+- **Morning:** energetic, direct
+- **Afternoon:** steady, focused
+- **Evening:** warm, winding down
+- **Late night:** gentle, reflective
+
+It also reads your messages for frustration, confusion, or fatigue — and adapts:
+
+```
+You > ugh nothing works, tried everything!!
+
+  [sentiment: frustrated]
+
+ Aman ──────────────────────────────────────────────
+  That sounds frustrating. Let's step back and try a different
+  angle — what changed since it last worked?
+```
+
+**Wellbeing nudges** appear when needed:
+- Long late-night session → gentle suggestion to rest
+- 90+ minutes of frustration → suggest a break
+- User seems tired → concise responses, support wrapping up
+
+These are one-time nudges — the agent won't nag.
+
+### Customization
+
+**Persona presets** for different work styles:
+
+```bash
+aman-agent init
+# Choose: Coding Partner, Creative Collaborator,
+#          Personal Assistant, Learning Buddy, or Minimal
+```
+
+**Guardrails** control what the AI should and shouldn't do:
+
+```
+/rules add Coding Always write tests before merging
+/rules add Never Delete production data without confirmation
+```
+
+**Workflows** teach the AI multi-step processes:
+
+```
+/workflows add code-review
+```
+
+**Hook toggles** in `~/.aman-agent/config.json`:
+
+```json
+{
+  "hooks": {
+    "memoryRecall": true,
+    "personalityAdapt": true,
+    "extractMemories": true,
+    "featureHints": true
+  }
+}
+```
+
+Set any to `false` to disable.
+
+### Daily Workflow Summary
+
+Here's what a typical day looks like with aman-agent:
+
+```
+Morning:
+  $ cd ~/project && aman-agent
+  → Loads project context, active plan, memories
+  → "Welcome back. You're on step 3 of Auth API."
+  → Work on your plan, skills auto-activate as needed
+  → /plan done after each step, commit your work
+
+Afternoon:
+  → Personality shifts to steady pace
+  → Skills level up as you demonstrate mastery
+  → Knowledge library suggests snippets when relevant
+
+Evening:
+  → /quit or Ctrl+C
+  → Session auto-saved to memory
+  → Project context.md updated
+  → Plan progress persisted
+  → Optional quick session rating
+
+Next morning:
+  → Everything picks up where you left off
+```
+
+---
+
 ## Intelligent Companion Features
 
 ### Per-Message Memory Recall with Progressive Disclosure

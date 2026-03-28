@@ -5,6 +5,8 @@ import { execFileSync } from "node:child_process";
 import pc from "picocolors";
 import type { McpManager } from "./mcp/client.js";
 import { getEcosystemStatus } from "./layers/parsers.js";
+import { listProfiles } from "./prompt.js";
+import { BUILT_IN_PROFILES, installProfileTemplate } from "./profile-templates.js";
 import {
   createPlan,
   getActivePlan,
@@ -765,6 +767,118 @@ function handleDebugCommand(): CommandResult {
 
 // --- Main Router ---
 
+// --- Profile management ---
+
+function handleProfileCommand(action: string | undefined, args: string[]): CommandResult {
+  const profilesDir = path.join(os.homedir(), ".acore", "profiles");
+
+  if (!action || action === "list") {
+    const profiles = listProfiles();
+    if (profiles.length === 0) {
+      return { handled: true, output: pc.dim("No profiles yet. Create one with: /profile create <name>") };
+    }
+    const lines = profiles.map((p) =>
+      `  ${pc.bold(p.name)} — ${p.aiName} (${pc.dim(p.personality)})`
+    );
+    return { handled: true, output: "Profiles:\n" + lines.join("\n") + "\n\n" + pc.dim("Switch with: aman-agent --profile <name>") };
+  }
+
+  switch (action) {
+    case "create": {
+      const name = args[0];
+      if (!name) {
+        // Show available templates
+        const lines = BUILT_IN_PROFILES.map((t) =>
+          `  ${pc.bold(t.name)} — ${t.label}: ${pc.dim(t.description)}`
+        );
+        return {
+          handled: true,
+          output: "Built-in profiles:\n" + lines.join("\n") +
+            "\n\nUsage:\n  /profile create coder     Install built-in template" +
+            "\n  /profile create <custom>  Create blank profile",
+        };
+      }
+
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const profileDir = path.join(profilesDir, slug);
+
+      if (fs.existsSync(profileDir)) {
+        return { handled: true, output: pc.yellow(`Profile already exists: ${slug}`) };
+      }
+
+      // Check if it's a built-in template
+      const builtIn = BUILT_IN_PROFILES.find((t) => t.name === slug);
+      if (builtIn) {
+        const err = installProfileTemplate(slug);
+        if (err) return { handled: true, output: pc.red(err) };
+        return {
+          handled: true,
+          output: pc.green(`Profile installed: ${builtIn.label}`) +
+            `\n  AI name: ${builtIn.core.match(/^# (.+)/m)?.[1] || slug}` +
+            `\n  ${pc.dim(builtIn.description)}` +
+            `\n\n  Use: aman-agent --profile ${slug}`,
+        };
+      }
+
+      // Custom profile — create from default
+      fs.mkdirSync(profileDir, { recursive: true });
+      const globalCore = path.join(os.homedir(), ".acore", "core.md");
+      if (fs.existsSync(globalCore)) {
+        let content = fs.readFileSync(globalCore, "utf-8");
+        const aiName = name.charAt(0).toUpperCase() + name.slice(1);
+        content = content.replace(/^# .+$/m, `# ${aiName}`);
+        fs.writeFileSync(path.join(profileDir, "core.md"), content, "utf-8");
+      } else {
+        const aiName = name.charAt(0).toUpperCase() + name.slice(1);
+        fs.writeFileSync(path.join(profileDir, "core.md"), `# ${aiName}\n\n## Identity\n- Role: ${aiName} is your AI companion\n- Personality: helpful, adaptive\n- Communication: clear and concise\n- Values: honesty, simplicity\n- Boundaries: won't pretend to be human\n`, "utf-8");
+      }
+
+      return {
+        handled: true,
+        output: pc.green(`Profile created: ${slug}`) +
+          `\n  Edit: ${path.join(profileDir, "core.md")}` +
+          `\n  Use: aman-agent --profile ${slug}` +
+          `\n\n  ${pc.dim("Add rules.md or skills.md for profile-specific overrides.")}`,
+      };
+    }
+
+    case "show": {
+      const name = args[0];
+      if (!name) return { handled: true, output: pc.yellow("Usage: /profile show <name>") };
+      const profileDir = path.join(profilesDir, name);
+      if (!fs.existsSync(profileDir)) return { handled: true, output: pc.red(`Profile not found: ${name}`) };
+
+      const files = fs.readdirSync(profileDir).filter((f) => f.endsWith(".md"));
+      const lines = files.map((f) => `  ${f}`);
+      return { handled: true, output: `Profile: ${pc.bold(name)}\nFiles:\n${lines.join("\n")}` };
+    }
+
+    case "delete": {
+      const name = args[0];
+      if (!name) return { handled: true, output: pc.yellow("Usage: /profile delete <name>") };
+      const profileDir = path.join(profilesDir, name);
+      if (!fs.existsSync(profileDir)) return { handled: true, output: pc.red(`Profile not found: ${name}`) };
+
+      fs.rmSync(profileDir, { recursive: true });
+      return { handled: true, output: pc.dim(`Profile deleted: ${name}`) };
+    }
+
+    case "help":
+      return { handled: true, output: `Profile commands:
+  /profile              List all profiles
+  /profile create <n>   Create new profile
+  /profile show <n>     Show profile files
+  /profile delete <n>   Delete a profile
+
+  Use profiles:
+  aman-agent --profile <name>
+  AMAN_PROFILE=<name> aman-agent` };
+
+    default:
+      return { handled: true, output: pc.yellow(`Unknown profile action: ${action}. Try /profile help`) };
+  }
+}
+
 // --- Plan management ---
 
 function handlePlanCommand(action: string | undefined, args: string[]): CommandResult {
@@ -878,7 +992,7 @@ const KNOWN_COMMANDS = new Set([
   "quit", "exit", "q", "help", "clear", "model", "identity", "rules",
   "workflows", "tools", "akit", "skills", "eval", "memory", "status", "doctor",
   "save", "decisions", "export", "debug", "update-config", "reconfig",
-  "update", "upgrade", "plan",
+  "update", "upgrade", "plan", "profile",
 ]);
 
 export async function handleCommand(input: string, ctx: CommandContext): Promise<CommandResult> {
@@ -933,6 +1047,8 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
       return handleReconfig();
     case "plan":
       return handlePlanCommand(action, args);
+    case "profile":
+      return handleProfileCommand(action, args);
     case "update":
     case "upgrade":
       return handleUpdate();

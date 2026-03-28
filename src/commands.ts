@@ -7,6 +7,7 @@ import type { McpManager } from "./mcp/client.js";
 import { getEcosystemStatus } from "./layers/parsers.js";
 import { listProfiles } from "./prompt.js";
 import { BUILT_IN_PROFILES, installProfileTemplate } from "./profile-templates.js";
+import { delegateTask, delegatePipeline } from "./delegate.js";
 import {
   createPlan,
   getActivePlan,
@@ -30,6 +31,8 @@ export interface CommandResult {
 export interface CommandContext {
   model?: string;
   mcpManager?: McpManager;
+  llmClient?: import("./llm/types.js").LLMClient;
+  tools?: import("./llm/types.js").ToolDefinition[];
 }
 
 function readEcosystemFile(filePath: string, label: string): string {
@@ -767,6 +770,98 @@ function handleDebugCommand(): CommandResult {
 
 // --- Main Router ---
 
+// --- Delegation ---
+
+async function handleDelegateCommand(action: string | undefined, args: string[], ctx: CommandContext): Promise<CommandResult> {
+  if (!action) {
+    return { handled: true, output: `Delegate commands:
+  /delegate <profile> <task>        Delegate a task to a profile
+  /delegate pipeline <p1> <p2> ...  Run a sequential pipeline
+  /delegate help                    Show help
+
+Examples:
+  /delegate writer Write a blog post about AI companions
+  /delegate coder Review this code for security issues
+  /delegate pipeline writer,researcher Write and fact-check an article about quantum computing` };
+  }
+
+  if (action === "help") {
+    return { handled: true, output: `Delegate a task to a sub-agent with a specific profile.
+
+The sub-agent runs with its own identity, rules, and skills but shares
+your memory and tools. Results come back to you.
+
+Usage:
+  /delegate <profile> <task>
+  /delegate pipeline <profile1>,<profile2> <task>
+
+The pipeline mode passes each agent's output to the next:
+  writer drafts → researcher reviews → writer polishes` };
+  }
+
+  if (!ctx.llmClient || !ctx.mcpManager) {
+    return { handled: true, output: pc.red("Delegation requires LLM client and MCP. Not available.") };
+  }
+
+  if (action === "pipeline") {
+    // /delegate pipeline writer,researcher,writer Write an article about AI
+    const profileList = args[0];
+    const task = args.slice(1).join(" ");
+    if (!profileList || !task) {
+      return { handled: true, output: pc.yellow("Usage: /delegate pipeline <profile1>,<profile2> <task>") };
+    }
+
+    const profiles = profileList.split(",").map((p) => p.trim());
+    const steps = profiles.map((profile, i) => {
+      if (i === 0) {
+        return { profile, taskTemplate: task };
+      }
+      return { profile, taskTemplate: `Review and improve the following:\n\n{{input}}` };
+    });
+
+    process.stdout.write(pc.dim(`\n  Pipeline: ${profiles.join(" → ")}\n`));
+
+    const results = await delegatePipeline(steps, task, ctx.llmClient, ctx.mcpManager, { tools: ctx.tools });
+
+    const output: string[] = [];
+    for (const r of results) {
+      if (r.success) {
+        output.push(`\n${pc.bold(`[${r.profile}]`)} ${pc.green("✓")} (${r.turns} tool turns)`);
+        output.push(r.response.slice(0, 2000));
+        if (r.toolsUsed.length > 0) output.push(pc.dim(`  Tools: ${r.toolsUsed.join(", ")}`));
+      } else {
+        output.push(`\n${pc.bold(`[${r.profile}]`)} ${pc.red("✗")} ${r.error}`);
+      }
+    }
+
+    return { handled: true, output: output.join("\n") };
+  }
+
+  // /delegate <profile> <task>
+  const profile = action;
+  const task = args.join(" ");
+  if (!task) {
+    return { handled: true, output: pc.yellow(`Usage: /delegate ${profile} <task description>`) };
+  }
+
+  process.stdout.write(pc.dim(`\n  [delegating to ${profile}...]\n\n`));
+
+  const result = await delegateTask(task, profile, ctx.llmClient, ctx.mcpManager, { tools: ctx.tools });
+
+  if (!result.success) {
+    return { handled: true, output: pc.red(`Delegation failed: ${result.error}`) };
+  }
+
+  const meta: string[] = [];
+  if (result.toolsUsed.length > 0) meta.push(`Tools: ${result.toolsUsed.join(", ")}`);
+  if (result.turns > 0) meta.push(`${result.turns} tool turns`);
+
+  return {
+    handled: true,
+    output: `\n${pc.bold(`[${profile}]`)} ${pc.green("✓")}${meta.length > 0 ? " " + pc.dim(`(${meta.join(", ")})`) : ""}\n\n${result.response}`,
+  };
+}
+
 // --- Profile management ---
 
 function handleProfileCommand(action: string | undefined, args: string[]): CommandResult {
@@ -992,7 +1087,7 @@ const KNOWN_COMMANDS = new Set([
   "quit", "exit", "q", "help", "clear", "model", "identity", "rules",
   "workflows", "tools", "akit", "skills", "eval", "memory", "status", "doctor",
   "save", "decisions", "export", "debug", "update-config", "reconfig",
-  "update", "upgrade", "plan", "profile",
+  "update", "upgrade", "plan", "profile", "delegate",
 ]);
 
 export async function handleCommand(input: string, ctx: CommandContext): Promise<CommandResult> {
@@ -1049,6 +1144,8 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
       return handlePlanCommand(action, args);
     case "profile":
       return handleProfileCommand(action, args);
+    case "delegate":
+      return handleDelegateCommand(action, args, ctx);
     case "update":
     case "upgrade":
       return handleUpdate();

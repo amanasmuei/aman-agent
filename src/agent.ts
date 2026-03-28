@@ -213,7 +213,7 @@ export async function runAgent(
     if (!input.trim()) continue;
 
     // Handle slash commands
-    const cmdResult = await handleCommand(input, { model, mcpManager });
+    const cmdResult = await handleCommand(input, { model, mcpManager, llmClient: client, tools });
     if (cmdResult.handled) {
       if (cmdResult.quit) {
         if (mcpManager && hooksConfig) {

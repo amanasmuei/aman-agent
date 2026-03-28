@@ -37,6 +37,7 @@ import { withRetry } from "./retry.js";
 import { extractMemories as runExtraction, type ExtractorState } from "./memory-extractor.js";
 import { autoTriggerSkills, matchKnowledge } from "./skill-engine.js";
 import { BackgroundTaskManager, shouldRunInBackground } from "./background.js";
+import { getActivePlan, formatPlanForPrompt } from "./plans.js";
 import { humanizeError } from "./errors.js";
 import { getHint, loadShownHints, saveShownHints, type HintState } from "./hints.js";
 
@@ -287,6 +288,12 @@ export async function runAgent(
           }
         }
       } catch (err) { log.debug("agent", "workflow match failed", err); }
+    }
+
+    // Inject active plan into context
+    const activePlan = getActivePlan();
+    if (activePlan) {
+      activeSystemPrompt += "\n\n" + formatPlanForPrompt(activePlan);
     }
 
     // Auto-trigger skills based on conversation context

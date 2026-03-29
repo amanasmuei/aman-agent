@@ -52,6 +52,7 @@ describe("config", () => {
           autoSessionSave: true,
           extractMemories: true,
           featureHints: true,
+          personalityAdapt: true,
         },
       });
     });

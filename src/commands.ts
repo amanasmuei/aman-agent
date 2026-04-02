@@ -8,6 +8,7 @@ import { getEcosystemStatus } from "./layers/parsers.js";
 import { listProfiles } from "./prompt.js";
 import { BUILT_IN_PROFILES, installProfileTemplate } from "./profile-templates.js";
 import { delegateTask, delegatePipeline } from "./delegate.js";
+import { runCouncil, formatCouncilReport } from "./council.js";
 import {
   createTeam,
   loadTeam,
@@ -779,6 +780,53 @@ function handleDebugCommand(): CommandResult {
   return { handled: true, output: pc.bold("Debug Log (last 20 entries):\n") + pc.dim(last20) };
 }
 
+// --- Council ---
+
+async function handleCouncilCommand(
+  action: string | undefined,
+  args: string[],
+  ctx: CommandContext,
+): Promise<CommandResult> {
+  if (!ctx.llmClient || !ctx.mcpManager) {
+    return {
+      handled: true,
+      output: pc.red("Council requires an active LLM client and MCP connection."),
+    };
+  }
+
+  const question = [action, ...args].filter(Boolean).join(" ").trim();
+
+  if (!question) {
+    return {
+      handled: true,
+      output: [
+        pc.bold("Usage:"),
+        "  /council <question>",
+        "",
+        pc.bold("Examples:"),
+        "  /council Should we build web-only first or web + mobile from day one?",
+        "  /council Which backend framework: Node.js or Laravel?",
+        "",
+        pc.dim("Or use natural language triggers:"),
+        pc.dim('  "council this: should we use revenue share or fixed fee model?"'),
+        pc.dim('  "war room this: is 10 weeks a realistic delivery timeline?"'),
+      ].join("\n"),
+    };
+  }
+
+  process.stdout.write(pc.dim("\n  Convening council — 5 advisors thinking in parallel...\n"));
+
+  try {
+    const result = await runCouncil(question, ctx.llmClient, ctx.mcpManager);
+    return { handled: true, output: formatCouncilReport(result) };
+  } catch (err) {
+    return {
+      handled: true,
+      output: pc.red(`Council failed: ${err instanceof Error ? err.message : String(err)}`),
+    };
+  }
+}
+
 // --- Main Router ---
 
 // --- Teams ---
@@ -1226,7 +1274,7 @@ const KNOWN_COMMANDS = new Set([
   "quit", "exit", "q", "help", "clear", "model", "identity", "rules",
   "workflows", "tools", "akit", "skills", "eval", "memory", "status", "doctor",
   "save", "decisions", "export", "debug", "update-config", "reconfig",
-  "update", "upgrade", "plan", "profile", "delegate", "team",
+  "update", "upgrade", "plan", "profile", "delegate", "team", "council",
 ]);
 
 export async function handleCommand(input: string, ctx: CommandContext): Promise<CommandResult> {
@@ -1287,6 +1335,8 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
       return handleDelegateCommand(action, args, ctx);
     case "team":
       return handleTeamCommand(action, args, ctx);
+    case "council":
+      return handleCouncilCommand(action, args, ctx);
     case "update":
     case "upgrade":
       return handleUpdate();

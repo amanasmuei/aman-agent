@@ -19,6 +19,7 @@ const SKILL_TRIGGERS: Record<string, string[]> = {
   database: ["database", "schema", "migration", "index", "query", "sql", "postgres", "mysql", "sqlite", "mongo", "orm", "prisma", "drizzle"],
   typescript: ["typescript", "type", "interface", "generic", "infer", "utility type", "zod", "discriminated union", "type guard", "as const"],
   accessibility: ["accessibility", "a11y", "aria", "screen reader", "wcag", "semantic html", "tab order", "focus", "contrast"],
+  council: ["council this", "run the council", "war room this", "pressure-test this", "stress-test this", "debate this", "should i", "which option", "validate this", "get multiple perspectives", "i can't decide", "torn between"],
 };
 
 // --- Skill Level Tracking ---

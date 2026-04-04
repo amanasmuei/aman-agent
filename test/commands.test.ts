@@ -24,6 +24,7 @@ vi.mock("../src/memory.js", () => ({
     memories: [{ content: "mock", type: "fact", score: 0.9 }],
     text: `Mock recall for ${query}`,
   })),
+  isMemoryInitialized: vi.fn(() => true),
 }));
 
 const { handleCommand } = await import("../src/commands.js");

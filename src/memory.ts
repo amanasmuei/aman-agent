@@ -100,4 +100,8 @@ export function memoryConsolidate(dryRun = false): ConsolidationReport {
   });
 }
 
+export function isMemoryInitialized(): boolean {
+  return db !== null;
+}
+
 export { type RecallResult, type ContextResult, type StoreResult, type StoreOptions, type ConsolidationReport };

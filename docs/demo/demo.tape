@@ -1,4 +1,4 @@
-# aman-agent v0.13.0 — Comprehensive Demo
+# aman-agent — Comprehensive Demo
 # 5 scenes covering ALL features
 #
 # Record: vhs docs/demo/demo.tape
@@ -28,4 +28,4 @@ Enter
 Sleep 1s
 Show
 
-Sleep 120s
+Sleep 135s

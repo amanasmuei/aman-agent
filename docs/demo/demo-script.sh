@@ -16,6 +16,7 @@ R='\033[0m'       # reset
 W='\033[37m'      # white
 M='\033[0;35m'    # magenta
 RED='\033[0;31m'  # red
+BL='\033[0;34m'   # blue
 
 t() {
   local text="$1"
@@ -50,7 +51,7 @@ clear
 # ╚═══════════════════════════════════════════════════════════╝
 
 printf "\n"
-printf "  ${D}SCENE 1${R}  ${B}First Run — Zero Config${R}\n"
+printf "  ${D}SCENE 1${R}  ${B}First Run — Choose Your Provider${R}\n"
 div
 p 1.2
 
@@ -62,8 +63,31 @@ p 0.8
 printf "\n"
 printf "  ${B}aman agent${R}${D} — your AI companion${R}\n"
 p 0.3
-printf "  ${G}✓${R} Auto-detected Anthropic API key → ${B}Claude Sonnet 4.6${R}\n"
-p 0.25
+printf "\n  ${BL}●${R}  First-time setup — configure your LLM connection.\n"
+p 0.4
+
+printf "\n  ${BL}◇${R}  LLM provider\n"
+printf "  ${G}●${R}  Claude (Anthropic)       ${D}— recommended${R}\n"
+printf "  ${D}○${R}  GitHub Copilot           ${D}— uses GitHub Models${R}\n"
+printf "  ${D}○${R}  GPT (OpenAI)\n"
+printf "  ${D}○${R}  Ollama (local)           ${D}— free, runs offline${R}\n"
+p 1
+
+printf "\n  ${G}✓${R} Claude Code CLI detected.\n"
+p 0.3
+printf "\n  ${BL}◇${R}  Authentication\n"
+printf "  ${G}●${R}  Already logged in to Claude Code\n"
+printf "  ${D}○${R}  Log in now               ${D}— runs: claude login${R}\n"
+p 0.6
+
+printf "\n  ${BL}◇${R}  Claude model\n"
+printf "  ${G}●${R}  Claude Sonnet 4.6        ${D}— fast, recommended${R}\n"
+printf "  ${D}○${R}  Claude Opus 4.6          ${D}— most capable${R}\n"
+printf "  ${D}○${R}  Claude Haiku 4.5         ${D}— fastest${R}\n"
+p 0.8
+
+printf "\n  ${G}✓${R} Config saved to ~/.aman-agent/config.json\n"
+p 0.3
 printf "  ${G}✓${R} Ecosystem: identity, guardrails ${D}(1,204 tokens)${R}\n"
 p 0.25
 printf "  ${G}✓${R} Connected 30 MCP tools\n"
@@ -453,7 +477,7 @@ p 2.5
 
 clear
 printf "\n\n"
-printf "  ${B}aman-agent v0.13.0${R}\n"
+printf "  ${B}aman-agent${R}\n"
 printf "  ${D}The AI companion that actually remembers you.${R}\n"
 printf "\n"
 printf "  ${G}npx @aman_asmuei/aman-agent${R}\n"
@@ -467,9 +491,9 @@ printf "  ${D}●${R} Image & file support   ${D}●${R} Background tasks\n"
 printf "  ${D}●${R} Sentiment detection    ${D}●${R} Wellbeing nudges\n"
 printf "  ${D}●${R} Guardrail enforcement  ${D}●${R} Workflow automation\n"
 printf "  ${D}●${R} Memory consolidation   ${D}●${R} Reminders\n"
-printf "  ${D}●${R} Multi-LLM support      ${D}●${R} Session auto-save\n"
+printf "  ${D}●${R} Multi-LLM support      ${D}●${R} Copilot + Claude Code CLI\n"
 printf "\n"
-printf "  ${D}Works with: Anthropic, OpenAI, Ollama${R}\n"
+printf "  ${D}Works with: Claude (via CLI), GitHub Copilot, OpenAI, Ollama${R}\n"
 printf "  ${D}MIT Licensed  |  github.com/amanasmuei/aman-agent${R}\n"
 printf "\n\n"
 p 5

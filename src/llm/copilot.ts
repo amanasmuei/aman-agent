@@ -1,5 +1,4 @@
-import OpenAI from "openai";
-import { execFileSync } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import type {
   LLMClient,
   Message,
@@ -7,17 +6,15 @@ import type {
   ToolDefinition,
   ChatResponse,
   ChatOptions,
+  ContentBlock,
 } from "./types.js";
-import { toOpenAICompatibleMessages } from "./openai-compat.js";
-
-const GITHUB_MODELS_BASE_URL = "https://models.inference.ai.azure.com";
 
 /**
- * Check if the `gh` CLI is installed.
+ * Check if the `copilot` CLI is installed.
  */
-export function isGhCliInstalled(): boolean {
+export function isCopilotCliInstalled(): boolean {
   try {
-    execFileSync("which", ["gh"], { stdio: "ignore" });
+    execFileSync("which", ["copilot"], { stdio: "ignore" });
     return true;
   } catch {
     return false;
@@ -25,43 +22,131 @@ export function isGhCliInstalled(): boolean {
 }
 
 /**
- * Check if the user is authenticated with `gh`.
+ * Check if the `copilot` CLI is authenticated.
  */
-export function isGhAuthenticated(): boolean {
+export function isCopilotCliAuthenticated(): boolean {
   try {
-    const result = execFileSync("gh", ["auth", "status"], {
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 5000,
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Get the current GitHub auth token from `gh auth token`.
- */
-export function getGhToken(): string {
-  try {
-    const token = execFileSync("gh", ["auth", "token"], {
+    const result = execFileSync("copilot", ["--version"], {
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 5000,
-    })
-      .toString()
-      .trim();
-    if (!token) {
-      throw new Error("No token returned from gh auth token");
-    }
-    return token;
+    });
+    return result.toString().trim().length > 0;
   } catch {
-    throw new Error(
-      "Failed to get GitHub token. Run: gh auth login",
-    );
+    return false;
   }
 }
 
-export function createCopilotClient(model: string): LLMClient {
+function extractText(content: string | ContentBlock[]): string {
+  if (typeof content === "string") return content;
+  return content
+    .map((block) => {
+      if (block.type === "text") return block.text;
+      if (block.type === "tool_result")
+        return `[Tool result for ${block.tool_use_id}]: ${block.content}`;
+      if (block.type === "tool_use") return `[Used tool: ${block.name}]`;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * Format conversation history into a single prompt for the CLI.
+ * The copilot CLI in print mode is single-turn, so we flatten the
+ * multi-turn conversation into context.
+ */
+function formatConversation(
+  systemPrompt: string,
+  messages: Message[],
+  tools?: ToolDefinition[],
+): { prompt: string; systemPrompt: string } {
+  const parts: string[] = [];
+
+  let fullSystem = systemPrompt;
+  if (tools && tools.length > 0) {
+    fullSystem += "\n\n## Available Tools\n";
+    fullSystem +=
+      "You have access to the following tools. To use a tool, respond with a JSON block in this exact format:\n";
+    fullSystem +=
+      '```json\n{"tool_use": {"id": "call_1", "name": "tool_name", "input": {…}}}\n```\n\n';
+    for (const tool of tools) {
+      fullSystem += `### ${tool.name}\n${tool.description}\nParameters: ${JSON.stringify(tool.input_schema)}\n\n`;
+    }
+    fullSystem +=
+      "You may include multiple tool_use blocks. After each tool use, you will receive the result and can continue.\n";
+  }
+
+  if (messages.length > 1) {
+    parts.push("<conversation_history>");
+    for (let i = 0; i < messages.length - 1; i++) {
+      const msg = messages[i];
+      const role = msg.role === "user" ? "User" : "Assistant";
+      const text = extractText(msg.content);
+      parts.push(`[${role}]: ${text}`);
+    }
+    parts.push("</conversation_history>\n");
+  }
+
+  const lastMsg = messages[messages.length - 1];
+  if (lastMsg) {
+    parts.push(extractText(lastMsg.content));
+  }
+
+  return { prompt: parts.join("\n"), systemPrompt: fullSystem };
+}
+
+/**
+ * Parse tool_use JSON blocks from the assistant's text response.
+ */
+function parseToolUses(
+  text: string,
+): Array<{ id: string; name: string; input: Record<string, unknown> }> {
+  const toolUses: Array<{
+    id: string;
+    name: string;
+    input: Record<string, unknown>;
+  }> = [];
+
+  const codeBlockRegex = /```json\s*\n?([\s\S]*?)```/g;
+  let match;
+  while ((match = codeBlockRegex.exec(text)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1].trim());
+      if (parsed.tool_use) {
+        toolUses.push({
+          id: parsed.tool_use.id || `call_${toolUses.length + 1}`,
+          name: parsed.tool_use.name,
+          input: parsed.tool_use.input || {},
+        });
+      }
+    } catch {
+      // Not valid JSON
+    }
+  }
+
+  if (toolUses.length === 0) {
+    const inlineRegex =
+      /\{"tool_use"\s*:\s*\{[^}]*"name"\s*:\s*"[^"]+?"[^}]*\}\s*\}/g;
+    while ((match = inlineRegex.exec(text)) !== null) {
+      try {
+        const parsed = JSON.parse(match[0]);
+        if (parsed.tool_use) {
+          toolUses.push({
+            id: parsed.tool_use.id || `call_${toolUses.length + 1}`,
+            name: parsed.tool_use.name,
+            input: parsed.tool_use.input || {},
+          });
+        }
+      } catch {
+        // Not valid JSON
+      }
+    }
+  }
+
+  return toolUses;
+}
+
+export function createCopilotClient(model?: string): LLMClient {
   return {
     async chat(
       systemPrompt: string,
@@ -70,114 +155,175 @@ export function createCopilotClient(model: string): LLMClient {
       tools?: ToolDefinition[],
       options?: ChatOptions,
     ): Promise<ChatResponse> {
-      // Get fresh token each call (handles token refresh)
-      const token = getGhToken();
-      const client = new OpenAI({
-        baseURL: GITHUB_MODELS_BASE_URL,
-        apiKey: token,
-      });
+      const { prompt, systemPrompt: fullSystem } = formatConversation(
+        systemPrompt,
+        messages,
+        tools,
+      );
 
-      const openaiMessages = toOpenAICompatibleMessages(systemPrompt, messages);
-      const hasTools = tools && tools.length > 0;
+      return new Promise((resolve, reject) => {
+        const args = [
+          "--print",
+          "--output-format", "json",
+          "--silent",
+          "--no-custom-instructions",
+        ];
 
-      try {
-        let fullText = "";
-        const toolCallAccumulators: Map<
-          number,
-          { id: string; name: string; arguments: string }
-        > = new Map();
-
-        const createParams: Record<string, unknown> = {
-          model,
-          max_tokens: options?.maxOutputTokens ?? 8192,
-          messages: openaiMessages,
-          stream: true,
-        };
-
-        if (hasTools) {
-          createParams.tools = tools.map((t) => ({
-            type: "function" as const,
-            function: {
-              name: t.name,
-              description: t.description,
-              parameters: t.input_schema,
-            },
-          }));
+        if (model) {
+          args.push("--model", model);
         }
 
-        const stream = await client.chat.completions.create(
-          createParams as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
-        );
+        // Pass prompt as the positional argument
+        args.push(prompt);
 
-        for await (const chunk of stream) {
-          const delta = chunk.choices[0]?.delta;
-          if (!delta) continue;
+        const proc = spawn("copilot", args, {
+          stdio: ["pipe", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            COPILOT_SYSTEM_PROMPT: fullSystem,
+          },
+        });
 
-          if (delta.content) {
-            fullText += delta.content;
-            onChunk({ type: "text", text: delta.content });
-          }
+        let fullText = "";
+        let buffer = "";
+        let stderrOutput = "";
 
-          if (delta.tool_calls) {
-            for (const tc of delta.tool_calls) {
-              const idx = tc.index;
-              let acc = toolCallAccumulators.get(idx);
-              if (!acc) {
-                acc = { id: "", name: "", arguments: "" };
-                toolCallAccumulators.set(idx, acc);
+        proc.stdout.on("data", (data: Buffer) => {
+          buffer += data.toString();
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const event = JSON.parse(line);
+
+              // Handle JSONL output from copilot CLI
+              if (event.type === "assistant" && event.content) {
+                fullText += event.content;
+                onChunk({ type: "text", text: event.content });
+              } else if (event.type === "message" && event.message?.content) {
+                for (const block of event.message.content) {
+                  if (block.type === "text" && block.text) {
+                    fullText += block.text;
+                    onChunk({ type: "text", text: block.text });
+                  }
+                }
+              } else if (event.type === "content_block_delta") {
+                if (event.delta?.type === "text_delta" && event.delta.text) {
+                  fullText += event.delta.text;
+                  onChunk({ type: "text", text: event.delta.text });
+                }
+              } else if (event.role === "assistant" && event.content) {
+                // Some formats return {role, content} directly
+                const text =
+                  typeof event.content === "string"
+                    ? event.content
+                    : event.content
+                        .map((b: { text?: string }) => b.text || "")
+                        .join("");
+                if (text) {
+                  fullText += text;
+                  onChunk({ type: "text", text });
+                }
               }
-              if (tc.id) acc.id = tc.id;
-              if (tc.function?.name) acc.name = tc.function.name;
-              if (tc.function?.arguments) acc.arguments += tc.function.arguments;
+              // Skip "result" type to avoid duplication
+            } catch {
+              // Not JSON — treat as raw text
+              if (line.trim()) {
+                fullText += line;
+                onChunk({ type: "text", text: line });
+              }
             }
           }
-        }
+        });
 
-        const toolUses = Array.from(toolCallAccumulators.entries())
-          .sort(([a], [b]) => a - b)
-          .map(([, acc]) => ({
-            id: acc.id,
-            name: acc.name,
-            input: JSON.parse(acc.arguments || "{}") as Record<string, unknown>,
-          }));
+        proc.stderr.on("data", (data: Buffer) => {
+          stderrOutput += data.toString();
+        });
 
-        onChunk({ type: "done" });
+        proc.on("close", (code) => {
+          // Process remaining buffer
+          if (buffer.trim()) {
+            try {
+              const event = JSON.parse(buffer);
+              if (event.type === "assistant" && event.content) {
+                fullText += event.content;
+                onChunk({ type: "text", text: event.content });
+              } else if (
+                event.role === "assistant" &&
+                typeof event.content === "string"
+              ) {
+                fullText += event.content;
+                onChunk({ type: "text", text: event.content });
+              }
+            } catch {
+              if (buffer.trim()) {
+                fullText += buffer;
+                onChunk({ type: "text", text: buffer });
+              }
+            }
+          }
 
-        if (toolUses.length > 0) {
-          const contentBlocks = [
-            ...(fullText
-              ? [{ type: "text" as const, text: fullText }]
-              : []),
-            ...toolUses.map((tu) => ({
-              type: "tool_use" as const,
-              id: tu.id,
-              name: tu.name,
-              input: tu.input,
-            })),
-          ];
-          return {
-            message: { role: "assistant", content: contentBlocks },
-            toolUses,
-          };
-        }
+          onChunk({ type: "done" });
 
-        return {
-          message: { role: "assistant", content: fullText },
-          toolUses: [],
-        };
-      } catch (error) {
-        if (error instanceof OpenAI.AuthenticationError) {
-          throw new Error(
-            "GitHub authentication failed. Run: gh auth login",
-          );
-        }
-        if (error instanceof OpenAI.RateLimitError) {
-          throw new Error(
-            "Rate limited by GitHub Models. Copilot subscribers get higher limits.",
-          );
-        }
-        throw error;
-      }
+          if (code !== 0 && !fullText) {
+            reject(
+              new Error(
+                `Copilot CLI exited with code ${code}${stderrOutput ? `: ${stderrOutput.trim()}` : ""}`,
+              ),
+            );
+            return;
+          }
+
+          // Check for tool use in the response
+          const hasTools = tools && tools.length > 0;
+          if (hasTools) {
+            const toolUses = parseToolUses(fullText);
+            if (toolUses.length > 0) {
+              let cleanText = fullText;
+              const stripRegex = /```json\s*\n?\s*\{"tool_use"[\s\S]*?```/g;
+              cleanText = cleanText.replace(stripRegex, "").trim();
+
+              const contentBlocks: ContentBlock[] = [];
+              if (cleanText) {
+                contentBlocks.push({ type: "text", text: cleanText });
+              }
+              for (const tu of toolUses) {
+                contentBlocks.push({
+                  type: "tool_use",
+                  id: tu.id,
+                  name: tu.name,
+                  input: tu.input,
+                });
+              }
+
+              resolve({
+                message: { role: "assistant", content: contentBlocks },
+                toolUses,
+              });
+              return;
+            }
+          }
+
+          resolve({
+            message: { role: "assistant", content: fullText },
+            toolUses: [],
+          });
+        });
+
+        proc.on("error", (err) => {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            reject(
+              new Error(
+                "Copilot CLI not found. Install it from: https://docs.github.com/copilot/how-tos/copilot-cli",
+              ),
+            );
+          } else {
+            reject(err);
+          }
+        });
+      });
     },
   };
 }

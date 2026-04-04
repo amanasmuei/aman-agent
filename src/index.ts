@@ -7,7 +7,7 @@ import { createAnthropicClient } from "./llm/anthropic.js";
 import { createOpenAIClient } from "./llm/openai.js";
 import { createOllamaClient } from "./llm/ollama.js";
 import { createClaudeCodeClient, isClaudeCliInstalled } from "./llm/claude-code.js";
-import { createCopilotClient, isGhCliInstalled, isGhAuthenticated } from "./llm/copilot.js";
+import { createCopilotClient, isCopilotCliInstalled, isCopilotCliAuthenticated } from "./llm/copilot.js";
 import { McpManager } from "./mcp/client.js";
 import { runAgent } from "./agent.js";
 import fs from "node:fs";
@@ -253,7 +253,7 @@ program
             defaultModel = modelChoice;
           }
         } else if (provider === "copilot") {
-          // GitHub Copilot via GitHub Models API
+          // GitHub Copilot via Copilot CLI
           p.note(
             [
               `${pc.bold("GitHub Copilot Plans:")}`,
@@ -264,77 +264,77 @@ program
               `  ${pc.cyan("Business")}      $19/user/mo Team admin + policy controls`,
               `  ${pc.cyan("Enterprise")}    $39/user/mo SSO, audit logs, IP indemnity`,
               "",
-              `${pc.dim("Authentication is handled by the GitHub CLI (gh).")}`,
+              `${pc.dim("Authentication is handled by the Copilot CLI.")}`,
               `${pc.dim("Subscribe at: https://github.com/features/copilot")}`,
             ].join("\n"),
             "Copilot Plans",
           );
 
-          // Check if gh CLI is installed
-          if (!isGhCliInstalled()) {
-            p.log.error("GitHub CLI (gh) is not installed.");
+          // Check if copilot CLI is installed
+          if (!isCopilotCliInstalled()) {
+            p.log.error("Copilot CLI is not installed.");
             p.log.info("Install it from:");
-            p.log.step(pc.bold("https://cli.github.com"));
+            p.log.step(pc.bold("https://docs.github.com/copilot/how-tos/copilot-cli"));
             p.log.info(pc.dim("Then re-run aman-agent to continue setup."));
             process.exit(1);
           }
 
-          p.log.success("GitHub CLI detected.");
+          p.log.success("Copilot CLI detected.");
 
           // Check auth / offer login
-          const ghAuth = isGhAuthenticated();
-          if (ghAuth) {
-            p.log.success("GitHub authentication found.");
+          const copilotAuth = isCopilotCliAuthenticated();
+          if (copilotAuth) {
+            p.log.success("Copilot authentication found.");
           } else {
-            p.log.warn("Not logged in to GitHub.");
+            p.log.warn("Not logged in to Copilot.");
             const authAction = (await p.select({
               message: "Authentication",
               options: [
-                { value: "login", label: "Log in now", hint: "runs: gh auth login" },
+                { value: "login", label: "Log in now", hint: "runs: copilot login" },
                 { value: "skip", label: "Skip (I'll log in later)" },
               ],
             })) as string;
             if (p.isCancel(authAction)) process.exit(0);
 
             if (authAction === "login") {
-              p.log.step("Launching GitHub login...");
+              p.log.step("Launching Copilot login...");
               const { spawnSync } = await import("node:child_process");
-              const loginResult = spawnSync("gh", ["auth", "login"], {
+              const loginResult = spawnSync("copilot", ["login"], {
                 stdio: "inherit",
               });
               if (loginResult.status !== 0) {
                 p.log.error("Login failed or was cancelled.");
                 process.exit(1);
               }
-              p.log.success("GitHub login successful.");
+              p.log.success("Copilot login successful.");
             }
           }
 
-          apiKey = "copilot"; // Sentinel — token fetched at runtime via `gh auth token`
+          apiKey = "copilot"; // Sentinel — auth handled by CLI
 
           const modelChoice = (await p.select({
             message: "Model",
             options: [
-              { value: "gpt-4o", label: "GPT-4o", hint: "fast, recommended" },
-              { value: "gpt-4o-mini", label: "GPT-4o Mini", hint: "fastest" },
+              { value: "default", label: "Default", hint: "Copilot's default model" },
+              { value: "gpt-4o", label: "GPT-4o", hint: "fast" },
+              { value: "gpt-5.2", label: "GPT-5.2", hint: "most capable" },
               { value: "o3-mini", label: "o3-mini", hint: "reasoning" },
-              { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", hint: "via GitHub Models" },
-              { value: "meta-llama-3.1-405b-instruct", label: "Llama 3.1 405B", hint: "open source" },
-              { value: "mistral-large-2411", label: "Mistral Large", hint: "open source" },
               { value: "custom", label: "Custom model ID" },
             ],
-            initialValue: "gpt-4o",
+            initialValue: "default",
           })) as string;
           if (p.isCancel(modelChoice)) process.exit(0);
 
           if (modelChoice === "custom") {
             const customModel = (await p.text({
-              message: "Model ID",
+              message: "Model ID (run copilot --help for available models)",
               placeholder: "gpt-4o",
               validate: (v) => v.length === 0 ? "Model ID is required" : undefined,
             })) as string;
             if (p.isCancel(customModel)) process.exit(0);
             defaultModel = customModel;
+          } else if (modelChoice === "default") {
+            defaultModel = "";
           } else {
             defaultModel = modelChoice;
           }

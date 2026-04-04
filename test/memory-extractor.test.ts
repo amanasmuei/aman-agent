@@ -15,8 +15,12 @@ describe("memory-extractor", () => {
       expect(shouldExtract("A longer response with real content here that goes on and on.", 5, 0)).toBe(true);
     });
 
-    it("returns true when last extraction produced results even if recent", () => {
-      expect(shouldExtract("A longer response with real content here.", 1, 2)).toBe(true);
+    it("returns true when last extraction produced results with enough content", () => {
+      expect(shouldExtract("A longer response with real content here that has enough substance.", 1, 2)).toBe(true);
+    });
+
+    it("returns false for short responses even when last extraction had results", () => {
+      expect(shouldExtract("Sure!", 1, 2)).toBe(false);
     });
   });
 

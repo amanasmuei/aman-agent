@@ -5,6 +5,7 @@ import type {
   StreamChunk,
   ToolDefinition,
   ChatResponse,
+  ChatOptions,
   ContentBlock,
 } from "./types.js";
 
@@ -65,6 +66,7 @@ export function createAnthropicClient(
       messages: Message[],
       onChunk: (chunk: StreamChunk) => void,
       tools?: ToolDefinition[],
+      options?: ChatOptions,
     ): Promise<ChatResponse> {
       const anthropicMessages = toAnthropicMessages(messages);
       const hasTools = tools && tools.length > 0;
@@ -81,7 +83,7 @@ export function createAnthropicClient(
 
         const createParams: Record<string, unknown> = {
           model,
-          max_tokens: 8192,
+          max_tokens: options?.maxOutputTokens ?? 8192,
           system: systemPrompt,
           messages: anthropicMessages,
           stream: true,

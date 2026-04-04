@@ -1,3 +1,5 @@
+declare const __VERSION__: string;
+
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -562,7 +564,7 @@ async function handleMemoryCommand(
     try {
       // Support --type <type> for category-based delete
       if (args[0] === "--type" && args[1]) {
-        const result = await memoryForget({ query: args[1], type: args[1] });
+        const result = await memoryForget({ type: args[1] });
         return { handled: true, output: result.deleted > 0 ? pc.green(result.message) : pc.dim(result.message) };
       }
       const result = await memoryForget({ query: args.join(" ") });
@@ -826,6 +828,10 @@ function handleHelp(): CommandResult {
       `  ${pc.cyan("/debug")}        Show debug log`,
       `  ${pc.cyan("/save")}         Save conversation to memory`,
       `  ${pc.cyan("/model")}        Show current LLM model`,
+      `  ${pc.cyan("/plan")}         Manage multi-step plans`,
+      `  ${pc.cyan("/profile")}      Switch agent profiles`,
+      `  ${pc.cyan("/delegate")}     Delegate tasks to sub-agents`,
+      `  ${pc.cyan("/team")}         Manage agent teams`,
       `  ${pc.cyan("/update")}       Check for updates`,
       `  ${pc.cyan("/reset")}       Full reset [all|memory|config|identity|rules]`,
       `  ${pc.cyan("/clear")}        Clear conversation history`,
@@ -903,7 +909,7 @@ function handleReset(action: string | undefined): CommandResult {
 function handleUpdate(): CommandResult {
   try {
     const current = execFileSync("npm", ["view", "@aman_asmuei/aman-agent", "version"], { encoding: "utf-8" }).trim();
-    const local = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8")).version;
+    const local = typeof __VERSION__ !== "undefined" ? __VERSION__ : "unknown";
     if (current === local) {
       return { handled: true, output: `${pc.green("Up to date")} — v${local}` };
     }

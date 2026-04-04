@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { applyPreset, PRESETS, type PresetName } from "./presets.js";
-import { initMemory, memoryConsolidate, isMemoryInitialized } from "./memory.js";
+import { initMemory, memoryConsolidate, isMemoryInitialized, setMemoryConfig } from "./memory.js";
 
 declare const __VERSION__: string;
 
@@ -92,6 +92,20 @@ function bootstrapEcosystem(): boolean {
       '- Be honest when uncertain — say "I\'m not sure" rather than guessing',
       "- Respect the user's preferences stored in memory",
     ].join("\n"), "utf-8");
+  }
+
+  const flowDir = path.join(home, ".aflow");
+  const flowPath = path.join(flowDir, "flow.md");
+  if (!fs.existsSync(flowPath)) {
+    fs.mkdirSync(flowDir, { recursive: true });
+    fs.writeFileSync(flowPath, "# Workflows\n\n_No workflows defined yet. Use /workflows add to create one._\n", "utf-8");
+  }
+
+  const skillDir = path.join(home, ".askill");
+  const skillPath = path.join(skillDir, "skills.md");
+  if (!fs.existsSync(skillPath)) {
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(skillPath, "# Skills\n\n_No skills installed yet. Use /skills install to add domain expertise._\n", "utf-8");
   }
 
   return true;
@@ -264,6 +278,7 @@ program
     const aiName = getProfileAiName(profile);
 
     // Initialize memory (in-process, replaces amem MCP)
+    if (config.memory) setMemoryConfig(config.memory);
     try {
       await initMemory();
     } catch (err) {
@@ -294,18 +309,17 @@ program
     const mcpSpinner = p.spinner();
     mcpSpinner.start("Connecting to MCP servers");
 
-    // Core MCP servers (always connect)
-    await mcpManager.connect("aman", "npx", ["-y", "@aman_asmuei/aman-mcp"]);
-
-    // Connect custom MCP servers from config
-    // Users add these via: ~/.aman-agent/config.json → "mcpServers": { "name": { command, args } }
-    // Or via akit: akit add docling → then add to config
+    // Core MCP servers (always connect) + custom servers — all in parallel
+    const connections: Promise<void>[] = [
+      mcpManager.connect("aman", "npx", ["-y", "@aman_asmuei/aman-mcp"]),
+    ];
     if (config.mcpServers) {
       for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
         if (name === "aman" || name === "amem") continue;
-        await mcpManager.connect(name, serverConfig.command, serverConfig.args);
+        connections.push(mcpManager.connect(name, serverConfig.command, serverConfig.args, serverConfig.env));
       }
     }
+    await Promise.all(connections);
 
     const mcpTools = mcpManager.getTools();
 

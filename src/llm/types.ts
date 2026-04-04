@@ -62,11 +62,16 @@ export interface StreamChunk {
   toolUseId?: string;
 }
 
+export interface ChatOptions {
+  maxOutputTokens?: number;
+}
+
 export interface LLMClient {
   chat(
     systemPrompt: string,
     messages: Message[],
     onChunk: (chunk: StreamChunk) => void,
     tools?: ToolDefinition[],
+    options?: ChatOptions,
   ): Promise<ChatResponse>;
 }

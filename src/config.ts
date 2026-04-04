@@ -32,12 +32,22 @@ export interface McpServerEntry {
   env?: Record<string, string>;
 }
 
+export interface MemoryConfig {
+  maxStaleDays?: number;
+  minConfidence?: number;
+  minAccessCount?: number;
+  maxRecallTokens?: number;
+}
+
 export interface AgentConfig {
   provider: "anthropic" | "openai" | "ollama";
   apiKey: string;
   model: string;
+  ollamaUrl?: string;
+  maxOutputTokens?: number;
   hooks?: HooksConfig;
   mcpServers?: Record<string, McpServerEntry>;
+  memory?: MemoryConfig;
 }
 
 const CONFIG_DIR = path.join(os.homedir(), ".aman-agent");

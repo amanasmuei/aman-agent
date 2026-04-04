@@ -45,8 +45,11 @@ export function shouldExtract(
   turnsSinceLastExtraction: number,
   lastExtractionCount: number,
 ): boolean {
-  if (lastExtractionCount > 0) return true;
+  // Always skip very short responses regardless of previous extraction results
   if (assistantResponse.length < MIN_RESPONSE_LENGTH) return false;
+  // If previous turn found memories, extract again but respect min turns spacing
+  if (lastExtractionCount > 0 && turnsSinceLastExtraction >= 1) return true;
+  // Otherwise, wait for MIN_TURNS_BETWEEN_EMPTY turns between empty extractions
   if (turnsSinceLastExtraction < MIN_TURNS_BETWEEN_EMPTY) return false;
   return true;
 }

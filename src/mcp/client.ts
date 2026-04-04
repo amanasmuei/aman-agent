@@ -7,6 +7,8 @@ interface McpConnection {
   name: string;
   client: Client;
   transport: StdioClientTransport;
+  /** Original params stored for reconnect */
+  connectParams: { command: string; args: string[]; env?: Record<string, string> };
 }
 
 export interface ToolDef {
@@ -16,6 +18,8 @@ export interface ToolDef {
   serverName: string;
 }
 
+const TOOL_CALL_TIMEOUT_MS = 30_000;
+
 export class McpManager {
   private connections: McpConnection[] = [];
   private tools: ToolDef[] = [];
@@ -24,9 +28,15 @@ export class McpManager {
     name: string,
     command: string,
     args: string[],
+    env?: Record<string, string>,
   ): Promise<void> {
     try {
-      const transport = new StdioClientTransport({ command, args, stderr: "pipe" });
+      const transport = new StdioClientTransport({
+        command,
+        args,
+        stderr: "pipe",
+        env: env ? env : undefined,
+      });
       const client = new Client({
         name: `aman-agent-${name}`,
         version: "0.1.0",
@@ -40,11 +50,20 @@ export class McpManager {
         });
       }
 
-      this.connections.push({ name, client, transport });
+      this.connections.push({ name, client, transport, connectParams: { command, args, env } });
 
       // List tools from this server
       const toolsResult = await client.listTools();
       for (const tool of toolsResult.tools) {
+        // Fix 4: Warn on tool name collisions
+        const existing = this.tools.find((t) => t.name === tool.name);
+        if (existing) {
+          log.warn(
+            "mcp",
+            `Warning: tool "${tool.name}" from server "${name}" shadows existing tool from "${existing.serverName}"`,
+          );
+        }
+
         this.tools.push({
           name: tool.name,
           description: tool.description || "",
@@ -74,7 +93,16 @@ export class McpManager {
 
     try {
       const result = await withRetry(
-        () => conn.client.callTool({ name: toolName, arguments: args }),
+        () =>
+          Promise.race([
+            conn.client.callTool({ name: toolName, arguments: args }),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error(`Tool ${toolName} timed out after 30s`)),
+                TOOL_CALL_TIMEOUT_MS,
+              ),
+            ),
+          ]),
         { maxAttempts: 2, baseDelay: 500, retryable: (err) => err.message.includes("ETIMEDOUT") || err.message.includes("timeout") },
       );
       // Extract text from result
@@ -88,6 +116,31 @@ export class McpManager {
     } catch (error) {
       return `Error calling ${toolName}: ${error instanceof Error ? error.message : String(error)}`;
     }
+  }
+
+  async reconnect(name: string): Promise<void> {
+    const connIndex = this.connections.findIndex((c) => c.name === name);
+    if (connIndex === -1) {
+      log.error("mcp", `Cannot reconnect: no connection found for "${name}"`);
+      return;
+    }
+
+    const conn = this.connections[connIndex];
+    const { command, args, env } = conn.connectParams;
+
+    // Kill old connection
+    try {
+      await conn.client.close();
+    } catch (err) {
+      log.debug("mcp", `Error closing old connection for ${name}`, err);
+    }
+
+    // Remove old connection and its tools
+    this.connections.splice(connIndex, 1);
+    this.tools = this.tools.filter((t) => t.serverName !== name);
+
+    // Re-connect with same params
+    await this.connect(name, command, args, env);
   }
 
   async disconnect(): Promise<void> {

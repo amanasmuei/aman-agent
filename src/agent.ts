@@ -35,7 +35,7 @@ import { trimConversation } from "./context-manager.js";
 import { log } from "./logger.js";
 import { withRetry } from "./retry.js";
 import { extractMemories as runExtraction, type ExtractorState } from "./memory-extractor.js";
-import { memoryRecall, memoryLog } from "./memory.js";
+import { memoryRecall, memoryLog, getMaxRecallTokens } from "./memory.js";
 import { autoTriggerSkills, matchKnowledge } from "./skill-engine.js";
 import { BackgroundTaskManager, shouldRunInBackground } from "./background.js";
 import { getActivePlan, formatPlanForPrompt } from "./plans.js";
@@ -63,9 +63,17 @@ async function recallForMessage(
       return null;
     }
     const tokenEstimate = result.tokenEstimate ?? Math.round(result.text.split(/\s+/).filter(Boolean).length * 1.3);
+    const MAX_MEMORY_TOKENS = getMaxRecallTokens();
+    let memoryText = result.text;
+    if (tokenEstimate > MAX_MEMORY_TOKENS) {
+      // Truncate to fit within the token ceiling (rough char estimate: 1 token ≈ 4 chars)
+      const maxChars = MAX_MEMORY_TOKENS * 4;
+      memoryText = memoryText.slice(0, maxChars) + "\n[... memory truncated to fit token budget]";
+      log.debug("agent", `memory recall truncated from ~${tokenEstimate} to ~${MAX_MEMORY_TOKENS} tokens`);
+    }
     return {
-      text: `\n\n<relevant-memories>\n${result.text}\n</relevant-memories>`,
-      tokenEstimate,
+      text: `\n\n<relevant-memories>\n${memoryText}\n</relevant-memories>`,
+      tokenEstimate: Math.min(tokenEstimate, MAX_MEMORY_TOKENS),
     };
   } catch (err) {
     log.debug("agent", "memory recall failed", err);
@@ -143,7 +151,11 @@ export async function runAgent(
     err.message.includes("rate limit") ||
     err.message.includes("ECONNRESET") ||
     err.message.includes("ETIMEDOUT") ||
-    err.message.includes("fetch failed");
+    err.message.includes("fetch failed") ||
+    err.message.includes("socket hang up") ||
+    err.message.includes("network socket disconnected") ||
+    err.message.includes("ENOTFOUND") ||
+    err.message.includes("EAI_AGAIN");
 
   let responseBuffer = "";
 
@@ -540,7 +552,18 @@ ${knowledgeItem.content}
       messages.push(response.message);
 
       // Agentic tool loop: execute tools until LLM stops requesting them
+      const MAX_TOOL_TURNS = 20;
+      let toolTurnCount = 0;
       while (response.toolUses.length > 0 && mcpManager) {
+        toolTurnCount++;
+        if (toolTurnCount > MAX_TOOL_TURNS) {
+          messages.push({
+            role: "assistant",
+            content: "Tool execution limit reached (20). Breaking to prevent infinite loop.",
+          });
+          console.log(pc.yellow("\n  Tool execution limit reached (20). Breaking to prevent infinite loop."));
+          break;
+        }
         const toolResults: ToolResultBlock[] = await Promise.all(
           response.toolUses.map(async (toolUse) => {
             if (hooksConfig) {

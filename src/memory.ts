@@ -33,7 +33,31 @@ export async function initMemory(project?: string): Promise<AmemDatabase> {
   if (!fs.existsSync(amemDir)) fs.mkdirSync(amemDir, { recursive: true });
 
   const dbPath = process.env.AMEM_DB ?? path.join(amemDir, "memory.db");
-  db = createDatabase(dbPath);
+
+  try {
+    db = createDatabase(dbPath);
+  } catch (err) {
+    // Attempt recovery: if DB is corrupted, back it up and create fresh
+    const backupPath = `${dbPath}.corrupt.${Date.now()}`;
+    try {
+      if (fs.existsSync(dbPath)) {
+        fs.renameSync(dbPath, backupPath);
+        // Remove WAL/SHM files too
+        if (fs.existsSync(`${dbPath}-wal`)) fs.unlinkSync(`${dbPath}-wal`);
+        if (fs.existsSync(`${dbPath}-shm`)) fs.unlinkSync(`${dbPath}-shm`);
+        console.error(`[amem] Database corrupted — backed up to ${backupPath}`);
+        console.error("[amem] Creating fresh database. Previous memories are in the backup file.");
+        db = createDatabase(dbPath);
+      } else {
+        throw err;
+      }
+    } catch {
+      console.error(`[amem] Failed to initialize memory: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`[amem] Try deleting ${amemDir} to reset: rm -rf ${amemDir}`);
+      throw err;
+    }
+  }
+
   currentProject = project ?? "global";
 
   preloadEmbeddings();
@@ -134,12 +158,22 @@ export async function memoryForget(opts: { id?: string; query?: string; type?: s
   return { deleted: 0, message: "Provide an id, type, or query to forget." };
 }
 
+let memoryConfig: { maxStaleDays?: number; minConfidence?: number; minAccessCount?: number; maxRecallTokens?: number } = {};
+
+export function setMemoryConfig(config: typeof memoryConfig): void {
+  memoryConfig = config;
+}
+
+export function getMaxRecallTokens(): number {
+  return memoryConfig.maxRecallTokens ?? 1500;
+}
+
 export function memoryConsolidate(dryRun = false): ConsolidationReport {
   return consolidateMemories(getDb(), cosineSimilarity, {
     dryRun,
-    maxStaleDays: 90,
-    minConfidence: 0.3,
-    minAccessCount: 0,
+    maxStaleDays: memoryConfig.maxStaleDays ?? 90,
+    minConfidence: memoryConfig.minConfidence ?? 0.3,
+    minAccessCount: memoryConfig.minAccessCount ?? 0,
   });
 }
 

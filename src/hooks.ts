@@ -12,6 +12,7 @@ import {
   formatWellbeingNudge,
 } from "./personality.js";
 import { memoryRecall, memoryContext, reminderCheck, memoryLog, isMemoryInitialized } from "./memory.js";
+import { loadUserIdentity } from "./user-identity.js";
 
 function getTimeContext(): string {
   const now = new Date();
@@ -70,14 +71,36 @@ export async function onSessionStart(
   }
 
   if (firstRun) {
-    // First-run context injection
-    contextInjection = `<first-session>
+    const userIdentity = loadUserIdentity();
+
+    if (userIdentity) {
+      // First run WITH user profile — personalized introduction
+      contextInjection = `<first-session>
+This is your FIRST conversation with ${userIdentity.name}. They just set up their profile:
+- Role: ${userIdentity.roleLabel}
+- Expertise: ${userIdentity.expertiseLabel}
+- Style preference: ${userIdentity.styleLabel}
+${userIdentity.workingOn ? `- Working on: ${userIdentity.workingOn}` : ""}
+${userIdentity.notes ? `- Notes: ${userIdentity.notes}` : ""}
+
+Introduce yourself warmly:
+- Greet them by name
+- Acknowledge what they do and what they're working on (if provided)
+- Show you understand their style preference (e.g., if they want concise answers, keep it tight)
+- Mention you'll remember what matters across conversations
+- Keep it to 3-5 sentences, natural tone — make them feel like you GET them
+</first-session>`;
+    } else {
+      // First run WITHOUT user profile — generic introduction
+      contextInjection = `<first-session>
 This is your FIRST conversation with this user. Introduce yourself warmly:
 - Share your name and that you're their personal AI companion
 - Mention you'll remember what matters across conversations
 - Ask what they'd like to be called
+- Mention they can set up their profile with /profile edit for a more personalized experience
 - Keep it to 3-4 sentences, natural tone
 </first-session>`;
+    }
 
     // Still add time context
     const timeContext = getTimeContext();

@@ -6,6 +6,7 @@ export function estimateTokens(text: string): number {
 // Priority order for system prompt components (highest to lowest)
 const PRIORITIES = [
   "identity",    // core.md — always include
+  "user",        // user.md — user profile, always include
   "guardrails",  // rules.md — safety critical
   "workflows",   // flow.md — behavioral
   "tools",       // kit.md — capabilities

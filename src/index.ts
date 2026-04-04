@@ -13,6 +13,8 @@ import path from "node:path";
 import os from "node:os";
 import { applyPreset, PRESETS, type PresetName } from "./presets.js";
 import { initMemory, memoryConsolidate, isMemoryInitialized, setMemoryConfig } from "./memory.js";
+import { hasUserIdentity, loadUserIdentity } from "./user-identity.js";
+import { runOnboarding } from "./onboarding.js";
 
 declare const __VERSION__: string;
 
@@ -244,7 +246,17 @@ program
     const s = p.spinner();
     s.start("Loading ecosystem");
 
-    bootstrapEcosystem();
+    const isFirstRun = bootstrapEcosystem();
+
+    // User onboarding — runs once on first launch
+    if (!hasUserIdentity()) {
+      s.stop("Ecosystem loaded");
+      const user = await runOnboarding();
+      if (!user) {
+        p.log.info("Skipped profile setup. You can set it up later with /profile edit");
+      }
+      s.start("Loading ecosystem");
+    }
 
     // Resolve profile
     const profile = options.profile || process.env.AMAN_PROFILE || undefined;
@@ -350,7 +362,12 @@ program
       client = createOpenAIClient(config.apiKey, model);
     }
 
-    p.log.success(`${pc.bold(aiName)} is ready. Model: ${pc.dim(model)}`);
+    const userIdentity = loadUserIdentity();
+    if (userIdentity) {
+      p.log.success(`${pc.bold(aiName)} is ready for ${pc.bold(userIdentity.name)}. Model: ${pc.dim(model)}`);
+    } else {
+      p.log.success(`${pc.bold(aiName)} is ready. Model: ${pc.dim(model)}`);
+    }
 
     // Run the agent
     await runAgent(

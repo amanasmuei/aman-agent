@@ -10,6 +10,8 @@ import { getEcosystemStatus } from "./layers/parsers.js";
 import { memoryContext, memoryRecall, memoryForget, memoryStats, memoryExport, memorySince, memorySearch, isMemoryInitialized, reminderSet, reminderList, reminderCheck, reminderComplete } from "./memory.js";
 import { listProfiles } from "./prompt.js";
 import { BUILT_IN_PROFILES, installProfileTemplate } from "./profile-templates.js";
+import { loadUserIdentity, hasUserIdentity } from "./user-identity.js";
+import { runOnboarding, editProfile } from "./onboarding.js";
 import { delegateTask, delegatePipeline } from "./delegate.js";
 import {
   createTeam,
@@ -829,7 +831,9 @@ function handleHelp(): CommandResult {
       `  ${pc.cyan("/save")}         Save conversation to memory`,
       `  ${pc.cyan("/model")}        Show current LLM model`,
       `  ${pc.cyan("/plan")}         Manage multi-step plans`,
-      `  ${pc.cyan("/profile")}      Switch agent profiles`,
+      `  ${pc.cyan("/profile me")}   View your profile`,
+      `  ${pc.cyan("/profile edit")} Edit your profile`,
+      `  ${pc.cyan("/profile")}      List agent profiles`,
       `  ${pc.cyan("/delegate")}     Delegate tasks to sub-agents`,
       `  ${pc.cyan("/team")}         Manage agent teams`,
       `  ${pc.cyan("/update")}       Check for updates`,
@@ -1197,15 +1201,56 @@ The pipeline mode passes each agent's output to the next:
 function handleProfileCommand(action: string | undefined, args: string[]): CommandResult {
   const profilesDir = path.join(os.homedir(), ".acore", "profiles");
 
+  // User identity commands (separate from AI agent profiles)
+  if (action === "me") {
+    const user = loadUserIdentity();
+    if (!user) {
+      return { handled: true, output: pc.dim("No user profile yet. Run /profile edit to set one up.") };
+    }
+    const lines = [
+      `  ${pc.bold("Name:")}       ${user.name}`,
+      `  ${pc.bold("Role:")}       ${user.roleLabel}`,
+      `  ${pc.bold("Expertise:")}  ${user.expertiseLabel}`,
+      `  ${pc.bold("Style:")}      ${user.styleLabel}`,
+    ];
+    if (user.workingOn) lines.push(`  ${pc.bold("Working on:")} ${user.workingOn}`);
+    if (user.notes) lines.push(`  ${pc.bold("Notes:")}      ${user.notes}`);
+    lines.push(`  ${pc.dim(`Updated: ${user.updatedAt}`)}`);
+    return { handled: true, output: `Your profile:\n${lines.join("\n")}\n\n${pc.dim("Edit with: /profile edit")}` };
+  }
+
+  if (action === "edit") {
+    const current = loadUserIdentity();
+    if (!current) {
+      // No profile yet — run full onboarding
+      runOnboarding().then(() => {}).catch(() => {});
+      return { handled: true, output: "" }; // onboarding handles its own output
+    }
+    // Edit existing profile
+    editProfile(current).then(() => {}).catch(() => {});
+    return { handled: true, output: "" }; // editProfile handles its own output
+  }
+
+  if (action === "setup") {
+    // Force re-run full onboarding
+    runOnboarding().then(() => {}).catch(() => {});
+    return { handled: true, output: "" };
+  }
+
   if (!action || action === "list") {
     const profiles = listProfiles();
+    const user = loadUserIdentity();
+    const userLine = user
+      ? `${pc.bold("You:")} ${user.name} (${user.roleLabel}, ${user.expertiseLabel})\n\n`
+      : `${pc.dim("No user profile. Set up with: /profile edit")}\n\n`;
+
     if (profiles.length === 0) {
-      return { handled: true, output: pc.dim("No profiles yet. Create one with: /profile create <name>") };
+      return { handled: true, output: userLine + pc.dim("No agent profiles yet. Create one with: /profile create <name>") };
     }
     const lines = profiles.map((p) =>
       `  ${pc.bold(p.name)} — ${p.aiName} (${pc.dim(p.personality)})`
     );
-    return { handled: true, output: "Profiles:\n" + lines.join("\n") + "\n\n" + pc.dim("Switch with: aman-agent --profile <name>") };
+    return { handled: true, output: userLine + "Agent profiles:\n" + lines.join("\n") + "\n\n" + pc.dim("Switch with: aman-agent --profile <name>") };
   }
 
   switch (action) {
@@ -1290,12 +1335,19 @@ function handleProfileCommand(action: string | undefined, args: string[]): Comma
 
     case "help":
       return { handled: true, output: `Profile commands:
-  /profile              List all profiles
-  /profile create <n>   Create new profile
-  /profile show <n>     Show profile files
-  /profile delete <n>   Delete a profile
 
-  Use profiles:
+  ${pc.bold("Your profile:")}
+  /profile me           View your profile
+  /profile edit         Edit your profile
+  /profile setup        Re-run full profile setup
+
+  ${pc.bold("Agent profiles:")}
+  /profile              List all profiles
+  /profile create <n>   Create new agent profile
+  /profile show <n>     Show agent profile files
+  /profile delete <n>   Delete an agent profile
+
+  ${pc.bold("Use agent profiles:")}
   aman-agent --profile <name>
   AMAN_PROFILE=<name> aman-agent` };
 

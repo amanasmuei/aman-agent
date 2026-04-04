@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { estimateTokens, buildBudgetedPrompt } from "./token-budget.js";
 import type { PromptComponent } from "./token-budget.js";
+import { loadUserIdentity, formatUserContext } from "./user-identity.js";
 
 interface EcosystemFile {
   name: string;
@@ -79,6 +80,17 @@ export function assembleSystemPrompt(
       name: "context",
       content,
       tokens: estimateTokens(content),
+    });
+  }
+
+  // User identity — always included if available (high priority, low token cost)
+  const userIdentity = loadUserIdentity();
+  if (userIdentity) {
+    const userContent = formatUserContext(userIdentity);
+    components.push({
+      name: "user",
+      content: userContent,
+      tokens: estimateTokens(userContent),
     });
   }
 

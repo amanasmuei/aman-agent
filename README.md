@@ -43,24 +43,24 @@
 
 ---
 
-## What's New in v0.16.0
+## What's New in v0.18.0
 
-> **Multi-agent AI companion with teams, delegation, and profiles.**
+> **Personalized onboarding, showcase templates, and 10 runtime reliability fixes.**
 
 | Feature | What it does |
 |:---|:---|
-| **Agent profiles** | Multiple AI identities: `--profile coder`, `--profile writer`, `--profile researcher` |
-| **Agent delegation** | Delegate tasks to sub-agents: `/delegate writer Write a blog post` |
-| **Agent teams** | Named teams with pipeline, parallel, and coordinator modes |
-| **Auto-delegation** | AI suggests delegation/teams when appropriate — asks permission first |
-| **Image support** | Reference local images or URLs — auto base64-encoded and sent as vision content |
-| **Personality engine** | Adaptive tone based on time, sentiment, and energy curve |
-| **Skill engine** | Skills auto-trigger, level up (Lv.1→Lv.5), self-improve from your patterns |
-| **Persistent plans** | Multi-step plans with checkboxes that survive session resets |
-| **Background tasks** | Long-running tools execute concurrently without blocking conversation |
-| **Project-aware sessions** | Auto-detects project, scoped memory, context persistence on exit |
-| **Social media posting** | Post to Bluesky, X, Threads, Facebook, Instagram via aman-social |
-| **Docker deployment** | `aman deploy` — deploy anywhere with Docker, Ollama, or systemd |
+| **User onboarding** | Interactive first-run setup — captures your name, role, expertise, and communication style |
+| **Showcase templates** | 13 pre-built companion personalities (fitness, freelancer, Muslim, finance, etc.) from [aman-showcase](https://github.com/amanasmuei/aman-showcase) |
+| **User profile** | `/profile me` to view, `/profile edit` to update — injected into every system prompt |
+| **Streaming cancellation** | Ctrl+C aborts current response instead of killing the session |
+| **Session checkpointing** | Auto-saves every 10 turns — crash-safe, no more lost conversations |
+| **Sub-agent guardrails** | Delegated agents now enforce the same safety rules as the main agent |
+| **Sub-agent memory** | Delegated agents recall relevant memories for better context |
+| **MCP auto-reconnect** | Tool servers automatically reconnect on connection failure |
+| **Token-safe tool loop** | Conversation trimming runs inside the tool loop — no more context blowups |
+| **System prompt ceiling** | 16K token cap prevents unbounded system prompt growth |
+| **Non-blocking extraction** | Memory extraction runs fire-and-forget — never blocks your next message |
+| **Image-aware trimming** | Image blocks properly counted in token estimates for conversation trimming |
 
 <a href="https://github.com/amanasmuei/aman-agent/releases">Full release history</a>
 
@@ -107,17 +107,20 @@ export OPENAI_API_KEY="sk-..."          # → uses GPT-4o
 
 No env var? First run prompts for your LLM provider, API key, and model.
 
-### 2. (Optional) Set up your companion
+### 2. First Launch — You'll Be Asked About You
 
-```bash
-# Guided wizard — pick a persona preset
-aman-agent init
+On first run, a quick interactive setup captures who you are:
 
-# Choose from: Coding Partner, Creative Collaborator,
-# Personal Assistant, Learning Buddy, or Minimal
+```
+◆ What should I call you?
+◆ What's your main thing?     (developer, designer, student, manager, generalist)
+◆ How deep in the game?       (beginner → expert)
+◆ How do you like answers?    (concise, balanced, thorough, socratic)
+◆ What are you working on?    (optional)
+◆ Want a companion specialty? (13 pre-built personalities from aman-showcase)
 ```
 
-Or just skip this — aman-agent auto-creates a default profile on first run.
+Takes ~30 seconds. Update anytime with `/profile edit`.
 
 ### 3. Talk
 
@@ -137,17 +140,18 @@ A step-by-step walkthrough of how to use aman-agent day-to-day.
 
 ### Your First Conversation
 
-On first run, the agent introduces itself and asks your name. Just talk naturally:
+On first run, you set up your profile, then the agent greets you personally:
 
 ```
 $ aman-agent
 
   aman agent — your AI companion
-  ✓ Auto-detected Anthropic API key. Using Claude Sonnet 4.6.
-  ✓ Ecosystem ready: identity, guardrails (1,204 tokens)
-  ✓ Connected 30 MCP tools
-  ✓ Personality: morning session, high-drive energy
-  Aman is ready.
+  ✓ Auto-detected Anthropic API key. Using claude-sonnet-4-6.
+  ✓ Profile saved for Aman
+  ✓ Loaded: identity, user, guardrails (2,847 tokens)
+  ✓ Memory consolidated
+  ✓ MCP connected
+  ✓ Aman is ready for Aman. Model: claude-sonnet-4-6
 
 You > Hey, I'm working on a Node.js API
 
@@ -412,9 +416,45 @@ aman-agent init
 
 Set any to `false` to disable.
 
-### Agent Profiles
+### Showcase Templates
 
-Run different AI personalities for different tasks:
+Give your companion a pre-built specialty from [aman-showcase](https://github.com/amanasmuei/aman-showcase):
+
+| Template | What it does |
+|:---|:---|
+| **Muslim** | Islamic daily companion — prayer times, hadith, du'a |
+| **Quran** | Quranic Arabic vocabulary with transliteration |
+| **Fitness** | Personal trainer — workout tracking, nutrition |
+| **Freelancer** | Client & invoice tracking for independents |
+| **Kedai** | Small business assistant (BM/EN) |
+| **Money** | Personal finance & budget tracker |
+| **Monitor** | Price/website/keyword watchdog |
+| **Bahasa** | Malay/English language tutor |
+| **Team** | Standups, tasks, team memory |
+| **Rutin** | Medication reminders for family |
+| **Support** | Customer support with escalation |
+| **IoT** | Sensor monitoring for smart homes |
+| **Feed** | News aggregation & filtering |
+
+Install during onboarding or anytime:
+
+```bash
+npx @aman_asmuei/aman-showcase install muslim
+```
+
+Each template includes identity, workflows, rules, and domain skills — all installed into your ecosystem.
+
+### Your Profile vs Agent Profiles
+
+**Your profile** is who YOU are — name, role, expertise, communication style. Set during onboarding, injected into every conversation:
+
+```
+/profile me            View your profile
+/profile edit          Edit a field
+/profile setup         Re-run full setup
+```
+
+**Agent profiles** are different AI personalities for different tasks:
 
 ```bash
 aman-agent --profile coder      # direct, code-first
@@ -422,7 +462,7 @@ aman-agent --profile writer     # creative, story-driven
 aman-agent --profile researcher # analytical, citation-focused
 ```
 
-Each profile has its own identity, rules, and skills — but shares the same memory. Create profiles:
+Each agent profile has its own identity, rules, and skills — but shares the same memory. Create profiles:
 
 ```
 /profile create coder       Install built-in template
@@ -780,7 +820,7 @@ Every operation that can fail logs to `~/.aman-agent/debug.log` with structured 
 |:---|:---|
 | `/help` | Show available commands |
 | `/plan` | Show active plan `[create\|done\|undo\|list\|switch\|show]` |
-| `/profile` | Manage agent profiles `[create\|list\|show\|delete]` |
+| `/profile` | Your profile + agent profiles `[me\|edit\|setup\|create\|list\|show\|delete]` |
 | `/delegate` | Delegate task to a profile `[<profile> <task>\|pipeline]` |
 | `/team` | Manage agent teams `[create\|run\|list\|show\|delete]` |
 | `/identity` | View identity `[update <section>]` |
@@ -811,6 +851,7 @@ On every session start, aman-agent assembles your full AI context:
 | Layer | Source | What it provides |
 |:---|:---|:---|
 | **Identity** | `~/.acore/core.md` | AI personality, your preferences, relationship state |
+| **User** | `~/.acore/user.md` | Your name, role, expertise level, communication style |
 | **Memory** | `~/.amem/memory.db` | Past decisions, corrections, patterns, conversation history |
 | **Reminders** | `~/.amem/memory.db` | Overdue, today, and upcoming reminders |
 | **Tools** | `~/.akit/kit.md` | Available capabilities (GitHub, search, databases) |
@@ -828,7 +869,7 @@ All layers are optional — the agent works with whatever you've set up.
 Layers are included by priority when space is limited:
 
 ```
-Identity (always) → Guardrails → Workflows → Tools → Skills (can truncate)
+Identity (always) → User (always) → Guardrails → Workflows → Tools → Skills (can truncate)
 ```
 
 Default budget: 8,000 tokens. Override with `--budget`.

@@ -2,6 +2,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import type { UserIdentity } from "./user-identity.js";
 import { saveUserIdentity } from "./user-identity.js";
+import { loadShowcaseManifest, installShowcaseTemplate, type ShowcaseOption } from "./showcase-bridge.js";
 
 /**
  * Run the interactive onboarding flow for first-time users.
@@ -118,6 +119,63 @@ export async function runOnboarding(): Promise<UserIdentity | null> {
 
   saveUserIdentity(user);
 
+  // --- Showcase Template (optional) ---
+  let showcaseInstalled: string | null = null;
+  const showcases = loadShowcaseManifest();
+  if (showcases.length > 0) {
+    console.log("");
+    const wantShowcase = await p.confirm({
+      message: "Want to give your companion a specialty? " + pc.dim("(pre-built personalities with workflows)"),
+      initialValue: false,
+    });
+
+    if (!p.isCancel(wantShowcase) && wantShowcase) {
+      // Group by category for nicer display
+      const categories = new Map<string, ShowcaseOption[]>();
+      for (const s of showcases) {
+        if (!categories.has(s.category)) categories.set(s.category, []);
+        categories.get(s.category)!.push(s);
+      }
+
+      const options: Array<{ value: string; label: string; hint: string }> = [];
+      for (const [category, items] of categories) {
+        for (const item of items) {
+          const langBadge = item.language === "ms" ? " [BM]" : item.language === "en+ms" ? " [EN/BM]" : "";
+          options.push({
+            value: item.name,
+            label: `${item.title}${langBadge}`,
+            hint: item.description.slice(0, 70) + (item.description.length > 70 ? "..." : ""),
+          });
+        }
+      }
+
+      const chosen = await p.select({
+        message: "Pick a companion specialty",
+        options,
+      });
+
+      if (!p.isCancel(chosen)) {
+        const chosenName = chosen as string;
+        try {
+          const result = installShowcaseTemplate(chosenName);
+          if (result.installed.length > 0) {
+            showcaseInstalled = chosenName;
+            const entry = showcases.find((s) => s.name === chosenName);
+            p.log.success(`Installed ${pc.bold(entry?.title || chosenName)}`);
+            for (const f of result.installed) {
+              process.stdout.write(pc.dim(`  ${f}\n`));
+            }
+            if (result.backed_up.length > 0) {
+              p.log.info(pc.dim(`Backed up ${result.backed_up.length} existing file(s) (.bak)`));
+            }
+          }
+        } catch (err) {
+          p.log.warning(`Could not install showcase: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+  }
+
   // --- Confirmation ---
   console.log("");
   p.log.success(`Profile saved for ${pc.bold(user.name)}`);
@@ -129,6 +187,10 @@ export async function runOnboarding(): Promise<UserIdentity | null> {
   ];
   if (user.workingOn) {
     summary.push(`  ${pc.dim("Working on:")} ${user.workingOn}`);
+  }
+  if (showcaseInstalled) {
+    const entry = showcases.find((s) => s.name === showcaseInstalled);
+    summary.push(`  ${pc.dim("Specialty:")}  ${entry?.title || showcaseInstalled}`);
   }
   console.log(summary.join("\n"));
   console.log("");

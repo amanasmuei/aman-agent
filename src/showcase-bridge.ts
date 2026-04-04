@@ -160,19 +160,32 @@ export function installShowcaseTemplate(name: string): ShowcaseInstallResult {
     },
   ];
 
-  // Skills directory
+  // Skills — consolidate individual skill files into ~/.askill/skills.md
   const skillsSrc = path.join(showcaseDir, "skills");
   if (fs.existsSync(skillsSrc)) {
-    const skillFiles = fs.readdirSync(skillsSrc).filter((f) => f.endsWith(".md"));
-    for (const skillFile of skillFiles) {
-      const destPath = skillFile === "skills.md"
-        ? path.join(home, ".askill", skillFile)
-        : path.join(home, ".askill", "installed", skillFile);
-      copies.push({
-        src: path.join(skillsSrc, skillFile),
-        dest: destPath,
-        label: `~/.askill/${skillFile} (skills)`,
-      });
+    const skillFiles = fs.readdirSync(skillsSrc).filter((f: string) => f.endsWith(".md"));
+    if (skillFiles.length > 0) {
+      // Read all skill files and merge into a single skills.md
+      const skillParts: string[] = [];
+      for (const skillFile of skillFiles) {
+        const content = fs.readFileSync(path.join(skillsSrc, skillFile), "utf-8").trim();
+        if (content) skillParts.push(content);
+      }
+
+      if (skillParts.length > 0) {
+        const skillsDest = path.join(home, ".askill", "skills.md");
+        const consolidated = `# Skills\n\n${skillParts.join("\n\n---\n\n")}\n`;
+
+        // Backup existing
+        if (fs.existsSync(skillsDest)) {
+          fs.copyFileSync(skillsDest, `${skillsDest}.bak`);
+          result.backed_up.push("~/.askill/skills.md (skills)");
+        }
+
+        fs.mkdirSync(path.dirname(skillsDest), { recursive: true });
+        fs.writeFileSync(skillsDest, consolidated, "utf-8");
+        result.installed.push(`~/.askill/skills.md (${skillFiles.length} skill${skillFiles.length > 1 ? "s" : ""} consolidated)`);
+      }
     }
   }
 

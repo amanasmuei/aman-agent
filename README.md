@@ -105,7 +105,23 @@ export OPENAI_API_KEY="sk-..."          # → uses GPT-4o
 # Or if Ollama is running locally      # → uses llama3.2
 ```
 
-No env var? First run prompts for your LLM provider, API key, and model.
+No env var? First run prompts for your LLM provider and model:
+
+```
+◇ LLM provider
+│ ● Claude (Anthropic)       — recommended, uses Claude Code CLI
+│ ○ GitHub Copilot           — uses GitHub Models API
+│ ○ GPT (OpenAI)
+│ ○ Ollama (local)           — free, runs offline
+```
+
+**Claude** — authentication handled by Claude Code CLI (`claude login`). Supports subscription (Pro/Max/Team/Enterprise), API billing, Bedrock, and Vertex AI. No API key needed.
+
+**GitHub Copilot** — authentication handled by GitHub CLI (`gh auth login`). Uses GitHub Models API with access to GPT-4o, Claude Sonnet, Llama, Mistral, and more.
+
+**OpenAI** — enter your API key directly.
+
+**Ollama** — local models, no account needed.
 
 ### 2. First Launch — You'll Be Asked About You
 

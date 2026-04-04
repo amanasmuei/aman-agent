@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { applyPreset, PRESETS, type PresetName } from "./presets.js";
-import { initMemory, memoryConsolidate } from "./memory.js";
+import { initMemory, memoryConsolidate, isMemoryInitialized } from "./memory.js";
 
 declare const __VERSION__: string;
 
@@ -264,7 +264,29 @@ program
     const aiName = getProfileAiName(profile);
 
     // Initialize memory (in-process, replaces amem MCP)
-    await initMemory();
+    try {
+      await initMemory();
+    } catch (err) {
+      p.log.warning(`Memory initialization failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // Memory consolidation (in-process via amem-core)
+    if (isMemoryInitialized()) {
+      const memSpinner = p.spinner();
+      memSpinner.start("Consolidating memory");
+      try {
+        const report = memoryConsolidate();
+        memSpinner.stop("Memory consolidated");
+        if (report.merged > 0 || report.pruned > 0 || report.promoted > 0) {
+          p.log.info(
+            `Memory health: ${report.healthScore ?? "?"}% ` +
+            pc.dim(`(merged ${report.merged}, pruned ${report.pruned}, promoted ${report.promoted})`),
+          );
+        }
+      } catch {
+        memSpinner.stop("Memory consolidation skipped");
+      }
+    }
 
     // Start MCP servers
     const mcpManager = new McpManager();
@@ -291,27 +313,9 @@ program
 
     if (mcpTools.length > 0) {
       p.log.success(`${mcpTools.length} MCP tools available`);
-
-      // Memory consolidation (in-process via amem-core)
-      {
-        const memSpinner = p.spinner();
-        memSpinner.start("Consolidating memory");
-        try {
-          const report = memoryConsolidate();
-          memSpinner.stop("Memory consolidated");
-          if (report.merged > 0 || report.pruned > 0 || report.promoted > 0) {
-            p.log.info(
-              `Memory health: ${report.healthScore ?? "?"}% ` +
-              pc.dim(`(merged ${report.merged}, pruned ${report.pruned}, promoted ${report.promoted})`),
-            );
-          }
-        } catch {
-          memSpinner.stop("Memory consolidation skipped");
-        }
-      }
     } else {
       p.log.info(
-        "No MCP tools connected (install aman-mcp or amem for tool support)",
+        "No MCP tools connected (install aman-mcp for tool support)",
       );
     }
 

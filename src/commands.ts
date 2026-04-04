@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import pc from "picocolors";
 import type { McpManager } from "./mcp/client.js";
 import { getEcosystemStatus } from "./layers/parsers.js";
-import { memoryContext, memoryRecall } from "./memory.js";
+import { memoryContext, memoryRecall, isMemoryInitialized } from "./memory.js";
 import { listProfiles } from "./prompt.js";
 import { BUILT_IN_PROFILES, installProfileTemplate } from "./profile-templates.js";
 import { delegateTask, delegatePipeline } from "./delegate.js";
@@ -584,7 +584,7 @@ async function handleMemoryCommand(
 
 function handleStatusCommand(ctx: CommandContext): CommandResult {
   const mcpToolCount = ctx.mcpManager ? ctx.mcpManager.getTools().length : 0;
-  const amemConnected = mcpToolCount > 0; // simplified check
+  const amemConnected = isMemoryInitialized();
   const status = getEcosystemStatus(mcpToolCount, amemConnected);
 
   const lines: string[] = [pc.bold("Aman Ecosystem Dashboard"), ""];
@@ -605,7 +605,7 @@ function handleStatusCommand(ctx: CommandContext): CommandResult {
 
 function handleDoctorCommand(ctx: CommandContext): CommandResult {
   const mcpToolCount = ctx.mcpManager ? ctx.mcpManager.getTools().length : 0;
-  const amemConnected = mcpToolCount > 0;
+  const amemConnected = isMemoryInitialized();
   const status = getEcosystemStatus(mcpToolCount, amemConnected);
 
   const lines: string[] = [pc.bold("Aman Health Check"), ""];
@@ -646,7 +646,7 @@ function handleDoctorCommand(ctx: CommandContext): CommandResult {
 
   lines.push(`  ${status.amemConnected ? pc.green("✓") : pc.red("✗")} ${"Memory".padEnd(12)} ${status.amemConnected ? pc.green("connected") : pc.red("not connected")}`);
   if (!status.amemConnected) {
-    lines.push(`    ${pc.dim("→ Fix: npx @aman_asmuei/amem")}`);
+    lines.push(`    ${pc.dim("→ Fix: restart aman-agent (memory initializes automatically)")}`);
     fixes++;
   } else {
     healthy++;

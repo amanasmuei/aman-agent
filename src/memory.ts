@@ -93,10 +93,11 @@ export function memoryLog(sessionId: string, role: string, content: string): str
 }
 
 export function reminderCheck(): Array<{ id: string; content: string; dueAt: number | null; status: "overdue" | "today" | "upcoming"; scope: string }> {
-  return getDb().checkReminders();
+  const all = getDb().checkReminders();
+  return all.filter((r) => r.scope === "global" || r.scope === currentProject);
 }
 
-export async function memoryForget(opts: { id?: string; query?: string }): Promise<{ deleted: number; message: string }> {
+export async function memoryForget(opts: { id?: string; query?: string; type?: string }): Promise<{ deleted: number; message: string }> {
   const db = getDb();
   if (opts.id) {
     const fullId = db.resolveId(opts.id) ?? opts.id;
@@ -106,6 +107,18 @@ export async function memoryForget(opts: { id?: string; query?: string }): Promi
     const vecIdx = getVectorIndex();
     if (vecIdx) vecIdx.remove(fullId);
     return { deleted: 1, message: `Deleted: "${memory.content}" (${memory.type})` };
+  }
+  // Type-based delete: delete all memories of a given type
+  if (opts.type) {
+    const all = db.getAllForProject(currentProject);
+    const matches = all.filter((m) => m.type === opts.type);
+    if (matches.length === 0) return { deleted: 0, message: `No memories of type "${opts.type}" found.` };
+    const vecIdx = getVectorIndex();
+    for (const m of matches) {
+      db.deleteMemory(m.id);
+      if (vecIdx) vecIdx.remove(m.id);
+    }
+    return { deleted: matches.length, message: `Deleted ${matches.length} "${opts.type}" memories.` };
   }
   if (opts.query) {
     const queryEmbedding = await generateEmbedding(opts.query);
@@ -118,7 +131,7 @@ export async function memoryForget(opts: { id?: string; query?: string }): Promi
     }
     return { deleted: matches.length, message: `Deleted ${matches.length} memories matching "${opts.query}".` };
   }
-  return { deleted: 0, message: "Provide an id or query to forget." };
+  return { deleted: 0, message: "Provide an id, type, or query to forget." };
 }
 
 export function memoryConsolidate(dryRun = false): ConsolidationReport {
@@ -144,7 +157,8 @@ export function memoryExport(): Memory[] {
 
 export function memorySince(hours: number): Memory[] {
   const since = Date.now() - hours * 60 * 60 * 1000;
-  return getDb().getMemoriesSince(since);
+  const all = getDb().getMemoriesSince(since);
+  return all.filter((m) => m.scope === "global" || m.scope === currentProject);
 }
 
 export function memorySearch(query: string, limit?: number): Memory[] {

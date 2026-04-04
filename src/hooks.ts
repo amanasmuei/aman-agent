@@ -11,7 +11,7 @@ import {
   syncPersonalityToCore,
   formatWellbeingNudge,
 } from "./personality.js";
-import { memoryRecall, memoryContext, reminderCheck, memoryLog } from "./memory.js";
+import { memoryRecall, memoryContext, reminderCheck, memoryLog, isMemoryInitialized } from "./memory.js";
 
 function getTimeContext(): string {
   const now = new Date();
@@ -54,14 +54,19 @@ export async function onSessionStart(
   const visibleReminders: string[] = [];
 
   // Detect first run via memory_recall
-  try {
-    isHookCall = true;
-    const recallResult = await memoryRecall("*", { limit: 1 });
-    firstRun = recallResult.total === 0;
-  } catch {
-    firstRun = true;
-  } finally {
-    isHookCall = false;
+  if (!isMemoryInitialized()) {
+    // Memory system failed to init — skip memory operations but don't treat as first run
+    firstRun = false;
+  } else {
+    try {
+      isHookCall = true;
+      const recallResult = await memoryRecall("*", { limit: 1 });
+      firstRun = recallResult.total === 0;
+    } catch {
+      firstRun = true;
+    } finally {
+      isHookCall = false;
+    }
   }
 
   if (firstRun) {

@@ -557,9 +557,14 @@ async function handleMemoryCommand(
   }
   if (action === "clear") {
     if (args.length < 1) {
-      return { handled: true, output: pc.yellow("Usage: /memory clear <query>  — delete memories matching query") };
+      return { handled: true, output: pc.yellow("Usage: /memory clear <query>  — delete memories matching a search query\n       /memory clear --type <type>  — delete all memories of a type (correction|decision|pattern|preference|topology|fact)") };
     }
     try {
+      // Support --type <type> for category-based delete
+      if (args[0] === "--type" && args[1]) {
+        const result = await memoryForget({ query: args[1], type: args[1] });
+        return { handled: true, output: result.deleted > 0 ? pc.green(result.message) : pc.dim(result.message) };
+      }
       const result = await memoryForget({ query: args.join(" ") });
       return { handled: true, output: result.deleted > 0 ? pc.green(result.message) : pc.dim(result.message) };
     } catch (err) {
@@ -717,6 +722,7 @@ async function handleMemoryCommand(
       `  ${pc.cyan("/memory export")} [json]        Export all memories`,
       `  ${pc.cyan("/memory timeline")}            View memory timeline`,
       `  ${pc.cyan("/memory clear")} <query>        Delete matching memories`,
+      `  ${pc.cyan("/memory clear --type")} <type>  Delete all of a type`,
     ].join("\n") };
   }
   return { handled: true, output: pc.yellow(`Unknown action: /memory ${action}. Try /memory --help`) };
@@ -832,7 +838,7 @@ function handleSave(): CommandResult {
   return { handled: true, saveConversation: true };
 }
 
-function handleReset(action: string): CommandResult {
+function handleReset(action: string | undefined): CommandResult {
   const dirs = {
     config: path.join(os.homedir(), ".aman-agent"),
     memory: path.join(os.homedir(), ".amem"),
@@ -871,6 +877,13 @@ function handleReset(action: string): CommandResult {
       fs.rmSync(dir, { recursive: true, force: true });
       removed.push(target);
     }
+  }
+
+  // Write .reconfig marker so next run forces interactive LLM prompt
+  if (targets.includes("config")) {
+    const configDir = dirs.config;
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, ".reconfig"), "", "utf-8");
   }
 
   if (removed.length === 0) {
@@ -1415,11 +1428,33 @@ async function handleReminderCommand(
   }
 
   if (action === "set" || action === "add") {
-    const content = args.join(" ");
-    if (!content) return { handled: true, output: pc.yellow("Usage: /reminder set <what to remember>") };
+    if (args.length === 0) return { handled: true, output: pc.yellow("Usage: /reminder set <text> [--due <time>]\n  Time formats: 1h, 2d, 1w, or ISO date (2026-04-10)") };
+    // Parse --due flag
+    let dueAt: number | undefined;
+    const dueIdx = args.indexOf("--due");
+    let contentArgs = args;
+    if (dueIdx >= 0 && args[dueIdx + 1]) {
+      const dueStr = args[dueIdx + 1];
+      contentArgs = [...args.slice(0, dueIdx), ...args.slice(dueIdx + 2)];
+      // Parse relative time: 1h, 2d, 1w
+      const relMatch = dueStr.match(/^(\d+)(h|d|w)$/);
+      if (relMatch) {
+        const num = parseInt(relMatch[1], 10);
+        const unit = relMatch[2];
+        const ms = unit === "h" ? num * 3600000 : unit === "d" ? num * 86400000 : num * 604800000;
+        dueAt = Date.now() + ms;
+      } else {
+        // Try ISO date
+        const parsed = Date.parse(dueStr);
+        if (!isNaN(parsed)) dueAt = parsed;
+      }
+    }
+    const content = contentArgs.join(" ");
+    if (!content) return { handled: true, output: pc.yellow("Usage: /reminder set <text> [--due <time>]") };
     try {
-      const id = reminderSet(content);
-      return { handled: true, output: pc.green(`Reminder set: "${content}" (ID: ${id.slice(0, 8)})`) };
+      const id = reminderSet(content, dueAt);
+      const dueInfo = dueAt ? ` (due: ${new Date(dueAt).toLocaleDateString()})` : "";
+      return { handled: true, output: pc.green(`Reminder set: "${content}"${dueInfo} (ID: ${id.slice(0, 8)})`) };
     } catch (err) {
       return { handled: true, output: pc.red(`Reminder error: ${err instanceof Error ? err.message : String(err)}`) };
     }
@@ -1455,7 +1490,7 @@ async function handleReminderCommand(
     return { handled: true, output: [
       pc.bold("Reminder commands:"),
       `  ${pc.cyan("/reminder")}                List all reminders`,
-      `  ${pc.cyan("/reminder set")} <text>      Create a reminder`,
+      `  ${pc.cyan("/reminder set")} <text>      Create a reminder [--due 1h|2d|1w|date]`,
       `  ${pc.cyan("/reminder check")}           Show overdue/upcoming`,
       `  ${pc.cyan("/reminder done")} <id>       Mark as completed`,
     ].join("\n") };

@@ -5,7 +5,7 @@ interface ErrorMapping {
 
 const ERROR_MAPPINGS: ErrorMapping[] = [
   { pattern: /rate.?limit|429/i, message: "Rate limited. I'll retry automatically." },
-  { pattern: /401|unauthorized/i, message: "API key invalid. Run /reconfig to fix." },
+  { pattern: /401|unauthorized/i, message: "API key invalid. Run /reset config to fix." },
   { pattern: /403|forbidden/i, message: "API key doesn't have access to this model. Try a different model with --model." },
   { pattern: /fetch failed|network/i, message: "Network error. Check your internet connection." },
   { pattern: /ECONNREFUSED/i, message: "Can't reach the API. Are you behind a proxy or firewall?" },

@@ -7,7 +7,7 @@ describe("errors", () => {
       expect(humanizeError("Rate limit exceeded")).toBe("Rate limited. I'll retry automatically.");
     });
     it("maps 401 errors", () => {
-      expect(humanizeError("401 Unauthorized")).toBe("API key invalid. Run /reconfig to fix.");
+      expect(humanizeError("401 Unauthorized")).toBe("API key invalid. Run /reset config to fix.");
     });
     it("maps 403 errors", () => {
       expect(humanizeError("403 Forbidden")).toBe("API key doesn't have access to this model. Try a different model with --model.");

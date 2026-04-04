@@ -23,7 +23,7 @@ interface AutoDetectedConfig {
 }
 
 async function autoDetectConfig(): Promise<AutoDetectedConfig | null> {
-  // Skip auto-detect if user just ran /reconfig
+  // Skip auto-detect if user just ran /reset config
   const reconfigMarker = path.join(os.homedir(), ".aman-agent", ".reconfig");
   if (fs.existsSync(reconfigMarker)) {
     fs.unlinkSync(reconfigMarker);
@@ -119,7 +119,7 @@ program
           detected.provider === "anthropic" ? "Anthropic API key" :
           detected.provider === "openai" ? "OpenAI API key" : "Ollama";
         p.log.success(`Auto-detected ${providerLabel}. Using ${pc.bold(detected.model)}.`);
-        p.log.info(pc.dim("Change anytime with /reconfig"));
+        p.log.info(pc.dim("Change anytime with /reset config"));
         saveConfig(config);
       } else {
         p.log.info("First-time setup — configure your LLM connection.");

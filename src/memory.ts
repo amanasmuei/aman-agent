@@ -92,7 +92,12 @@ export function reminderCheck(): Array<{ id: string; content: string; dueAt: num
 }
 
 export function memoryConsolidate(dryRun = false): ConsolidationReport {
-  return consolidateMemories(getDb(), cosineSimilarity, { dryRun });
+  return consolidateMemories(getDb(), cosineSimilarity, {
+    dryRun,
+    maxStaleDays: 90,
+    minConfidence: 0.3,
+    minAccessCount: 0,
+  });
 }
 
 export { type RecallResult, type ContextResult, type StoreResult, type StoreOptions, type ConsolidationReport };

@@ -6,6 +6,8 @@ import { assembleSystemPrompt, getProfileAiName } from "./prompt.js";
 import { createAnthropicClient } from "./llm/anthropic.js";
 import { createOpenAIClient } from "./llm/openai.js";
 import { createOllamaClient } from "./llm/ollama.js";
+import { createClaudeCodeClient, isClaudeCliInstalled } from "./llm/claude-code.js";
+import { createCopilotClient, isGhCliInstalled, isGhAuthenticated } from "./llm/copilot.js";
 import { McpManager } from "./mcp/client.js";
 import { runAgent } from "./agent.js";
 import fs from "node:fs";
@@ -19,7 +21,7 @@ import { runOnboarding } from "./onboarding.js";
 declare const __VERSION__: string;
 
 interface AutoDetectedConfig {
-  provider: "anthropic" | "openai" | "ollama";
+  provider: "anthropic" | "openai" | "ollama" | "claude-code" | "copilot";
   apiKey: string;
   model: string;
 }
@@ -144,15 +146,20 @@ program
           message: "LLM provider",
           options: [
             {
-              value: "anthropic",
+              value: "claude-code",
               label: "Claude (Anthropic)",
               hint: "recommended",
+            },
+            {
+              value: "copilot",
+              label: "GitHub Copilot",
+              hint: "uses GitHub Models",
             },
             { value: "openai", label: "GPT (OpenAI)" },
             { value: "ollama", label: "Ollama (local)", hint: "free, runs offline" },
           ],
-          initialValue: "anthropic",
-        })) as "anthropic" | "openai" | "ollama";
+          initialValue: "claude-code",
+        })) as "openai" | "ollama" | "claude-code" | "copilot";
         if (p.isCancel(provider)) process.exit(0);
 
         let apiKey = "";
@@ -167,22 +174,67 @@ program
           })) as string;
           if (p.isCancel(modelInput)) process.exit(0);
           defaultModel = modelInput || "llama3.2";
-        } else if (provider === "anthropic") {
-          p.log.info("Get your API key from: https://console.anthropic.com/settings/keys");
-          p.log.info(pc.dim("Note: API access is separate from Claude Pro subscription. You need API credits."));
+        } else if (provider === "claude-code") {
+          // Claude via Claude Code CLI — handles subscription, API, and 3rd-party auth
+          p.note(
+            [
+              `${pc.bold("Claude Plans:")}`,
+              "",
+              `  ${pc.cyan("Free")}          $0/mo       Basic access`,
+              `  ${pc.cyan("Pro")}           $20/mo      Full models + Claude Code`,
+              `  ${pc.cyan("Max 5x")}        $100/mo     5× usage + Claude Code`,
+              `  ${pc.cyan("Max 20x")}       $200/mo     20× usage + Opus 4.6 + 1M context`,
+              `  ${pc.cyan("Team")}          $25+/seat   Collaborative workspace`,
+              `  ${pc.cyan("Enterprise")}    Custom      SSO, admin, dedicated support`,
+              "",
+              `${pc.dim("Authentication is handled by Claude Code CLI.")}`,
+              `${pc.dim("Supports: subscription, API billing, Bedrock, Vertex AI.")}`,
+            ].join("\n"),
+            "Claude Plans",
+          );
 
-          apiKey = (await p.text({
-            message: "API key (starts with sk-ant-)",
-            validate: (v) => v.length === 0 ? "API key is required" : undefined,
+          // Check if claude CLI is installed
+          if (!isClaudeCliInstalled()) {
+            p.log.error("Claude Code CLI is not installed.");
+            p.log.info("Install it with:");
+            p.log.step(pc.bold("npm install -g @anthropic-ai/claude-code"));
+            p.log.info(pc.dim("Then re-run aman-agent to continue setup."));
+            process.exit(1);
+          }
+
+          p.log.success("Claude Code CLI detected.");
+
+          // Check auth / offer login
+          const authAction = (await p.select({
+            message: "Authentication",
+            options: [
+              { value: "logged-in", label: "Already logged in to Claude Code" },
+              { value: "login", label: "Log in now", hint: "runs: claude login" },
+            ],
           })) as string;
-          if (p.isCancel(apiKey)) process.exit(0);
+          if (p.isCancel(authAction)) process.exit(0);
+
+          if (authAction === "login") {
+            p.log.step("Launching Claude Code login...");
+            const { spawnSync } = await import("node:child_process");
+            const loginResult = spawnSync("claude", ["login"], {
+              stdio: "inherit",
+            });
+            if (loginResult.status !== 0) {
+              p.log.error("Login failed or was cancelled. Please try again.");
+              process.exit(1);
+            }
+            p.log.success("Login successful.");
+          }
+
+          apiKey = "claude-code"; // Sentinel — auth handled by CLI
 
           const modelChoice = (await p.select({
             message: "Claude model",
             options: [
               { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", hint: "fast, recommended" },
               { value: "claude-opus-4-6", label: "Claude Opus 4.6", hint: "most capable" },
-              { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", hint: "fastest, cheapest" },
+              { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", hint: "fastest" },
               { value: "custom", label: "Custom model ID" },
             ],
             initialValue: "claude-sonnet-4-6",
@@ -193,6 +245,92 @@ program
             const customModel = (await p.text({
               message: "Model ID",
               placeholder: "claude-sonnet-4-6",
+              validate: (v) => v.length === 0 ? "Model ID is required" : undefined,
+            })) as string;
+            if (p.isCancel(customModel)) process.exit(0);
+            defaultModel = customModel;
+          } else {
+            defaultModel = modelChoice;
+          }
+        } else if (provider === "copilot") {
+          // GitHub Copilot via GitHub Models API
+          p.note(
+            [
+              `${pc.bold("GitHub Copilot Plans:")}`,
+              "",
+              `  ${pc.cyan("Free")}          $0/mo       2,000 code completions + 50 chat msgs`,
+              `  ${pc.cyan("Pro")}           $10/mo      Unlimited completions + chat`,
+              `  ${pc.cyan("Pro+")}          $39/mo      Unlimited + Opus/o1 + agent mode`,
+              `  ${pc.cyan("Business")}      $19/user/mo Team admin + policy controls`,
+              `  ${pc.cyan("Enterprise")}    $39/user/mo SSO, audit logs, IP indemnity`,
+              "",
+              `${pc.dim("Authentication is handled by the GitHub CLI (gh).")}`,
+              `${pc.dim("Subscribe at: https://github.com/features/copilot")}`,
+            ].join("\n"),
+            "Copilot Plans",
+          );
+
+          // Check if gh CLI is installed
+          if (!isGhCliInstalled()) {
+            p.log.error("GitHub CLI (gh) is not installed.");
+            p.log.info("Install it from:");
+            p.log.step(pc.bold("https://cli.github.com"));
+            p.log.info(pc.dim("Then re-run aman-agent to continue setup."));
+            process.exit(1);
+          }
+
+          p.log.success("GitHub CLI detected.");
+
+          // Check auth / offer login
+          const ghAuth = isGhAuthenticated();
+          if (ghAuth) {
+            p.log.success("GitHub authentication found.");
+          } else {
+            p.log.warn("Not logged in to GitHub.");
+            const authAction = (await p.select({
+              message: "Authentication",
+              options: [
+                { value: "login", label: "Log in now", hint: "runs: gh auth login" },
+                { value: "skip", label: "Skip (I'll log in later)" },
+              ],
+            })) as string;
+            if (p.isCancel(authAction)) process.exit(0);
+
+            if (authAction === "login") {
+              p.log.step("Launching GitHub login...");
+              const { spawnSync } = await import("node:child_process");
+              const loginResult = spawnSync("gh", ["auth", "login"], {
+                stdio: "inherit",
+              });
+              if (loginResult.status !== 0) {
+                p.log.error("Login failed or was cancelled.");
+                process.exit(1);
+              }
+              p.log.success("GitHub login successful.");
+            }
+          }
+
+          apiKey = "copilot"; // Sentinel — token fetched at runtime via `gh auth token`
+
+          const modelChoice = (await p.select({
+            message: "Model",
+            options: [
+              { value: "gpt-4o", label: "GPT-4o", hint: "fast, recommended" },
+              { value: "gpt-4o-mini", label: "GPT-4o Mini", hint: "fastest" },
+              { value: "o3-mini", label: "o3-mini", hint: "reasoning" },
+              { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", hint: "via GitHub Models" },
+              { value: "meta-llama-3.1-405b-instruct", label: "Llama 3.1 405B", hint: "open source" },
+              { value: "mistral-large-2411", label: "Mistral Large", hint: "open source" },
+              { value: "custom", label: "Custom model ID" },
+            ],
+            initialValue: "gpt-4o",
+          })) as string;
+          if (p.isCancel(modelChoice)) process.exit(0);
+
+          if (modelChoice === "custom") {
+            const customModel = (await p.text({
+              message: "Model ID",
+              placeholder: "gpt-4o",
               validate: (v) => v.length === 0 ? "Model ID is required" : undefined,
             })) as string;
             if (p.isCancel(customModel)) process.exit(0);
@@ -354,7 +492,11 @@ program
 
     // Create LLM client
     let client;
-    if (config.provider === "anthropic") {
+    if (config.provider === "claude-code") {
+      client = createClaudeCodeClient(model);
+    } else if (config.provider === "copilot") {
+      client = createCopilotClient(model);
+    } else if (config.provider === "anthropic") {
       client = createAnthropicClient(config.apiKey, model);
     } else if (config.provider === "ollama") {
       client = createOllamaClient(model);

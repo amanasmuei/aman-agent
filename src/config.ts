@@ -40,7 +40,7 @@ export interface MemoryConfig {
 }
 
 export interface AgentConfig {
-  provider: "anthropic" | "openai" | "ollama";
+  provider: "anthropic" | "openai" | "ollama" | "claude-code" | "copilot";
   apiKey: string;
   model: string;
   ollamaUrl?: string;

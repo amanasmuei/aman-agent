@@ -11,6 +11,21 @@ vi.mock("node:os", async () => {
   return { ...actual, default: { ...actual, homedir: () => tmpHome } };
 });
 
+vi.mock("../src/memory.js", () => ({
+  memoryContext: vi.fn(async (topic: string) => ({
+    text: `Mock context for ${topic}`,
+    topic,
+    groups: [],
+    memoriesUsed: 1,
+  })),
+  memoryRecall: vi.fn(async (query: string) => ({
+    query,
+    total: 1,
+    memories: [{ content: "mock", type: "fact", score: 0.9 }],
+    text: `Mock recall for ${query}`,
+  })),
+}));
+
 const { handleCommand } = await import("../src/commands.js");
 
 function createMockMcpManager() {
@@ -283,18 +298,16 @@ describe("handleCommand", () => {
   // --- /memory ---
 
   describe("/memory", () => {
-    it("calls memory_context via MCP when connected", async () => {
-      const mcp = createMockMcpManager();
-      const result = await handleCommand("/memory", { mcpManager: mcp });
-      expect(result.handled).toBe(true);
-      expect(mcp.callTool).toHaveBeenCalledWith("memory_context", { topic: "recent context" });
-      expect(result.output).toContain("Mock result for memory_context");
-    });
-
-    it("shows error when MCP not connected", async () => {
+    it("calls memoryContext for recent context", async () => {
       const result = await handleCommand("/memory", {});
       expect(result.handled).toBe(true);
-      expect(result.output).toContain("not connected");
+      expect(result.output).toContain("Mock context for recent context");
+    });
+
+    it("returns context output without MCP", async () => {
+      const result = await handleCommand("/memory", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toBeDefined();
     });
   });
 
@@ -360,17 +373,16 @@ describe("handleCommand", () => {
   // --- /decisions ---
 
   describe("/decisions", () => {
-    it("delegates to MCP memory_recall for decisions", async () => {
-      const mcp = createMockMcpManager();
-      const result = await handleCommand("/decisions", { mcpManager: mcp });
-      expect(result.handled).toBe(true);
-      expect(mcp.callTool).toHaveBeenCalled();
-    });
-
-    it("shows error when MCP not connected", async () => {
+    it("calls memoryRecall for decisions", async () => {
       const result = await handleCommand("/decisions", {});
       expect(result.handled).toBe(true);
-      expect(result.output).toContain("not connected");
+      expect(result.output).toContain("Decision Log");
+    });
+
+    it("returns decision output without MCP", async () => {
+      const result = await handleCommand("/decisions", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toBeDefined();
     });
   });
 

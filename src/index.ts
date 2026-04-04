@@ -12,6 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { applyPreset, PRESETS, type PresetName } from "./presets.js";
+import { initMemory, memoryConsolidate } from "./memory.js";
 
 declare const __VERSION__: string;
 
@@ -262,6 +263,9 @@ program
     // Extract AI name from core.md
     const aiName = getProfileAiName(profile);
 
+    // Initialize memory (in-process, replaces amem MCP)
+    await initMemory();
+
     // Start MCP servers
     const mcpManager = new McpManager();
 
@@ -270,7 +274,6 @@ program
 
     // Core MCP servers (always connect)
     await mcpManager.connect("aman", "npx", ["-y", "@aman_asmuei/aman-mcp"]);
-    await mcpManager.connect("amem", "npx", ["-y", "@aman_asmuei/amem"]);
 
     // Connect custom MCP servers from config
     // Users add these via: ~/.aman-agent/config.json → "mcpServers": { "name": { command, args } }
@@ -289,27 +292,18 @@ program
     if (mcpTools.length > 0) {
       p.log.success(`${mcpTools.length} MCP tools available`);
 
-      // Memory consolidation
-      if (mcpTools.some(t => t.name === "memory_consolidate")) {
+      // Memory consolidation (in-process via amem-core)
+      {
         const memSpinner = p.spinner();
         memSpinner.start("Consolidating memory");
         try {
-          const consolidateResult = await mcpManager.callTool("memory_consolidate", { dry_run: false });
-          if (consolidateResult && !consolidateResult.startsWith("Error")) {
-            try {
-              const report = JSON.parse(consolidateResult);
-              memSpinner.stop("Memory consolidated");
-              if (report.merged > 0 || report.pruned > 0 || report.promoted > 0) {
-                p.log.info(
-                  `Memory health: ${report.healthScore ?? "?"}% ` +
-                  pc.dim(`(merged ${report.merged}, pruned ${report.pruned}, promoted ${report.promoted})`),
-                );
-              }
-            } catch {
-              memSpinner.stop("Memory consolidated");
-            }
-          } else {
-            memSpinner.stop("Memory consolidated");
+          const report = memoryConsolidate();
+          memSpinner.stop("Memory consolidated");
+          if (report.merged > 0 || report.pruned > 0 || report.promoted > 0) {
+            p.log.info(
+              `Memory health: ${report.healthScore ?? "?"}% ` +
+              pc.dim(`(merged ${report.merged}, pruned ${report.pruned}, promoted ${report.promoted})`),
+            );
           }
         } catch {
           memSpinner.stop("Memory consolidation skipped");

@@ -1,7 +1,7 @@
 import type { LLMClient } from "./llm/types.js";
-import type { McpManager } from "./mcp/client.js";
 import { log } from "./logger.js";
 import { matchPatternToSkill, enrichSkill } from "./skill-engine.js";
+import { memoryRecall, memoryStore } from "./memory.js";
 
 export interface ExtractionCandidate {
   content: string;
@@ -83,7 +83,6 @@ export async function extractMemories(
   userMessage: string,
   assistantResponse: string,
   client: LLMClient,
-  mcpManager: McpManager,
   state: ExtractorState,
 ): Promise<number> {
   if (!shouldExtract(assistantResponse, state.turnsSinceLastExtraction, state.lastExtractionCount)) {
@@ -114,24 +113,19 @@ export async function extractMemories(
     for (const candidate of candidates) {
       // Dedup check
       try {
-        const existing = await mcpManager.callTool("memory_recall", {
-          query: candidate.content,
-          limit: 1,
-        });
-        if (existing && !existing.startsWith("Error")) {
-          try {
-            const parsed = JSON.parse(existing);
-            if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].score > 0.85) {
-              log.debug("extractor", "Skipping duplicate: " + candidate.content);
-              continue;
-            }
-          } catch { /* Parse failed, proceed */ }
+        const existing = await memoryRecall(candidate.content, { limit: 1 });
+        if (existing.total > 0 && existing.memories.length > 0) {
+          const topScore = (existing.memories[0] as { score?: number })?.score;
+          if (topScore && topScore > 0.85) {
+            log.debug("extractor", "Skipping duplicate: " + candidate.content);
+            continue;
+          }
         }
       } catch { /* Dedup failed, proceed */ }
 
       // Store
       try {
-        await mcpManager.callTool("memory_store", {
+        await memoryStore({
           content: candidate.content,
           type: candidate.type,
           tags: candidate.tags,

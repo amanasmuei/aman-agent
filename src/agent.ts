@@ -35,6 +35,7 @@ import { trimConversation } from "./context-manager.js";
 import { log } from "./logger.js";
 import { withRetry } from "./retry.js";
 import { extractMemories as runExtraction, type ExtractorState } from "./memory-extractor.js";
+import { memoryRecall, memoryLog } from "./memory.js";
 import { autoTriggerSkills, matchKnowledge } from "./skill-engine.js";
 import { BackgroundTaskManager, shouldRunInBackground } from "./background.js";
 import { getActivePlan, formatPlanForPrompt } from "./plans.js";
@@ -48,28 +49,22 @@ import { getHint, loadShownHints, saveShownHints, type HintState } from "./hints
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 marked.use(markedTerminal() as any);
 
-interface RecallResult {
+interface AgentRecallResult {
   text: string;
   tokenEstimate: number;
 }
 
 async function recallForMessage(
   input: string,
-  mcpManager: McpManager,
-): Promise<RecallResult | null> {
+): Promise<AgentRecallResult | null> {
   try {
-    const result = await mcpManager.callTool("memory_recall", {
-      query: input,
-      limit: 5,
-      compact: true,
-    });
-    if (!result || result.startsWith("Error") || result.includes("No memories found")) {
+    const result = await memoryRecall(input, { limit: 5, compact: true });
+    if (result.total === 0) {
       return null;
     }
-    // Estimate tokens: ~1.3 tokens per word
-    const tokenEstimate = Math.round(result.split(/\s+/).filter(Boolean).length * 1.3);
+    const tokenEstimate = result.tokenEstimate ?? Math.round(result.text.split(/\s+/).filter(Boolean).length * 1.3);
     return {
-      text: `\n\n<relevant-memories>\n${result}\n</relevant-memories>`,
+      text: `\n\n<relevant-memories>\n${result.text}\n</relevant-memories>`,
       tokenEstimate,
     };
   } catch (err) {
@@ -296,9 +291,9 @@ export async function runAgent(
         }
         continue;
       }
-      if (cmdResult.saveConversation && mcpManager) {
+      if (cmdResult.saveConversation) {
         try {
-          await saveConversationToMemory(mcpManager, messages, sessionId);
+          await saveConversationToMemory(messages, sessionId);
           console.log(pc.green("Conversation saved to memory."));
         } catch {
           console.log(pc.red("Failed to save conversation."));
@@ -491,8 +486,8 @@ ${knowledgeItem.content}
     // Per-message memory recall
     let augmentedSystemPrompt = activeSystemPrompt;
     let memoryTokens = 0;
-    if (mcpManager) {
-      const recall = await recallForMessage(input, mcpManager);
+    {
+      const recall = await recallForMessage(input);
       if (recall) {
         augmentedSystemPrompt = activeSystemPrompt + recall.text;
         memoryTokens = recall.tokenEstimate;
@@ -612,14 +607,12 @@ ${knowledgeItem.content}
             process.stdout.write(pc.dim(`  [using ${toolUse.name}...]\n`));
             const result = await mcpManager.callTool(toolUse.name, toolUse.input);
 
-            // Log tool observation to amem (passive capture, fire-and-forget)
+            // Log tool observation to memory (passive capture, fire-and-forget)
             const skipLogging = ["memory_log", "memory_recall", "memory_context", "memory_detail", "reminder_check"].includes(toolUse.name);
             if (!skipLogging) {
-              mcpManager.callTool("memory_log", {
-                session_id: sessionId,
-                role: "system",
-                content: `[tool:${toolUse.name}] input=${JSON.stringify(toolUse.input).slice(0, 500)} result=${result.slice(0, 500)}`,
-              }).catch(() => {});
+              try {
+                memoryLog(sessionId, "system", `[tool:${toolUse.name}] input=${JSON.stringify(toolUse.input).slice(0, 500)} result=${result.slice(0, 500)}`);
+              } catch {}
             }
 
             return {
@@ -654,7 +647,7 @@ ${knowledgeItem.content}
       process.stdout.write(pc.dim(` ${footerDivider}${footer}\n`));
 
       // Memory extraction (runs silently after response)
-      if (mcpManager && hooksConfig?.extractMemories) {
+      if (hooksConfig?.extractMemories) {
         const assistantText = typeof response.message.content === "string"
           ? response.message.content
           : response.message.content
@@ -664,7 +657,7 @@ ${knowledgeItem.content}
 
         if (assistantText) {
           const count = await runExtraction(
-            input, assistantText, client, mcpManager, extractorState,
+            input, assistantText, client, extractorState,
           );
           if (count > 0) {
             process.stdout.write(pc.dim(`  [${count} memory${count > 1 ? "ies" : ""} stored]\n`));
@@ -694,9 +687,8 @@ ${knowledgeItem.content}
   }
 }
 
-// Save conversation messages to amem's memory_log
+// Save conversation messages to memory log
 async function saveConversationToMemory(
-  mcpManager: McpManager,
   messages: Message[],
   sessionId: string,
 ): Promise<void> {
@@ -706,11 +698,7 @@ async function saveConversationToMemory(
   for (const msg of recentMessages) {
     if (typeof msg.content !== "string") continue;
     try {
-      await mcpManager.callTool("memory_log", {
-        session_id: sessionId,
-        role: msg.role,
-        content: msg.content.slice(0, 5000),
-      });
+      memoryLog(sessionId, msg.role, msg.content.slice(0, 5000));
     } catch (err) {
       log.debug("agent", "memory_log write failed", err);
     }

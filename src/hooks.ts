@@ -11,6 +11,7 @@ import {
   syncPersonalityToCore,
   formatWellbeingNudge,
 } from "./personality.js";
+import { memoryRecall, memoryContext, reminderCheck, memoryLog } from "./memory.js";
 
 function getTimeContext(): string {
   const now = new Date();
@@ -55,10 +56,8 @@ export async function onSessionStart(
   // Detect first run via memory_recall
   try {
     isHookCall = true;
-    const recallResult = await ctx.mcpManager.callTool("memory_recall", { query: "*", limit: 1 });
-    if (!recallResult || recallResult.startsWith("Error") || recallResult.includes("No memories found")) {
-      firstRun = true;
-    }
+    const recallResult = await memoryRecall("*", { limit: 1 });
+    firstRun = recallResult.total === 0;
   } catch {
     firstRun = true;
   } finally {
@@ -92,9 +91,9 @@ This is your FIRST conversation with this user. Introduce yourself warmly:
   if (ctx.config.memoryRecall) {
     try {
       isHookCall = true;
-      const result = await ctx.mcpManager.callTool("memory_context", { topic: "session context" });
-      if (result && !result.startsWith("Error")) {
-        greeting += result;
+      const contextResult = await memoryContext("session context");
+      if (contextResult.memoriesUsed > 0) {
+        greeting += contextResult.text;
       }
     } catch (err) {
       log.warn("hooks", "memory_context recall failed", err);
@@ -132,14 +131,12 @@ This is your FIRST conversation with this user. Introduce yourself warmly:
   // Check reminders
   try {
     isHookCall = true;
-    const reminderResult = await ctx.mcpManager.callTool("reminder_check", {});
-    if (reminderResult && !reminderResult.startsWith("Error") && !reminderResult.includes("No pending")) {
-      greeting += "\n\n<pending-reminders>\n" + reminderResult + "\n</pending-reminders>";
-
-      // Parse reminder lines into visible reminders
-      const lines = reminderResult.split("\n").filter((l: string) => l.trim().length > 0);
-      for (const line of lines) {
-        visibleReminders.push(line.trim());
+    const reminders = reminderCheck();
+    if (reminders.length > 0) {
+      const reminderText = reminders.map(r => r.content).join("\n");
+      greeting += "\n\n<pending-reminders>\n" + reminderText + "\n</pending-reminders>";
+      for (const r of reminders) {
+        visibleReminders.push(r.content);
       }
     }
   } catch (err) {
@@ -307,11 +304,7 @@ export async function onSessionEnd(
       for (const msg of textMessages) {
         try {
           isHookCall = true;
-          await ctx.mcpManager.callTool("memory_log", {
-            session_id: sessionId,
-            role: msg.role,
-            content: (msg.content as string).slice(0, 5000),
-          });
+          memoryLog(sessionId, msg.role, (msg.content as string).slice(0, 5000));
         } catch (err) {
           log.debug("hooks", "memory_log write failed for " + sessionId, err);
         } finally {

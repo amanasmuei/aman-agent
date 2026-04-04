@@ -10,6 +10,9 @@ import type { McpManager } from "./mcp/client.js";
 import { assembleSystemPrompt } from "./prompt.js";
 import { withRetry } from "./retry.js";
 import { log } from "./logger.js";
+import { onBeforeToolExec, type HookContext } from "./hooks.js";
+import { memoryRecall } from "./memory.js";
+import type { HooksConfig } from "./config.js";
 
 export interface DelegationResult {
   profile: string;
@@ -25,6 +28,7 @@ export interface DelegateOptions {
   maxTurns?: number;        // max tool loop iterations (default: 10)
   silent?: boolean;         // suppress output (default: false)
   tools?: ToolDefinition[]; // tools available to sub-agent
+  hooksConfig?: HooksConfig; // guardrail config for tool execution
 }
 
 const isRetryable = (err: unknown): boolean => {
@@ -64,6 +68,15 @@ export async function delegateTask(
 You are being delegated a specific task by the primary agent. Complete this task thoroughly and return your result. You have access to tools if needed. Focus on the task — do not ask follow-up questions, just do your best with what you have.
 </delegation>`;
 
+    // Inject relevant memories into delegation prompt
+    let finalDelegationPrompt = delegationPrompt;
+    try {
+      const recall = await memoryRecall(task, { limit: 3, compact: true });
+      if (recall.total > 0) {
+        finalDelegationPrompt += `\n\n<relevant-memories>\n${recall.text}\n</relevant-memories>`;
+      }
+    } catch { /* memory unavailable, proceed without */ }
+
     const messages: Message[] = [
       { role: "user", content: task },
     ];
@@ -82,7 +95,7 @@ You are being delegated a specific task by the primary agent. Complete this task
 
     // Initial LLM call
     let response = await withRetry(
-      () => client.chat(delegationPrompt, messages, onChunk, tools),
+      () => client.chat(finalDelegationPrompt, messages, onChunk, tools),
       { maxAttempts: 2, baseDelay: 1000, retryable: isRetryable },
     );
 
@@ -98,6 +111,22 @@ You are being delegated a specific task by the primary agent. Complete this task
             process.stdout.write(pc.dim(`  [${profile}:${toolUse.name}...]\n`));
           }
           toolsUsed.push(toolUse.name);
+
+          // Guardrail check (same as main agent)
+          if (options.hooksConfig?.rulesCheck) {
+            try {
+              const hookCtx: HookContext = { mcpManager, config: options.hooksConfig };
+              const check = await onBeforeToolExec(toolUse.name, toolUse.input, hookCtx);
+              if (!check.allow) {
+                return {
+                  type: "tool_result" as const,
+                  tool_use_id: toolUse.id,
+                  content: `BLOCKED by guardrail: ${check.reason}`,
+                  is_error: true,
+                };
+              }
+            } catch { /* guardrail check failed, allow */ }
+          }
 
           try {
             const result = await mcpManager.callTool(toolUse.name, toolUse.input);
@@ -120,7 +149,7 @@ You are being delegated a specific task by the primary agent. Complete this task
       messages.push({ role: "user", content: toolResults });
 
       response = await withRetry(
-        () => client.chat(delegationPrompt, messages, onChunk, tools),
+        () => client.chat(finalDelegationPrompt, messages, onChunk, tools),
         { maxAttempts: 2, baseDelay: 1000, retryable: isRetryable },
       );
 

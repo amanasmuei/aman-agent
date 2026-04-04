@@ -8,12 +8,14 @@ function estimateMessageTokens(msg: Message): number {
   }
   // Content blocks — estimate from stringified content
   let text = "";
+  let imageTokens = 0;
   for (const block of msg.content) {
     if (block.type === "text") text += block.text;
     else if (block.type === "tool_result") text += block.content;
     else if (block.type === "tool_use") text += JSON.stringify(block.input);
+    else if (block.type === "image") imageTokens += 1600;
   }
-  return Math.round(text.split(/\s+/).filter(Boolean).length * 1.3);
+  return Math.round(text.split(/\s+/).filter(Boolean).length * 1.3) + imageTokens;
 }
 
 function estimateTotalTokens(messages: Message[]): number {

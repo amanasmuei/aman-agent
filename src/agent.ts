@@ -39,6 +39,7 @@ import { memoryRecall, memoryLog, getMaxRecallTokens } from "./memory.js";
 import { autoTriggerSkills, matchKnowledge } from "./skill-engine.js";
 import { BackgroundTaskManager, shouldRunInBackground } from "./background.js";
 import { getActivePlan, formatPlanForPrompt } from "./plans.js";
+import { estimateTokens } from "./token-budget.js";
 import { delegateTask } from "./delegate.js";
 import { listProfiles } from "./prompt.js";
 import { listTeams, loadTeam, runTeam, formatTeamResult } from "./teams.js";
@@ -101,6 +102,10 @@ export async function runAgent(
   const sessionId = generateSessionId();
   const extractorState: ExtractorState = { turnsSinceLastExtraction: 0, lastExtractionCount: 0 };
   const bgTasks = new BackgroundTaskManager();
+  let abortController: AbortController | null = null;
+  let isStreaming = false;
+  let lastCheckpointTurn = 0;
+  const CHECKPOINT_INTERVAL = 10; // auto-save every N user turns
 
   // Add virtual tools for delegation and teams
   const profiles = listProfiles();
@@ -189,8 +194,25 @@ export async function runAgent(
     output: process.stdout,
   });
 
-  // Handle Ctrl+C gracefully
+  // Handle Ctrl+C gracefully — abort current stream or exit
+  let sigintCount = 0;
   rl.on("SIGINT", async () => {
+    // If streaming, abort the current response instead of exiting
+    if (isStreaming && abortController) {
+      abortController.abort();
+      sigintCount = 0;
+      process.stdout.write(pc.yellow("\n  [response cancelled]\n"));
+      return;
+    }
+
+    sigintCount++;
+    // Double Ctrl+C to exit
+    if (sigintCount < 2) {
+      process.stdout.write(pc.dim("\n  Press Ctrl+C again to exit.\n"));
+      setTimeout(() => { sigintCount = 0; }, 2000);
+      return;
+    }
+
     // Wait for background tasks before exiting
     if (bgTasks.pendingCount > 0) {
       await bgTasks.waitAll();
@@ -250,11 +272,35 @@ export async function runAgent(
   }
 
   while (true) {
-    // Check for completed background tasks
+    // Check for completed background tasks — inject as proper tool results
     if (bgTasks.hasCompleted) {
-      const bgOutputs = bgTasks.displayCompleted();
-      for (const output of bgOutputs) {
-        messages.push({ role: "user", content: output });
+      const completed = bgTasks.collectCompleted();
+      const bgToolResults: ToolResultBlock[] = [];
+      for (const task of completed) {
+        const elapsed = ((Date.now() - task.startedAt) / 1000).toFixed(1);
+        if (task.error) {
+          process.stdout.write(pc.yellow(`\n  [${task.id}] ${task.toolName} failed after ${elapsed}s: ${task.error}\n`));
+          bgToolResults.push({
+            type: "tool_result" as const,
+            tool_use_id: task.toolUseId,
+            content: `[Background] ${task.toolName} failed: ${task.error}`,
+            is_error: true,
+          });
+        } else {
+          process.stdout.write(pc.green(`\n  [${task.id}] ${task.toolName} completed in ${elapsed}s\n`));
+          const preview = (task.result || "").slice(0, 200);
+          if (preview) {
+            process.stdout.write(pc.dim(`  ${preview}${(task.result || "").length > 200 ? "..." : ""}\n`));
+          }
+          bgToolResults.push({
+            type: "tool_result" as const,
+            tool_use_id: task.toolUseId,
+            content: `[Background] ${task.toolName} completed:\n${task.result}`,
+          });
+        }
+      }
+      if (bgToolResults.length > 0) {
+        messages.push({ role: "user", content: bgToolResults });
       }
     }
 
@@ -539,14 +585,27 @@ ${knowledgeItem.content}
       }
     }
 
+    // Cap augmented system prompt to prevent unbounded growth
+    const MAX_SYSTEM_TOKENS = 16_000;
+    const systemTokens = estimateTokens(augmentedSystemPrompt);
+    if (systemTokens > MAX_SYSTEM_TOKENS) {
+      // Trim from the end (memories, knowledge, skills are appended last)
+      const maxChars = MAX_SYSTEM_TOKENS * 4; // ~4 chars per token
+      augmentedSystemPrompt = augmentedSystemPrompt.slice(0, maxChars) + "\n[... system context truncated to fit token budget]";
+      log.debug("agent", `system prompt trimmed from ~${systemTokens} to ~${MAX_SYSTEM_TOKENS} tokens`);
+    }
+
     const divider = "─".repeat(Math.min(process.stdout.columns || 60, 60) - aiName.length - 2);
     process.stdout.write(`\n ${pc.cyan(pc.bold(aiName))} ${pc.dim(divider)}\n\n`);
 
     try {
+      abortController = new AbortController();
+      isStreaming = true;
       let response = await withRetry(
         () => client.chat(augmentedSystemPrompt, messages, onChunkHandler, tools),
         { maxAttempts: 3, baseDelay: 1000, retryable: isRetryable },
       );
+      isStreaming = false;
 
       // Add assistant message to history
       messages.push(response.message);
@@ -584,7 +643,7 @@ ${knowledgeItem.content}
             if (toolUse.name === "delegate_task" && mcpManager) {
               const input = toolUse.input as { profile: string; task: string };
               process.stdout.write(pc.dim(`\n  [delegating to ${input.profile}...]\n\n`));
-              const result = await delegateTask(input.task, input.profile, client, mcpManager, { tools });
+              const result = await delegateTask(input.task, input.profile, client, mcpManager, { tools, hooksConfig });
               const output = result.success
                 ? `[${input.profile}] completed:\n\n${result.response}`
                 : `[${input.profile}] failed: ${result.error}`;
@@ -652,11 +711,17 @@ ${knowledgeItem.content}
           content: toolResults,
         });
 
+        // Trim conversation if tool results pushed us over token limits
+        await trimConversation(messages, client);
+
         // Call LLM again with tool results
+        abortController = new AbortController();
+        isStreaming = true;
         response = await withRetry(
           () => client.chat(augmentedSystemPrompt, messages, onChunkHandler, tools),
           { maxAttempts: 3, baseDelay: 1000, retryable: isRetryable },
         );
+        isStreaming = false;
 
         // Add assistant response to history
         messages.push(response.message);
@@ -669,7 +734,15 @@ ${knowledgeItem.content}
       const footerDivider = "─".repeat(Math.min(process.stdout.columns || 60, 60) - footer.length - 1);
       process.stdout.write(pc.dim(` ${footerDivider}${footer}\n`));
 
-      // Memory extraction (runs silently after response)
+      // Periodic session checkpoint (fire-and-forget — prevents data loss on crash)
+      const currentTurn = messages.filter((m) => m.role === "user").length;
+      if (hooksConfig?.autoSessionSave && currentTurn - lastCheckpointTurn >= CHECKPOINT_INTERVAL) {
+        lastCheckpointTurn = currentTurn;
+        saveConversationToMemory(messages, sessionId).catch(() => {});
+        log.debug("agent", `checkpoint saved at turn ${currentTurn}`);
+      }
+
+      // Memory extraction (fire-and-forget — never blocks the prompt)
       if (hooksConfig?.extractMemories) {
         const assistantText = typeof response.message.content === "string"
           ? response.message.content
@@ -679,12 +752,13 @@ ${knowledgeItem.content}
               .join("");
 
         if (assistantText) {
-          const count = await runExtraction(
+          runExtraction(
             input, assistantText, client, extractorState,
-          );
-          if (count > 0) {
-            process.stdout.write(pc.dim(`  [${count} memory${count > 1 ? "ies" : ""} stored]\n`));
-          }
+          ).then((count) => {
+            if (count > 0) {
+              process.stdout.write(pc.dim(`  [${count} memory${count > 1 ? "ies" : ""} stored]\n`));
+            }
+          }).catch(() => {});
         }
       } else {
         extractorState.turnsSinceLastExtraction++;
@@ -702,6 +776,18 @@ ${knowledgeItem.content}
         }
       }
     } catch (error) {
+      isStreaming = false;
+      // If aborted by user (Ctrl+C), just add partial response and continue
+      if (abortController?.signal.aborted) {
+        if (responseBuffer.trim()) {
+          messages.push({ role: "assistant", content: responseBuffer.trim() });
+          if (process.stdout.isTTY) {
+            try { logUpdate(marked(responseBuffer.trim()) as string); logUpdate.done(); } catch { logUpdate.done(); }
+          }
+          responseBuffer = "";
+        }
+        continue;
+      }
       const rawMessage = error instanceof Error ? error.message : "Unknown error occurred";
       const friendly = humanizeError(rawMessage);
       console.error(pc.red(`\n  ${friendly}`));

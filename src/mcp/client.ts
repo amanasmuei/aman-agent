@@ -91,21 +91,20 @@ export class McpManager {
     const conn = this.connections.find((c) => c.name === tool.serverName);
     if (!conn) return `Error: server ${tool.serverName} not connected`;
 
-    try {
-      const result = await withRetry(
-        () =>
-          Promise.race([
-            conn.client.callTool({ name: toolName, arguments: args }),
-            new Promise<never>((_, reject) =>
-              setTimeout(
-                () => reject(new Error(`Tool ${toolName} timed out after 30s`)),
-                TOOL_CALL_TIMEOUT_MS,
-              ),
-            ),
-          ]),
-        { maxAttempts: 2, baseDelay: 500, retryable: (err) => err.message.includes("ETIMEDOUT") || err.message.includes("timeout") },
-      );
-      // Extract text from result
+    const executeTool = async () => {
+      const currentConn = this.connections.find((c) => c.name === tool.serverName);
+      if (!currentConn) throw new Error(`Server ${tool.serverName} disconnected`);
+
+      const result = await Promise.race([
+        currentConn.client.callTool({ name: toolName, arguments: args }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`Tool ${toolName} timed out after 30s`)),
+            TOOL_CALL_TIMEOUT_MS,
+          ),
+        ),
+      ]);
+
       if (result.content && Array.isArray(result.content)) {
         return (result.content as Array<{ type: string; text?: string }>)
           .filter((c) => c.type === "text")
@@ -113,8 +112,31 @@ export class McpManager {
           .join("\n");
       }
       return JSON.stringify(result);
+    };
+
+    try {
+      return await withRetry(executeTool, {
+        maxAttempts: 2,
+        baseDelay: 500,
+        retryable: (err) => err.message.includes("ETIMEDOUT") || err.message.includes("timeout"),
+      });
     } catch (error) {
-      return `Error calling ${toolName}: ${error instanceof Error ? error.message : String(error)}`;
+      const errMsg = error instanceof Error ? error.message : String(error);
+      // Detect connection failures and auto-reconnect once
+      const isConnectionError = errMsg.includes("EPIPE") || errMsg.includes("ECONNRESET") ||
+        errMsg.includes("channel closed") || errMsg.includes("disconnected") ||
+        errMsg.includes("not connected") || errMsg.includes("write after end") ||
+        errMsg.includes("socket hang up") || errMsg.includes("spawn");
+      if (isConnectionError) {
+        log.warn("mcp", `Connection error for ${tool.serverName}, attempting reconnect: ${errMsg}`);
+        try {
+          await this.reconnect(tool.serverName);
+          return await executeTool();
+        } catch (reconnectErr) {
+          return `Error calling ${toolName}: reconnect failed — ${reconnectErr instanceof Error ? reconnectErr.message : String(reconnectErr)}`;
+        }
+      }
+      return `Error calling ${toolName}: ${errMsg}`;
     }
   }
 

@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import pc from "picocolors";
 import type { McpManager } from "./mcp/client.js";
 import { getEcosystemStatus } from "./layers/parsers.js";
-import { memoryContext, memoryRecall, isMemoryInitialized } from "./memory.js";
+import { memoryContext, memoryRecall, memoryForget, memoryStats, memoryExport, memorySince, memorySearch, isMemoryInitialized, reminderSet, reminderList, reminderCheck, reminderComplete } from "./memory.js";
 import { listProfiles } from "./prompt.js";
 import { BUILT_IN_PROFILES, installProfileTemplate } from "./profile-templates.js";
 import { delegateTask, delegatePipeline } from "./delegate.js";
@@ -58,7 +58,8 @@ function parseCommand(input: string): { base: string; action?: string; args: str
   const trimmed = input.trim();
   const parts = trimmed.split(/\s+/);
   const base = parts[0].toLowerCase().replace(/^\//, "");
-  const action = parts.length > 1 ? parts[1].toLowerCase() : undefined;
+  let action = parts.length > 1 ? parts[1].toLowerCase() : undefined;
+  if (action === "--help" || action === "-h") action = "help";
   const args = parts.slice(2);
   return { base, action, args };
 }
@@ -109,7 +110,14 @@ async function handleIdentityCommand(
     const output = await mcpWrite(ctx, "identity", "identity_update_section", { section, content });
     return { handled: true, output };
   }
-  return { handled: true, output: pc.yellow(`Unknown action: /identity ${action}. Use /identity or /identity update <section>.`) };
+  if (action === "help") {
+    return { handled: true, output: [
+      pc.bold("Identity commands:"),
+      `  ${pc.cyan("/identity")}                  View current identity`,
+      `  ${pc.cyan("/identity update")} <section>  Update a section`,
+    ].join("\n") };
+  }
+  return { handled: true, output: pc.yellow(`Unknown action: /identity ${action}. Try /identity --help`) };
 }
 
 async function handleRulesCommand(
@@ -145,7 +153,16 @@ async function handleRulesCommand(
     const output = await mcpWrite(ctx, "rules", "rules_toggle", { category: args[0], index: parseInt(args[1], 10) });
     return { handled: true, output };
   }
-  return { handled: true, output: pc.yellow(`Unknown action: /rules ${action}. Use /rules [add|remove|toggle].`) };
+  if (action === "help") {
+    return { handled: true, output: [
+      pc.bold("Rules commands:"),
+      `  ${pc.cyan("/rules")}                         View current rules`,
+      `  ${pc.cyan("/rules add")} <category> <text>    Add a rule`,
+      `  ${pc.cyan("/rules remove")} <category> <idx>  Remove a rule`,
+      `  ${pc.cyan("/rules toggle")} <category> <idx>  Toggle a rule`,
+    ].join("\n") };
+  }
+  return { handled: true, output: pc.yellow(`Unknown action: /rules ${action}. Try /rules --help`) };
 }
 
 async function handleWorkflowsCommand(
@@ -172,7 +189,15 @@ async function handleWorkflowsCommand(
     const output = await mcpWrite(ctx, "workflows", "workflow_remove", { name: args.join(" ") });
     return { handled: true, output };
   }
-  return { handled: true, output: pc.yellow(`Unknown action: /workflows ${action}. Use /workflows [add|remove].`) };
+  if (action === "help") {
+    return { handled: true, output: [
+      pc.bold("Workflow commands:"),
+      `  ${pc.cyan("/workflows")}              View current workflows`,
+      `  ${pc.cyan("/workflows add")} <name>    Add a workflow`,
+      `  ${pc.cyan("/workflows remove")} <name> Remove a workflow`,
+    ].join("\n") };
+  }
+  return { handled: true, output: pc.yellow(`Unknown action: /workflows ${action}. Try /workflows --help`) };
 }
 
 // akit registry — keep in sync with @aman_asmuei/akit/src/lib/registry.ts
@@ -456,7 +481,15 @@ async function handleSkillsCommand(
     const output = await mcpWrite(ctx, "skills", "skill_uninstall", { name: args.join(" ") });
     return { handled: true, output };
   }
-  return { handled: true, output: pc.yellow(`Unknown action: /skills ${action}. Use /skills [install|uninstall].`) };
+  if (action === "help") {
+    return { handled: true, output: [
+      pc.bold("Skills commands:"),
+      `  ${pc.cyan("/skills")}                    View installed skills`,
+      `  ${pc.cyan("/skills install")} <name>      Install a skill`,
+      `  ${pc.cyan("/skills uninstall")} <name>    Uninstall a skill`,
+    ].join("\n") };
+  }
+  return { handled: true, output: pc.yellow(`Unknown action: /skills ${action}. Try /skills --help`) };
 }
 
 async function handleEvalCommand(
@@ -498,7 +531,7 @@ async function handleMemoryCommand(
     }
   }
   // /memory <topic> — shortcut for context on a specific topic
-  if (action && !["search", "clear", "timeline"].includes(action)) {
+  if (action && !["search", "clear", "timeline", "stats", "export", "since", "fts", "help"].includes(action)) {
     try {
       const topic = [action, ...args].join(" ");
       const result = await memoryContext(topic);
@@ -524,10 +557,14 @@ async function handleMemoryCommand(
   }
   if (action === "clear") {
     if (args.length < 1) {
-      return { handled: true, output: pc.yellow("Usage: /memory clear <category>") };
+      return { handled: true, output: pc.yellow("Usage: /memory clear <query>  — delete memories matching query") };
     }
-    const output = await mcpWrite(ctx, "memory", "memory_forget", { category: args[0] });
-    return { handled: true, output };
+    try {
+      const result = await memoryForget({ query: args.join(" ") });
+      return { handled: true, output: result.deleted > 0 ? pc.green(result.message) : pc.dim(result.message) };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Memory error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
   }
   if (action === "timeline") {
     try {
@@ -579,7 +616,110 @@ async function handleMemoryCommand(
       return { handled: true, output: pc.red("Failed to retrieve memory timeline.") };
     }
   }
-  return { handled: true, output: pc.yellow(`Unknown action: /memory ${action}. Use /memory [search|clear|timeline].`) };
+  if (action === "stats") {
+    try {
+      const stats = memoryStats();
+      const lines: string[] = [pc.bold("Memory Statistics:"), ""];
+      lines.push(`  Total memories: ${pc.bold(String(stats.total))}`);
+      if (Object.keys(stats.byType).length > 0) {
+        lines.push("");
+        lines.push(`  ${pc.dim("By type:")}`);
+        for (const [type, count] of Object.entries(stats.byType)) {
+          lines.push(`    ${type.padEnd(16)} ${count}`);
+        }
+      }
+      return { handled: true, output: lines.join("\n") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Memory error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+  if (action === "export") {
+    try {
+      const format = args[0] === "json" ? "json" : "markdown";
+      const memories = memoryExport();
+      if (memories.length === 0) {
+        return { handled: true, output: pc.dim("No memories to export.") };
+      }
+      if (format === "json") {
+        const jsonOut = memories.map(m => ({ id: m.id, type: m.type, content: m.content, tags: m.tags, confidence: m.confidence, createdAt: m.createdAt, tier: m.tier }));
+        return { handled: true, output: JSON.stringify(jsonOut, null, 2) };
+      }
+      const lines: string[] = [`# Memory Export (${memories.length} memories)`, ""];
+      for (const m of memories) {
+        const date = new Date(m.createdAt).toLocaleDateString();
+        const tags = m.tags.length > 0 ? ` [${m.tags.map(t => `#${t}`).join(", ")}]` : "";
+        lines.push(`- **[${m.type}]** ${m.content}${tags} ${pc.dim(`(${date}, ${Math.round(m.confidence * 100)}%)`)}`);
+      }
+      return { handled: true, output: lines.join("\n") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Memory error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+  if (action === "since") {
+    try {
+      let hours = 24;
+      if (args[0]) {
+        const match = args[0].match(/^(\d+)(h|d|w)$/);
+        if (match) {
+          const value = parseInt(match[1], 10);
+          const unit = match[2];
+          if (unit === "h") hours = value;
+          else if (unit === "d") hours = value * 24;
+          else if (unit === "w") hours = value * 24 * 7;
+        } else {
+          return { handled: true, output: pc.yellow("Usage: /memory since <Nh|Nd|Nw>  (e.g., 24h, 7d, 1w)") };
+        }
+      }
+      const memories = memorySince(hours);
+      if (memories.length === 0) {
+        return { handled: true, output: pc.dim(`No memories in the last ${args[0] || "24h"}.`) };
+      }
+      const lines: string[] = [pc.bold(`Memories since ${args[0] || "24h"} (${memories.length}):`), ""];
+      for (const m of memories) {
+        const age = Math.round((Date.now() - m.createdAt) / 3600000);
+        const ageStr = age < 1 ? "<1h ago" : `${age}h ago`;
+        lines.push(`  ${pc.dim(ageStr.padEnd(10))} [${m.type}] ${m.content}`);
+      }
+      return { handled: true, output: lines.join("\n") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Memory error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+  if (action === "fts") {
+    if (args.length < 1) {
+      return { handled: true, output: pc.yellow("Usage: /memory fts <query...>  — full-text search") };
+    }
+    try {
+      const query = args.join(" ");
+      const results = memorySearch(query, 20);
+      if (results.length === 0) {
+        return { handled: true, output: pc.dim(`No results for full-text search: "${query}".`) };
+      }
+      const lines: string[] = [pc.bold(`FTS results for "${query}" (${results.length}):`), ""];
+      for (const m of results) {
+        const tags = m.tags.length > 0 ? ` ${pc.dim(m.tags.map(t => `#${t}`).join(" "))}` : "";
+        lines.push(`  [${m.type}] ${m.content}${tags}`);
+      }
+      return { handled: true, output: lines.join("\n") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Memory error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+  if (action === "help") {
+    return { handled: true, output: [
+      pc.bold("Memory commands:"),
+      `  ${pc.cyan("/memory")}                    View recent context`,
+      `  ${pc.cyan("/memory")} <topic>             Context for a topic`,
+      `  ${pc.cyan("/memory search")} <query>      Search memories (semantic)`,
+      `  ${pc.cyan("/memory fts")} <query>          Full-text search (FTS5)`,
+      `  ${pc.cyan("/memory since")} <Nh|Nd|Nw>    Memories from time window`,
+      `  ${pc.cyan("/memory stats")}               Show memory statistics`,
+      `  ${pc.cyan("/memory export")} [json]        Export all memories`,
+      `  ${pc.cyan("/memory timeline")}            View memory timeline`,
+      `  ${pc.cyan("/memory clear")} <query>        Delete matching memories`,
+    ].join("\n") };
+  }
+  return { handled: true, output: pc.yellow(`Unknown action: /memory ${action}. Try /memory --help`) };
 }
 
 function handleStatusCommand(ctx: CommandContext): CommandResult {
@@ -671,7 +811,8 @@ function handleHelp(): CommandResult {
       `  ${pc.cyan("/akit")}         Manage tools [add|remove <tool>]`,
       `  ${pc.cyan("/skills")}       View skills [install|uninstall ...]`,
       `  ${pc.cyan("/eval")}         View evaluation [milestone ...]`,
-      `  ${pc.cyan("/memory")}       View recent memories [search|clear|timeline]`,
+      `  ${pc.cyan("/memory")}       View recent memories [search|fts|since|stats|export|clear|timeline]`,
+      `  ${pc.cyan("/reminder")}     Manage reminders [set|check|done]`,
       `  ${pc.cyan("/status")}       Ecosystem dashboard`,
       `  ${pc.cyan("/doctor")}       Health check all layers`,
       `  ${pc.cyan("/decisions")}    View decision log [<project>]`,
@@ -680,7 +821,7 @@ function handleHelp(): CommandResult {
       `  ${pc.cyan("/save")}         Save conversation to memory`,
       `  ${pc.cyan("/model")}        Show current LLM model`,
       `  ${pc.cyan("/update")}       Check for updates`,
-      `  ${pc.cyan("/reconfig")}     Reset LLM config`,
+      `  ${pc.cyan("/reset")}       Full reset [all|memory|config|identity|rules]`,
       `  ${pc.cyan("/clear")}        Clear conversation history`,
       `  ${pc.cyan("/quit")}         Exit`,
     ].join("\n"),
@@ -691,21 +832,57 @@ function handleSave(): CommandResult {
   return { handled: true, saveConversation: true };
 }
 
-function handleReconfig(): CommandResult {
-  const configDir = path.join(os.homedir(), ".aman-agent");
-  const configPath = path.join(configDir, "config.json");
-  if (fs.existsSync(configPath)) {
-    fs.unlinkSync(configPath);
+function handleReset(action: string): CommandResult {
+  const dirs = {
+    config: path.join(os.homedir(), ".aman-agent"),
+    memory: path.join(os.homedir(), ".amem"),
+    identity: path.join(os.homedir(), ".acore"),
+    rules: path.join(os.homedir(), ".arules"),
+  };
+
+  if (action === "help" || !action) {
+    return {
+      handled: true,
+      output: [
+        pc.bold("Reset options:"),
+        `  ${pc.cyan("/reset all")}        Full reset — config, memory, identity, rules`,
+        `  ${pc.cyan("/reset memory")}     Clear all memories only`,
+        `  ${pc.cyan("/reset config")}     Reset LLM config only`,
+        `  ${pc.cyan("/reset identity")}   Reset persona/identity only`,
+        `  ${pc.cyan("/reset rules")}      Reset guardrails only`,
+        "",
+        pc.dim("Directories:"),
+        ...Object.entries(dirs).map(([k, v]) => `  ${k}: ${pc.dim(v)}`),
+      ].join("\n"),
+    };
   }
-  // Write marker to skip auto-detect on next run → force interactive prompt
-  fs.mkdirSync(configDir, { recursive: true });
-  fs.writeFileSync(path.join(configDir, ".reconfig"), "", "utf-8");
+
+  const targets: Array<keyof typeof dirs> =
+    action === "all" ? ["config", "memory", "identity", "rules"] : [action as keyof typeof dirs];
+
+  if (!targets.every((t) => t in dirs)) {
+    return { handled: true, output: pc.red(`Unknown target: ${action}. Use /reset help`) };
+  }
+
+  const removed: string[] = [];
+  for (const target of targets) {
+    const dir = dirs[target];
+    if (fs.existsSync(dir)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      removed.push(target);
+    }
+  }
+
+  if (removed.length === 0) {
+    return { handled: true, output: pc.dim("Nothing to reset — directories don't exist.") };
+  }
+
   return {
     handled: true,
     quit: true,
     output: [
-      pc.green("Config reset."),
-      "Next run will prompt you to choose your LLM provider.",
+      pc.green(`Reset complete: ${removed.join(", ")}`),
+      "Restart aman-agent to begin fresh.",
     ].join("\n"),
   };
 }
@@ -1217,10 +1394,80 @@ function handlePlanCommand(action: string | undefined, args: string[]): CommandR
   }
 }
 
+async function handleReminderCommand(
+  action: string | undefined,
+  args: string[],
+): Promise<CommandResult> {
+  if (!action || action === "list") {
+    try {
+      const reminders = reminderList();
+      if (reminders.length === 0) return { handled: true, output: pc.dim("No reminders.") };
+      const lines: string[] = [pc.bold(`Reminders (${reminders.length}):`), ""];
+      for (const r of reminders) {
+        const status = r.completed ? pc.green("[done]") : pc.yellow("[todo]");
+        const due = r.dueAt ? ` ${pc.dim(`due: ${new Date(r.dueAt).toLocaleString()}`)}` : "";
+        lines.push(`  ${status} ${r.content}${due} ${pc.dim(`(${r.id.slice(0, 8)})`)}`);
+      }
+      return { handled: true, output: lines.join("\n") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Reminder error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+
+  if (action === "set" || action === "add") {
+    const content = args.join(" ");
+    if (!content) return { handled: true, output: pc.yellow("Usage: /reminder set <what to remember>") };
+    try {
+      const id = reminderSet(content);
+      return { handled: true, output: pc.green(`Reminder set: "${content}" (ID: ${id.slice(0, 8)})`) };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Reminder error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+
+  if (action === "done" || action === "complete") {
+    if (!args[0]) return { handled: true, output: pc.yellow("Usage: /reminder done <id>") };
+    try {
+      const result = reminderComplete(args[0]);
+      return { handled: true, output: result ? pc.green("Reminder completed.") : pc.yellow("Reminder not found.") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Reminder error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+
+  if (action === "check") {
+    try {
+      const reminders = reminderCheck();
+      if (reminders.length === 0) return { handled: true, output: pc.dim("No pending reminders.") };
+      const lines: string[] = [pc.bold("Pending Reminders:"), ""];
+      for (const r of reminders) {
+        const icon = r.status === "overdue" ? pc.red("!!!") : r.status === "today" ? pc.yellow("(!)") : pc.dim("( )");
+        const due = r.dueAt ? ` ${pc.dim(`due: ${new Date(r.dueAt).toLocaleString()}`)}` : "";
+        lines.push(`  ${icon} ${r.content}${due} ${pc.dim(`[${r.status}]`)}`);
+      }
+      return { handled: true, output: lines.join("\n") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Reminder error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+
+  if (action === "help") {
+    return { handled: true, output: [
+      pc.bold("Reminder commands:"),
+      `  ${pc.cyan("/reminder")}                List all reminders`,
+      `  ${pc.cyan("/reminder set")} <text>      Create a reminder`,
+      `  ${pc.cyan("/reminder check")}           Show overdue/upcoming`,
+      `  ${pc.cyan("/reminder done")} <id>       Mark as completed`,
+    ].join("\n") };
+  }
+
+  return { handled: true, output: pc.yellow(`Unknown action: /reminder ${action}. Try /reminder --help`) };
+}
+
 const KNOWN_COMMANDS = new Set([
   "quit", "exit", "q", "help", "clear", "model", "identity", "rules",
   "workflows", "tools", "akit", "skills", "eval", "memory", "status", "doctor",
-  "save", "decisions", "export", "debug", "update-config", "reconfig",
+  "save", "decisions", "export", "debug", "reset", "reminder",
   "update", "upgrade", "plan", "profile", "delegate", "team",
 ]);
 
@@ -1271,9 +1518,8 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
       return handleExportCommand();
     case "debug":
       return handleDebugCommand();
-    case "update-config":
-    case "reconfig":
-      return handleReconfig();
+    case "reset":
+      return handleReset(action);
     case "plan":
       return handlePlanCommand(action, args);
     case "profile":
@@ -1282,6 +1528,8 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
       return handleDelegateCommand(action, args, ctx);
     case "team":
       return handleTeamCommand(action, args, ctx);
+    case "reminder":
+      return handleReminderCommand(action, args);
     case "update":
     case "upgrade":
       return handleUpdate();

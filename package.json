@@ -20,6 +20,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@aman_asmuei/amem-core": "^0.1.0",
     "@anthropic-ai/sdk": "^0.39.0",
     "@clack/prompts": "^0.9.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
@@ -28,8 +29,7 @@
     "marked": "^15.0.12",
     "marked-terminal": "^7.3.0",
     "openai": "^4.80.0",
-    "picocolors": "^1.1.1",
-    "@aman_asmuei/amem-core": "^0.1.0"
+    "picocolors": "^1.1.1"
   },
   "devDependencies": {
     "@types/marked-terminal": "^6.1.1",

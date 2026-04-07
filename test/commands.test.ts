@@ -6,6 +6,13 @@ import type { McpManager } from "../src/mcp/client.js";
 
 const tmpHome = path.join(os.tmpdir(), `aman-agent-test-cmds-${Date.now()}`);
 
+// Point engine v1 storage roots inside tmpHome BEFORE commands.ts (and
+// transitively acore-core / arules-core) is imported, so their cached
+// storage singletons resolve to the test directory.
+process.env.ACORE_HOME = path.join(tmpHome, ".acore");
+process.env.ARULES_HOME = path.join(tmpHome, ".arules");
+process.env.AMAN_HOME = path.join(tmpHome, ".aman");
+
 vi.mock("node:os", async () => {
   const actual = await vi.importActual<typeof import("node:os")>("node:os");
   return { ...actual, default: { ...actual, homedir: () => tmpHome } };
@@ -118,8 +125,8 @@ describe("handleCommand", () => {
   // --- Ecosystem file commands ---
 
   describe("/identity", () => {
-    it("shows core.md content when file exists", async () => {
-      const dir = path.join(tmpHome, ".acore");
+    it("shows identity content when configured for dev:agent scope", async () => {
+      const dir = path.join(tmpHome, ".acore", "dev", "agent");
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, "core.md"), "# My Identity", "utf-8");
 
@@ -128,39 +135,25 @@ describe("handleCommand", () => {
       expect(result.output).toBe("# My Identity");
     });
 
-    it("shows not-found message when file is missing", async () => {
+    it("shows not-found message when no identity configured", async () => {
       const result = await handleCommand("/identity", {});
       expect(result.handled).toBe(true);
-      expect(result.output).toContain("No");
-      expect(result.output).toContain("identity");
+      expect(result.output).toContain("No identity configured");
     });
   });
 
   describe("/tools and /akit", () => {
-    it("shows installed tools when some exist", async () => {
-      const dir = path.join(tmpHome, ".akit");
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, "installed.json"), JSON.stringify([
-        { name: "github", installedAt: "2026-03-26", mcpConfigured: true },
-      ]), "utf-8");
-
-      const result = await handleCommand("/akit", {});
-      expect(result.handled).toBe(true);
-      expect(result.output).toContain("github");
-      expect(result.output).toContain("MCP");
-    });
-
     it("/tools aliases to /akit", async () => {
       const result = await handleCommand("/tools", {});
       expect(result.handled).toBe(true);
       expect(result.output).toContain("akit");
     });
 
-    it("shows available tools when none installed", async () => {
+    it("shows informational stub pointing at standalone akit CLI", async () => {
       const result = await handleCommand("/akit", {});
       expect(result.handled).toBe(true);
-      expect(result.output).toContain("Available");
-      expect(result.output).toContain("akit add");
+      expect(result.output).toContain("Tool Management");
+      expect(result.output).toContain("npx @aman_asmuei/akit");
     });
   });
 
@@ -184,21 +177,18 @@ describe("handleCommand", () => {
   });
 
   describe("/rules", () => {
-    it("shows rules.md content when file exists", async () => {
-      const dir = path.join(tmpHome, ".arules");
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, "rules.md"), "# My Rules", "utf-8");
-
+    it("shows added rules from arules-core", async () => {
+      await handleCommand("/rules add safety Do not harm", {});
       const result = await handleCommand("/rules", {});
       expect(result.handled).toBe(true);
-      expect(result.output).toBe("# My Rules");
+      expect(result.output?.toLowerCase()).toContain("safety");
+      expect(result.output).toContain("Do not harm");
     });
 
-    it("shows not-found message when file is missing", async () => {
+    it("shows not-found message when no rules configured", async () => {
       const result = await handleCommand("/rules", {});
       expect(result.handled).toBe(true);
-      expect(result.output).toContain("No");
-      expect(result.output).toContain("guardrails");
+      expect(result.output).toContain("No rules configured");
     });
   });
 
@@ -335,17 +325,18 @@ describe("handleCommand", () => {
   // --- /rules add (write subcommand) ---
 
   describe("/rules add", () => {
-    it("delegates to MCP when mcpManager is provided", async () => {
-      const mcp = createMockMcpManager();
-      const result = await handleCommand("/rules add safety Do not harm", { mcpManager: mcp });
-      expect(result.handled).toBe(true);
-      expect(mcp.callTool).toHaveBeenCalledWith("rules_add", { category: "safety", rule: "Do not harm" });
-    });
-
-    it("shows not connected error without mcpManager", async () => {
+    it("adds a rule via arules-core (no MCP needed)", async () => {
       const result = await handleCommand("/rules add safety Do not harm", {});
       expect(result.handled).toBe(true);
-      expect(result.output).toContain("not connected");
+      expect(result.output).toContain("Added rule");
+      expect(result.output).toContain("safety");
+      expect(result.output).toContain("Do not harm");
+    });
+
+    it("shows usage message when arguments are missing", async () => {
+      const result = await handleCommand("/rules add", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("Usage");
     });
   });
 

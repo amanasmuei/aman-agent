@@ -1,6 +1,6 @@
 {
   "name": "@aman_asmuei/aman-agent",
-  "version": "0.21.1",
+  "version": "0.22.0",
   "description": "Your AI companion, running locally — powered by the aman ecosystem",
   "type": "module",
   "bin": {
@@ -20,9 +20,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@aman_asmuei/aman-core": "file:../aman-core",
-    "@aman_asmuei/acore-core": "file:../acore-core",
-    "@aman_asmuei/arules-core": "file:../arules-core",
+    "@aman_asmuei/aman-core": "^0.2.0",
+    "@aman_asmuei/acore-core": "^0.1.0",
+    "@aman_asmuei/arules-core": "^0.1.0",
     "@aman_asmuei/amem-core": "^0.1.0",
     "@anthropic-ai/sdk": "^0.39.0",
     "@clack/prompts": "^0.9.1",

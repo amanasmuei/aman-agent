@@ -20,6 +20,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@aman_asmuei/aman-core": "file:../aman-core",
+    "@aman_asmuei/acore-core": "file:../acore-core",
+    "@aman_asmuei/arules-core": "file:../arules-core",
     "@aman_asmuei/amem-core": "^0.1.0",
     "@anthropic-ai/sdk": "^0.39.0",
     "@clack/prompts": "^0.9.1",

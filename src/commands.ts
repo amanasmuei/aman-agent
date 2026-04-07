@@ -36,6 +36,29 @@ import {
   formatPlan,
 } from "./plans.js";
 
+// ── aman engine layers (Phase 5: replace file IO + mcpWrite for identity/rules) ──
+import {
+  getIdentity as acoreGetIdentity,
+  updateSection as acoreUpdateSection,
+} from "@aman_asmuei/acore-core";
+import {
+  listRuleCategories as arulesListCategories,
+  addRule as arulesAddRule,
+  removeRule as arulesRemoveRule,
+  toggleRuleAt as arulesToggleRule,
+} from "@aman_asmuei/arules-core";
+
+/**
+ * Canonical scope for aman-agent's slash commands. The CLI runtime is
+ * the dev's `dev:agent` surface — distinct from `dev:plugin` (Claude Code)
+ * and `dev:default` (the legacy single-tenant catch-all).
+ *
+ * Override at runtime with $AMAN_AGENT_SCOPE if you want a different
+ * default (e.g. `dev:work` vs `dev:personal`).
+ */
+const AGENT_SCOPE: string =
+  process.env.AMAN_AGENT_SCOPE ?? "dev:agent";
+
 export interface CommandResult {
   handled: boolean;
   output?: string;
@@ -90,18 +113,27 @@ async function mcpWrite(
 async function handleIdentityCommand(
   action: string | undefined,
   args: string[],
-  ctx: CommandContext,
+  _ctx: CommandContext,
 ): Promise<CommandResult> {
-  const home = os.homedir();
   if (!action) {
-    const content = readEcosystemFile(path.join(home, ".acore", "core.md"), "identity (acore)");
-    return { handled: true, output: content };
+    const identity = await acoreGetIdentity(AGENT_SCOPE);
+    if (!identity) {
+      return {
+        handled: true,
+        output: pc.dim(
+          `No identity configured for ${AGENT_SCOPE}. Run: npx @aman_asmuei/acore`,
+        ),
+      };
+    }
+    return { handled: true, output: identity.content.trim() };
   }
   if (action === "update") {
     if (args.length === 0) {
       return {
         handled: true,
-        output: pc.yellow("Usage: /identity update <section>\nTip: describe changes in natural language and the AI will update via MCP."),
+        output: pc.yellow(
+          "Usage: /identity update <section>\nTip: describe changes in natural language and the AI will update via acore-core.",
+        ),
       };
     }
     const section = args[0];
@@ -109,65 +141,168 @@ async function handleIdentityCommand(
     if (!content) {
       return {
         handled: true,
-        output: pc.yellow("Usage: /identity update <section> <new content...>\nExample: /identity update Personality Warm, curious, and direct."),
+        output: pc.yellow(
+          "Usage: /identity update <section> <new content...>\nExample: /identity update Personality Warm, curious, and direct.",
+        ),
       };
     }
-    const output = await mcpWrite(ctx, "identity", "identity_update_section", { section, content });
-    return { handled: true, output };
+    try {
+      await acoreUpdateSection(section, content, AGENT_SCOPE);
+      return { handled: true, output: pc.green(`Updated section: ${section}`) };
+    } catch (err) {
+      return {
+        handled: true,
+        output: pc.red(
+          `Failed to update ${section}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        ),
+      };
+    }
   }
   if (action === "help") {
-    return { handled: true, output: [
-      pc.bold("Identity commands:"),
-      `  ${pc.cyan("/identity")}                  View current identity`,
-      `  ${pc.cyan("/identity update")} <section>  Update a section`,
-    ].join("\n") };
+    return {
+      handled: true,
+      output: [
+        pc.bold("Identity commands:"),
+        `  ${pc.cyan("/identity")}                  View current identity`,
+        `  ${pc.cyan("/identity update")} <section>  Update a section`,
+      ].join("\n"),
+    };
   }
-  return { handled: true, output: pc.yellow(`Unknown action: /identity ${action}. Try /identity --help`) };
+  return {
+    handled: true,
+    output: pc.yellow(
+      `Unknown action: /identity ${action}. Try /identity --help`,
+    ),
+  };
 }
 
 async function handleRulesCommand(
   action: string | undefined,
   args: string[],
-  ctx: CommandContext,
+  _ctx: CommandContext,
 ): Promise<CommandResult> {
-  const home = os.homedir();
   if (!action) {
-    const content = readEcosystemFile(path.join(home, ".arules", "rules.md"), "guardrails (arules)");
-    return { handled: true, output: content };
+    const cats = await arulesListCategories(AGENT_SCOPE);
+    if (cats.length === 0) {
+      return {
+        handled: true,
+        output: pc.dim(
+          `No rules configured for ${AGENT_SCOPE}. Run: npx @aman_asmuei/arules`,
+        ),
+      };
+    }
+    const lines: string[] = [];
+    for (const cat of cats) {
+      lines.push(pc.bold(`## ${cat.name}`));
+      for (const rule of cat.rules) {
+        lines.push(`  - ${rule}`);
+      }
+      lines.push("");
+    }
+    return { handled: true, output: lines.join("\n").trim() };
   }
   if (action === "add") {
     if (args.length < 2) {
-      return { handled: true, output: pc.yellow("Usage: /rules add <category> <rule text...>") };
+      return {
+        handled: true,
+        output: pc.yellow("Usage: /rules add <category> <rule text...>"),
+      };
     }
     const category = args[0];
     const rule = args.slice(1).join(" ");
-    const output = await mcpWrite(ctx, "rules", "rules_add", { category, rule });
-    return { handled: true, output };
+    try {
+      await arulesAddRule(category, rule, AGENT_SCOPE);
+      return {
+        handled: true,
+        output: pc.green(`Added rule to "${category}": ${rule}`),
+      };
+    } catch (err) {
+      return {
+        handled: true,
+        output: pc.red(
+          `Failed: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      };
+    }
   }
   if (action === "remove") {
     if (args.length < 2) {
-      return { handled: true, output: pc.yellow("Usage: /rules remove <category> <index>") };
+      return {
+        handled: true,
+        output: pc.yellow("Usage: /rules remove <category> <index>"),
+      };
     }
-    const output = await mcpWrite(ctx, "rules", "rules_remove", { category: args[0], index: parseInt(args[1], 10) });
-    return { handled: true, output };
+    const category = args[0];
+    const idx = parseInt(args[1], 10);
+    if (isNaN(idx) || idx < 1) {
+      return {
+        handled: true,
+        output: pc.yellow("Index must be a positive integer."),
+      };
+    }
+    try {
+      await arulesRemoveRule(category, idx, AGENT_SCOPE);
+      return {
+        handled: true,
+        output: pc.green(`Removed rule ${idx} from "${category}"`),
+      };
+    } catch (err) {
+      return {
+        handled: true,
+        output: pc.red(
+          `Failed: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      };
+    }
   }
   if (action === "toggle") {
     if (args.length < 2) {
-      return { handled: true, output: pc.yellow("Usage: /rules toggle <category> <index>") };
+      return {
+        handled: true,
+        output: pc.yellow("Usage: /rules toggle <category> <index>"),
+      };
     }
-    const output = await mcpWrite(ctx, "rules", "rules_toggle", { category: args[0], index: parseInt(args[1], 10) });
-    return { handled: true, output };
+    const category = args[0];
+    const idx = parseInt(args[1], 10);
+    if (isNaN(idx) || idx < 1) {
+      return {
+        handled: true,
+        output: pc.yellow("Index must be a positive integer."),
+      };
+    }
+    try {
+      await arulesToggleRule(category, idx, AGENT_SCOPE);
+      return {
+        handled: true,
+        output: pc.green(`Toggled rule ${idx} in "${category}"`),
+      };
+    } catch (err) {
+      return {
+        handled: true,
+        output: pc.red(
+          `Failed: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      };
+    }
   }
   if (action === "help") {
-    return { handled: true, output: [
-      pc.bold("Rules commands:"),
-      `  ${pc.cyan("/rules")}                         View current rules`,
-      `  ${pc.cyan("/rules add")} <category> <text>    Add a rule`,
-      `  ${pc.cyan("/rules remove")} <category> <idx>  Remove a rule`,
-      `  ${pc.cyan("/rules toggle")} <category> <idx>  Toggle a rule`,
-    ].join("\n") };
+    return {
+      handled: true,
+      output: [
+        pc.bold("Rules commands:"),
+        `  ${pc.cyan("/rules")}                         View current rules`,
+        `  ${pc.cyan("/rules add")} <category> <text>    Add a rule`,
+        `  ${pc.cyan("/rules remove")} <category> <idx>  Remove a rule`,
+        `  ${pc.cyan("/rules toggle")} <category> <idx>  Toggle a rule`,
+      ].join("\n"),
+    };
   }
-  return { handled: true, output: pc.yellow(`Unknown action: /rules ${action}. Try /rules --help`) };
+  return {
+    handled: true,
+    output: pc.yellow(`Unknown action: /rules ${action}. Try /rules --help`),
+  };
 }
 
 async function handleWorkflowsCommand(
@@ -205,261 +340,46 @@ async function handleWorkflowsCommand(
   return { handled: true, output: pc.yellow(`Unknown action: /workflows ${action}. Try /workflows --help`) };
 }
 
-// akit registry — keep in sync with @aman_asmuei/akit/src/lib/registry.ts
-interface AkitTool {
-  name: string;
-  description: string;
-  category: string;
-  mcp: { package: string; command: string; args: string[]; env?: Record<string, string> } | null;
-  envHint?: string;
-}
-
-const AKIT_REGISTRY: AkitTool[] = [
-  { name: "web-search", description: "Search the web for current information", category: "search", mcp: { package: "@anthropic/web-search", command: "npx", args: ["-y", "@anthropic/web-search"] } },
-  { name: "brave-search", description: "Private web search via Brave", category: "search", mcp: { package: "@modelcontextprotocol/server-brave-search", command: "npx", args: ["-y", "@modelcontextprotocol/server-brave-search"], env: { BRAVE_API_KEY: "" } }, envHint: "Set BRAVE_API_KEY from https://brave.com/search/api/" },
-  { name: "github", description: "Manage GitHub repos, PRs, issues", category: "development", mcp: { package: "@modelcontextprotocol/server-github", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"], env: { GITHUB_TOKEN: "" } }, envHint: "Set GITHUB_TOKEN from https://github.com/settings/tokens" },
-  { name: "git", description: "Git operations — log, diff, blame, branch", category: "development", mcp: { package: "@modelcontextprotocol/server-git", command: "npx", args: ["-y", "@modelcontextprotocol/server-git"] } },
-  { name: "filesystem", description: "Read, write, and search files", category: "development", mcp: { package: "@modelcontextprotocol/server-filesystem", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "."] } },
-  { name: "linear", description: "Manage Linear issues and projects", category: "development", mcp: { package: "@linear/mcp-server", command: "npx", args: ["-y", "@linear/mcp-server"], env: { LINEAR_API_KEY: "" } }, envHint: "Set LINEAR_API_KEY from Linear settings → API" },
-  { name: "sentry", description: "Monitor and triage app errors", category: "development", mcp: { package: "@sentry/mcp-server", command: "npx", args: ["-y", "@sentry/mcp-server"], env: { SENTRY_AUTH_TOKEN: "" } }, envHint: "Set SENTRY_AUTH_TOKEN from Sentry settings → API keys" },
-  { name: "postgres", description: "Query PostgreSQL databases", category: "data", mcp: { package: "@modelcontextprotocol/server-postgres", command: "npx", args: ["-y", "@modelcontextprotocol/server-postgres"], env: { DATABASE_URL: "" } }, envHint: "Set DATABASE_URL (e.g., postgresql://user:pass@localhost/db)" },
-  { name: "sqlite", description: "Query local SQLite databases", category: "data", mcp: { package: "@modelcontextprotocol/server-sqlite", command: "npx", args: ["-y", "@modelcontextprotocol/server-sqlite"] } },
-  { name: "fetch", description: "HTTP requests to APIs", category: "automation", mcp: { package: "@modelcontextprotocol/server-fetch", command: "npx", args: ["-y", "@modelcontextprotocol/server-fetch"] } },
-  { name: "puppeteer", description: "Browser automation and scraping", category: "automation", mcp: { package: "@modelcontextprotocol/server-puppeteer", command: "npx", args: ["-y", "@modelcontextprotocol/server-puppeteer"] } },
-  { name: "docker", description: "Manage Docker containers", category: "automation", mcp: { package: "@modelcontextprotocol/server-docker", command: "npx", args: ["-y", "@modelcontextprotocol/server-docker"] } },
-  { name: "slack", description: "Send and read Slack messages", category: "communication", mcp: { package: "@modelcontextprotocol/server-slack", command: "npx", args: ["-y", "@modelcontextprotocol/server-slack"], env: { SLACK_BOT_TOKEN: "" } }, envHint: "Set SLACK_BOT_TOKEN from your Slack app settings" },
-  { name: "notion", description: "Read and write Notion pages", category: "communication", mcp: { package: "@notionhq/notion-mcp-server", command: "npx", args: ["-y", "@notionhq/notion-mcp-server"], env: { NOTION_API_KEY: "" } }, envHint: "Set NOTION_API_KEY from https://notion.so/my-integrations" },
-  { name: "social", description: "Post to Bluesky, X/Twitter, Threads", category: "communication", mcp: { package: "@aman_asmuei/aman-social", command: "npx", args: ["-y", "@aman_asmuei/aman-social"] }, envHint: "Set BLUESKY_HANDLE + BLUESKY_APP_PASSWORD, TWITTER_API_KEY + secrets, or THREADS_ACCESS_TOKEN" },
-  { name: "memory", description: "Persistent AI memory via amem", category: "memory", mcp: { package: "@aman_asmuei/amem", command: "npx", args: ["-y", "@aman_asmuei/amem"] } },
-  { name: "docling", description: "Convert PDF, DOCX, PPTX, XLSX to markdown", category: "documents", mcp: { package: "docling-mcp", command: "uvx", args: ["docling-mcp"] }, envHint: "Requires Python 3.10+. Install: pip install docling" },
-];
-
-interface InstalledTool {
-  name: string;
-  installedAt: string;
-  mcpConfigured: boolean;
-}
-
-function loadAkitInstalled(): InstalledTool[] {
-  const filePath = path.join(os.homedir(), ".akit", "installed.json");
-  if (!fs.existsSync(filePath)) return [];
-  try {
-    return JSON.parse(fs.readFileSync(filePath, "utf-8"));
-  } catch { return []; }
-}
-
-function saveAkitInstalled(tools: InstalledTool[]): void {
-  const dir = path.join(os.homedir(), ".akit");
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "installed.json"), JSON.stringify(tools, null, 2) + "\n", "utf-8");
-}
-
-function addToAmanAgentConfig(name: string, mcpConfig: { command: string; args: string[] }): void {
-  const configPath = path.join(os.homedir(), ".aman-agent", "config.json");
-  if (!fs.existsSync(configPath)) return;
-  try {
-    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    if (!config.mcpServers) config.mcpServers = {};
-    config.mcpServers[name] = mcpConfig;
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-  } catch { /* ignore */ }
-}
-
-function removeFromAmanAgentConfig(name: string): void {
-  const configPath = path.join(os.homedir(), ".aman-agent", "config.json");
-  if (!fs.existsSync(configPath)) return;
-  try {
-    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    if (config.mcpServers) {
-      delete config.mcpServers[name];
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-    }
-  } catch { /* ignore */ }
-}
+// ── /akit slash command — Phase 5 cleanup ───────────────────────────────────
+//
+// The hardcoded AKIT_REGISTRY (17 entries kept "in sync" with akit's own
+// registry by hand), the AkitTool/InstalledTool interfaces, and the
+// loadAkitInstalled / saveAkitInstalled / addToAmanAgentConfig /
+// removeFromAmanAgentConfig helpers all lived here in commands.ts. They were
+// a parallel implementation of `akit/src/lib/registry.ts` and `lib/kit.ts`,
+// flagged by the Phase 0 audit as the worst duplication site in aman-agent.
+//
+// Per engine v1 D4: akit is reclassified as DORMANT — it stays as the
+// standalone CLI tool installer, and aman-agent no longer reimplements its
+// registry. This /akit slash command becomes informational, pointing the
+// user at the canonical CLI.
 
 function handleAkitCommand(
-  action: string | undefined,
-  args: string[],
+  _action: string | undefined,
+  _args: string[],
 ): CommandResult {
-  const installed = loadAkitInstalled();
-  const installedNames = new Set(installed.map(t => t.name));
-
-  // /akit add [number|name|custom]
-  if (action === "add") {
-    const available = AKIT_REGISTRY.filter(t => !installedNames.has(t.name));
-
-    // No argument — show numbered list
-    if (args.length < 1) {
-      if (available.length === 0) {
-        return { handled: true, output: pc.green("All tools are installed!") };
-      }
-      const lines: string[] = [pc.bold("Select a tool to install:"), ""];
-      available.forEach((tool, i) => {
-        const num = pc.cyan(String(i + 1).padStart(2));
-        lines.push(`  ${num}  ${tool.name.padEnd(16)} ${pc.dim(tool.description)}`);
-      });
-      lines.push("");
-      lines.push(`  Type: ${pc.cyan("/akit add <number>")} or ${pc.cyan("/akit add <name>")}`);
-      lines.push(`  Custom: ${pc.cyan("/akit add custom <name> <command> <args...>")}`);
-      return { handled: true, output: lines.join("\n") };
-    }
-
-    // /akit add custom <name> <command> <args...>
-    if (args[0].toLowerCase() === "custom") {
-      if (args.length < 3) {
-        return { handled: true, output: pc.yellow("Usage: /akit add custom <name> <command> <args...>\nExample: /akit add custom my-tool npx -y @org/my-mcp-server") };
-      }
-      const customName = args[1];
-      const customCommand = args[2];
-      const customArgs = args.slice(3);
-
-      if (installedNames.has(customName)) {
-        return { handled: true, output: pc.yellow(`${customName} is already installed.`) };
-      }
-
-      installed.push({
-        name: customName,
-        installedAt: new Date().toISOString().split("T")[0],
-        mcpConfigured: true,
-      });
-      saveAkitInstalled(installed);
-      addToAmanAgentConfig(customName, { command: customCommand, args: customArgs });
-
-      return {
-        handled: true,
-        output: [
-          pc.green(`✓ Added ${pc.bold(customName)}`) + pc.dim(` (custom MCP: ${customCommand} ${customArgs.join(" ")})`),
-          pc.dim("  Restart aman-agent to load the new tool."),
-        ].join("\n"),
-      };
-    }
-
-    // Resolve by number or name
-    const input = args[0].toLowerCase();
-    let tool: AkitTool | undefined;
-
-    const num = parseInt(input, 10);
-    if (!isNaN(num) && num >= 1 && num <= available.length) {
-      tool = available[num - 1];
-    } else {
-      tool = AKIT_REGISTRY.find(t => t.name === input);
-    }
-
-    if (!tool) {
-      return {
-        handled: true,
-        output: [
-          pc.red(`Tool "${input}" not found.`),
-          `Type ${pc.cyan("/akit add")} to see available tools.`,
-        ].join("\n"),
-      };
-    }
-
-    if (installedNames.has(tool.name)) {
-      return { handled: true, output: pc.yellow(`${tool.name} is already installed.`) };
-    }
-
-    // Install
-    installed.push({
-      name: tool.name,
-      installedAt: new Date().toISOString().split("T")[0],
-      mcpConfigured: tool.mcp !== null,
-    });
-    saveAkitInstalled(installed);
-
-    if (tool.mcp) {
-      addToAmanAgentConfig(tool.name, {
-        command: tool.mcp.command,
-        args: tool.mcp.args,
-      });
-    }
-
-    const lines: string[] = [
-      pc.green(`✓ Added ${pc.bold(tool.name)}`) + (tool.mcp ? pc.dim(` (MCP: ${tool.mcp.package})`) : ""),
-    ];
-    if (tool.envHint) {
-      lines.push(pc.yellow(`  ⚠ ${tool.envHint}`));
-    }
-    if (tool.mcp) {
-      lines.push(pc.dim("  Restart aman-agent to load the new tool."));
-    }
-    return { handled: true, output: lines.join("\n") };
-  }
-
-  // /akit remove <tool>
-  if (action === "remove") {
-    if (args.length < 1) {
-      return { handled: true, output: pc.yellow("Usage: /akit remove <tool>") };
-    }
-    const toolName = args[0].toLowerCase();
-
-    if (!installedNames.has(toolName)) {
-      return { handled: true, output: pc.red(`${toolName} is not installed.`) };
-    }
-
-    // Remove from installed.json
-    const updated = installed.filter(t => t.name !== toolName);
-    saveAkitInstalled(updated);
-
-    // Remove from aman-agent config
-    removeFromAmanAgentConfig(toolName);
-
-    return {
-      handled: true,
-      output: pc.green(`✓ Removed ${pc.bold(toolName)}`) + pc.dim("  (restart aman-agent to apply)"),
-    };
-  }
-
-  // /akit help
-  if (action === "help") {
-    return {
-      handled: true,
-      output: [
-        pc.bold("akit — Tool Management"),
-        "",
-        `  ${pc.cyan("/akit")}               List installed & available tools`,
-        `  ${pc.cyan("/akit add <tool>")}     Install a tool`,
-        `  ${pc.cyan("/akit remove <tool>")}  Uninstall a tool`,
-      ].join("\n"),
-    };
-  }
-
-  // Default: /akit — show installed + available
-  const available = AKIT_REGISTRY.filter(t => !installedNames.has(t.name));
-
-  const lines: string[] = [pc.bold("akit — AI Tool Manager"), ""];
-
-  // Installed section
-  if (installed.length > 0) {
-    lines.push(`  ${pc.bold(`Installed (${installed.length})`)}`);
-    for (const tool of installed) {
-      const mcp = tool.mcpConfigured ? pc.green("MCP") : pc.dim("manual");
-      lines.push(`  ${pc.green("●")} ${pc.bold(tool.name.padEnd(16))} ${mcp}  ${pc.dim(tool.installedAt)}`);
-    }
-    lines.push("");
-  }
-
-  // Available section
-  if (available.length > 0) {
-    lines.push(`  ${pc.bold(`Available (${available.length})`)}`);
-    const byCategory = new Map<string, AkitTool[]>();
-    for (const tool of available) {
-      if (!byCategory.has(tool.category)) byCategory.set(tool.category, []);
-      byCategory.get(tool.category)!.push(tool);
-    }
-    for (const [category, tools] of byCategory) {
-      lines.push(`  ${pc.dim(category)}`);
-      for (const tool of tools) {
-        lines.push(`  ${pc.dim("○")} ${tool.name.padEnd(16)} ${pc.dim(tool.description)}`);
-      }
-    }
-    lines.push("");
-  }
-
-  lines.push(`  ${pc.cyan("/akit add <tool>")}     Install a tool`);
-  lines.push(`  ${pc.cyan("/akit remove <tool>")}  Uninstall a tool`);
-
-  return { handled: true, output: lines.join("\n") };
+  return {
+    handled: true,
+    output: [
+      pc.bold("akit — Tool Management"),
+      "",
+      pc.dim(
+        "Tool management is now handled by the standalone akit CLI rather than",
+      ),
+      pc.dim(
+        "duplicated inside aman-agent. The akit slash command is informational only.",
+      ),
+      "",
+      `  ${pc.cyan("npx @aman_asmuei/akit list")}              List installed tools`,
+      `  ${pc.cyan("npx @aman_asmuei/akit search <query>")}    Search the tool registry`,
+      `  ${pc.cyan("npx @aman_asmuei/akit add <tool>")}        Install a tool`,
+      `  ${pc.cyan("npx @aman_asmuei/akit remove <tool>")}     Uninstall a tool`,
+      "",
+      pc.dim(
+        "Restart aman-agent after installing/removing tools to pick up changes.",
+      ),
+    ].join("\n"),
+  };
 }
 
 async function handleSkillsCommand(

@@ -3,8 +3,8 @@
 aman-agent v0.22.0 is the first release that runs on **engine v1**, a shared substrate published as 3 npm packages:
 
 - [`@aman_asmuei/aman-core`](https://www.npmjs.com/package/@aman_asmuei/aman-core) `^0.2.0` — scope, `withScope`, `Storage<T>`
-- [`@aman_asmuei/acore-core`](https://www.npmjs.com/package/@aman_asmuei/acore-core) `^0.1.0` — multi-tenant Identity layer
-- [`@aman_asmuei/arules-core`](https://www.npmjs.com/package/@aman_asmuei/arules-core) `^0.1.0` — multi-tenant guardrails layer
+- [`@aman_asmuei/acore-core`](https://www.npmjs.com/package/@aman_asmuei/acore-core) `^0.2.0` — multi-tenant Identity layer
+- [`@aman_asmuei/arules-core`](https://www.npmjs.com/package/@aman_asmuei/arules-core) `^0.2.0` — multi-tenant guardrails layer
 
 ## What it means for aman-agent
 

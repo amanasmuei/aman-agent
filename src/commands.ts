@@ -1694,6 +1694,7 @@ async function handleFileCommand(
       output: [
         pc.bold("File commands:"),
         `  ${pc.cyan("/file read")} <path>               Read a text file (max 50 KB)`,
+        `  ${pc.cyan("/file convert")} <path>            Attempt to read binary file as text`,
         `  ${pc.cyan("/file list")} <path> [--recursive]  List directory contents`,
       ].join("\n"),
     };

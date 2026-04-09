@@ -569,11 +569,34 @@ describe("handleCommand", () => {
     });
   });
 
+  describe("/file convert", () => {
+    it("reads file content via readFile", async () => {
+      const result = await handleCommand("/file convert /tmp/doc.txt", {});
+      expect(result.handled).toBe(true);
+      expect(vi.mocked(readFile)).toHaveBeenCalledWith("/tmp/doc.txt");
+      expect(result.output).toContain("file content here");
+    });
+
+    it("returns error message when readFile throws", async () => {
+      vi.mocked(readFile).mockRejectedValueOnce(new Error("binary file not supported"));
+      const result = await handleCommand("/file convert /tmp/doc.pdf", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("error");
+    });
+
+    it("returns usage when no path given", async () => {
+      const result = await handleCommand("/file convert", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("Usage");
+    });
+  });
+
   describe("/file", () => {
     it("shows help when no subcommand given", async () => {
       const result = await handleCommand("/file", {});
       expect(result.handled).toBe(true);
       expect(result.output).toContain("read");
+      expect(result.output).toContain("convert");
       expect(result.output).toContain("list");
     });
   });

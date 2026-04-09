@@ -719,4 +719,190 @@ describe("handleCommand", () => {
       expect(result.output).toContain("Usage");
     });
   });
+
+  // --- /identity dynamics ---
+
+  describe("/identity dynamics", () => {
+    it("updates dynamics fields when key=value pairs are provided", async () => {
+      const dir = path.join(tmpHome, ".acore", "dev", "agent");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "core.md"),
+        "# Identity\n\n## Dynamics\n- Baseline energy: steady\n- Active mode: Default\n- Current read: none\n",
+        "utf-8",
+      );
+      const result = await handleCommand("/identity dynamics energy=high mode=focused", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("Dynamics updated");
+      expect(result.output).toContain("energy=high");
+      expect(result.output).toContain("mode=focused");
+    });
+
+    it("returns usage when no key=value pairs given", async () => {
+      const result = await handleCommand("/identity dynamics", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("Usage");
+    });
+  });
+
+  // --- /identity summary ---
+
+  describe("/identity summary", () => {
+    it("returns structured summary when identity is configured", async () => {
+      const dir = path.join(tmpHome, ".acore", "dev", "agent");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "core.md"),
+        "# Identity\n\n**Name:** Aman\n\n## Personality\nCurious and direct.\n",
+        "utf-8",
+      );
+      const result = await handleCommand("/identity summary", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("Identity Summary");
+      expect(result.output).toContain("Aman");
+      expect(result.output).toContain("dev:agent");
+    });
+
+    it("shows no-identity message when none is configured", async () => {
+      const result = await handleCommand("/identity summary", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("No identity configured");
+    });
+  });
+
+  // --- /rules check ---
+
+  describe("/rules check", () => {
+    it("reports safe when no rules are configured", async () => {
+      const result = await handleCommand("/rules check send a friendly email", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("allowed");
+    });
+
+    it("returns usage when no description given", async () => {
+      const result = await handleCommand("/rules check", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("Usage");
+    });
+  });
+
+  // --- /skills search ---
+
+  describe("/skills search", () => {
+    it("returns matching skills from skills.md", async () => {
+      const dir = path.join(tmpHome, ".askill");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "skills.md"),
+        "# Skills\n\n- code-review: Review pull requests\n- testing: Run test suites\n",
+        "utf-8",
+      );
+      const result = await handleCommand("/skills search review", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("code-review");
+      expect(result.output).not.toContain("testing");
+    });
+
+    it("shows no-results message when query has no matches", async () => {
+      const dir = path.join(tmpHome, ".askill");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "skills.md"), "# Skills\n\n- alpha: something\n", "utf-8");
+      const result = await handleCommand("/skills search zzz-nonexistent", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("No skills matching");
+    });
+
+    it("returns usage when no query given", async () => {
+      const result = await handleCommand("/skills search", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("Usage");
+    });
+  });
+
+  // --- /tools search ---
+
+  describe("/tools search", () => {
+    it("returns matches from tools.md when file exists", async () => {
+      const dir = path.join(tmpHome, ".akit");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "tools.md"),
+        "# Tools\n\n- ripgrep: Fast text search\n- jq: JSON processor\n",
+        "utf-8",
+      );
+      const result = await handleCommand("/tools search ripgrep", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("ripgrep");
+      expect(result.output).not.toContain("jq");
+    });
+
+    it("prompts user to use akit CLI when tools.md not found", async () => {
+      const result = await handleCommand("/tools search ripgrep", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("akit");
+    });
+
+    it("returns usage when no query given", async () => {
+      const result = await handleCommand("/tools search", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("Usage");
+    });
+  });
+
+  // --- /workflows get ---
+
+  describe("/workflows get", () => {
+    it("returns a named workflow section from flow.md", async () => {
+      const dir = path.join(tmpHome, ".aflow");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "flow.md"),
+        "# Workflows\n\n## deploy\n1. Run tests\n2. Push to main\n\n## review\n1. Check PR\n",
+        "utf-8",
+      );
+      const result = await handleCommand("/workflows get deploy", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("deploy");
+      expect(result.output).toContain("Run tests");
+    });
+
+    it("shows not-found when workflow name does not match", async () => {
+      const dir = path.join(tmpHome, ".aflow");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "flow.md"), "# Workflows\n\n## deploy\n1. Step\n", "utf-8");
+      const result = await handleCommand("/workflows get nonexistent", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("No workflow found");
+    });
+
+    it("returns usage when no name given", async () => {
+      const result = await handleCommand("/workflows get", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("Usage");
+    });
+  });
+
+  // --- /eval report ---
+
+  describe("/eval report", () => {
+    it("returns the full eval report when eval.md exists", async () => {
+      const dir = path.join(tmpHome, ".aeval");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "eval.md"),
+        "# Eval\n\n## Milestone 1\nShipped phase 1.\n",
+        "utf-8",
+      );
+      const result = await handleCommand("/eval report", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("Eval Report");
+      expect(result.output).toContain("Shipped phase 1");
+    });
+
+    it("shows no-report message when eval.md is missing", async () => {
+      const result = await handleCommand("/eval report", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("No eval report");
+    });
+  });
 });

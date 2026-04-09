@@ -41,12 +41,14 @@ import {
 import {
   getIdentity as acoreGetIdentity,
   updateSection as acoreUpdateSection,
+  updateDynamics as acoreUpdateDynamics,
 } from "@aman_asmuei/acore-core";
 import {
   listRuleCategories as arulesListCategories,
   addRule as arulesAddRule,
   removeRule as arulesRemoveRule,
   toggleRuleAt as arulesToggleRule,
+  checkAction as arulesCheckAction,
 } from "@aman_asmuei/arules-core";
 
 /**
@@ -178,6 +180,41 @@ async function handleIdentityCommand(
       };
     }
   }
+  if (action === "dynamics") {
+    const updates: Record<string, string> = {};
+    for (const arg of args) {
+      const eq = arg.indexOf("=");
+      if (eq > 0) updates[arg.slice(0, eq)] = arg.slice(eq + 1);
+    }
+    if (!Object.keys(updates).length) {
+      return { handled: true, output: pc.yellow("Usage: /identity dynamics energy=high mode=focused read='Book Title'") };
+    }
+    try {
+      await acoreUpdateDynamics({
+        energy: updates.energy,
+        activeMode: updates.mode,
+        currentRead: updates.read,
+      }, AGENT_SCOPE);
+      return { handled: true, output: `Dynamics updated: ${Object.entries(updates).map(([k, v]) => `${k}=${v}`).join(", ")}` };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Dynamics error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+  if (action === "summary") {
+    try {
+      const identity = await acoreGetIdentity(AGENT_SCOPE);
+      if (!identity) return { handled: true, output: pc.yellow("No identity configured.") };
+      const nameMatch = identity.content.match(/\*\*Name:\*\*\s*(.+)/);
+      const lines = [
+        `**Identity Summary**`,
+        nameMatch ? `Name: ${nameMatch[1].trim()}` : "",
+        `Scope: ${AGENT_SCOPE}`,
+      ].filter(Boolean);
+      return { handled: true, output: lines.join("\n") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Summary error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
   if (action === "help") {
     return {
       handled: true,
@@ -185,6 +222,8 @@ async function handleIdentityCommand(
         pc.bold("Identity commands:"),
         `  ${pc.cyan("/identity")}                  View current identity`,
         `  ${pc.cyan("/identity update")} <section>  Update a section`,
+        `  ${pc.cyan("/identity dynamics")} key=val   Update dynamic fields (energy, mode, read)`,
+        `  ${pc.cyan("/identity summary")}            Show structured identity summary`,
       ].join("\n"),
     };
   }
@@ -305,6 +344,24 @@ async function handleRulesCommand(
       };
     }
   }
+  if (action === "check") {
+    if (args.length === 0) {
+      return { handled: true, output: pc.yellow("Usage: /rules check <action description...>") };
+    }
+    const description = args.join(" ");
+    try {
+      const result = await arulesCheckAction(description, AGENT_SCOPE);
+      if (result.safe) {
+        return { handled: true, output: pc.green(`Action is allowed: "${description}"`) };
+      }
+      return {
+        handled: true,
+        output: pc.red(`Action blocked: "${description}"\nViolations:\n${result.violations.map(v => `  - ${v}`).join("\n")}`),
+      };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Check error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
   if (action === "help") {
     return {
       handled: true,
@@ -314,6 +371,7 @@ async function handleRulesCommand(
         `  ${pc.cyan("/rules add")} <category> <text>    Add a rule`,
         `  ${pc.cyan("/rules remove")} <category> <idx>  Remove a rule`,
         `  ${pc.cyan("/rules toggle")} <category> <idx>  Toggle a rule`,
+        `  ${pc.cyan("/rules check")} <action...>         Check if an action is allowed`,
       ].join("\n"),
     };
   }
@@ -347,12 +405,32 @@ async function handleWorkflowsCommand(
     const output = await mcpWrite(ctx, "workflows", "workflow_remove", { name: args.join(" ") });
     return { handled: true, output };
   }
+  if (action === "get") {
+    if (args.length === 0) {
+      return { handled: true, output: pc.yellow("Usage: /workflows get <name>") };
+    }
+    const name = args.join(" ").toLowerCase();
+    const raw = readEcosystemFile(path.join(home, ".aflow", "flow.md"), "workflows (aflow)");
+    if (raw.startsWith("No ")) {
+      return { handled: true, output: raw };
+    }
+    // Parse sections: ## WorkflowName\n<steps>
+    const sections = raw.split(/^## /m).slice(1);
+    const match = sections.find(s => s.split("\n")[0].trim().toLowerCase() === name);
+    if (!match) {
+      return { handled: true, output: pc.yellow(`No workflow found: "${args.join(" ")}"`) };
+    }
+    const title = match.split("\n")[0].trim();
+    const body = match.split("\n").slice(1).join("\n").trim();
+    return { handled: true, output: `## ${title}\n\n${body}` };
+  }
   if (action === "help") {
     return { handled: true, output: [
       pc.bold("Workflow commands:"),
       `  ${pc.cyan("/workflows")}              View current workflows`,
       `  ${pc.cyan("/workflows add")} <name>    Add a workflow`,
       `  ${pc.cyan("/workflows remove")} <name> Remove a workflow`,
+      `  ${pc.cyan("/workflows get")} <name>    Show a specific workflow`,
     ].join("\n") };
   }
   return { handled: true, output: pc.yellow(`Unknown action: /workflows ${action}. Try /workflows --help`) };
@@ -400,6 +478,36 @@ function handleAkitCommand(
   };
 }
 
+async function handleToolsCommand(
+  action: string | undefined,
+  args: string[],
+  _ctx: CommandContext,
+): Promise<CommandResult> {
+  if (!action || action === "list") {
+    // Informational stub — actual tool management is via akit CLI
+    return handleAkitCommand(action, args);
+  }
+  if (action === "search") {
+    if (args.length === 0) {
+      return { handled: true, output: pc.yellow("Usage: /tools search <query...>") };
+    }
+    const query = args.join(" ").toLowerCase();
+    const home = os.homedir();
+    const toolsFile = path.join(home, ".akit", "tools.md");
+    if (!fs.existsSync(toolsFile)) {
+      return { handled: true, output: pc.dim(`No tools file found. Use 'npx @aman_asmuei/akit search ${args.join(" ")}' to search the registry.`) };
+    }
+    const raw = fs.readFileSync(toolsFile, "utf-8").trim();
+    const lines = raw.split("\n");
+    const matches = lines.filter(l => l.toLowerCase().includes(query));
+    if (matches.length === 0) {
+      return { handled: true, output: pc.dim(`No tools matching "${query}".`) };
+    }
+    return { handled: true, output: [pc.bold(`Tools matching "${query}":`), ...matches].join("\n") };
+  }
+  return handleAkitCommand(action, args);
+}
+
 async function handleSkillsCommand(
   action: string | undefined,
   args: string[],
@@ -424,12 +532,30 @@ async function handleSkillsCommand(
     const output = await mcpWrite(ctx, "skills", "skill_uninstall", { name: args.join(" ") });
     return { handled: true, output };
   }
+  if (action === "search") {
+    if (args.length === 0) {
+      return { handled: true, output: pc.yellow("Usage: /skills search <query...>") };
+    }
+    const query = args.join(" ").toLowerCase();
+    const home = os.homedir();
+    const raw = readEcosystemFile(path.join(home, ".askill", "skills.md"), "skills (askill)");
+    if (raw.startsWith("No ")) {
+      return { handled: true, output: raw };
+    }
+    const lines = raw.split("\n");
+    const matches = lines.filter(l => l.toLowerCase().includes(query));
+    if (matches.length === 0) {
+      return { handled: true, output: pc.dim(`No skills matching "${query}".`) };
+    }
+    return { handled: true, output: [pc.bold(`Skills matching "${query}":`), ...matches].join("\n") };
+  }
   if (action === "help") {
     return { handled: true, output: [
       pc.bold("Skills commands:"),
       `  ${pc.cyan("/skills")}                    View installed skills`,
       `  ${pc.cyan("/skills install")} <name>      Install a skill`,
       `  ${pc.cyan("/skills uninstall")} <name>    Uninstall a skill`,
+      `  ${pc.cyan("/skills search")} <query>       Search skills by name/description`,
     ].join("\n") };
   }
   return { handled: true, output: pc.yellow(`Unknown action: /skills ${action}. Try /skills --help`) };
@@ -453,7 +579,15 @@ async function handleEvalCommand(
     const output = await mcpWrite(ctx, "eval", "eval_milestone", { text });
     return { handled: true, output };
   }
-  return { handled: true, output: pc.yellow(`Unknown action: /eval ${action}. Use /eval or /eval milestone <text>.`) };
+  if (action === "report") {
+    const evalFile = path.join(home, ".aeval", "eval.md");
+    const content = readEcosystemFile(evalFile, "evaluation (aeval)");
+    if (content.startsWith("No ")) {
+      return { handled: true, output: pc.dim("No eval report found. Log milestones with /eval milestone <text>.") };
+    }
+    return { handled: true, output: [pc.bold("Eval Report"), "", content].join("\n") };
+  }
+  return { handled: true, output: pc.yellow(`Unknown action: /eval ${action}. Use /eval, /eval report, or /eval milestone <text>.`) };
 }
 
 async function handleMemoryCommand(
@@ -1911,6 +2045,7 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
     case "workflows":
       return handleWorkflowsCommand(action, args, ctx);
     case "tools":
+      return handleToolsCommand(action, args, ctx);
     case "akit":
       return handleAkitCommand(action, args);
     case "skills":

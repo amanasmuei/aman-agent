@@ -18,6 +18,24 @@ vi.mock("node:os", async () => {
   return { ...actual, default: { ...actual, homedir: () => tmpHome } };
 });
 
+vi.mock("../src/files.js", () => ({
+  readFile: vi.fn(async (p: string) => ({
+    path: p,
+    content: "file content here",
+    size: 17,
+    truncated: false,
+    encoding: "utf-8" as const,
+  })),
+  listFiles: vi.fn(async (p: string) => ({
+    path: p,
+    entries: [
+      { name: "foo.ts", type: "file" as const, size: 1234 },
+      { name: "bar", type: "dir" as const, size: 0 },
+    ],
+    total: 2,
+  })),
+}));
+
 vi.mock("../src/memory.js", () => ({
   memoryContext: vi.fn(async (topic: string) => ({
     text: `Mock context for ${topic}`,
@@ -57,6 +75,7 @@ vi.mock("../src/memory.js", () => ({
 
 const { handleCommand } = await import("../src/commands.js");
 import { memoryDoctor, memoryRepair, memoryConfig, memoryMultiRecall } from "../src/memory.js";
+import { readFile, listFiles } from "../src/files.js";
 
 function createMockMcpManager() {
   return {
@@ -510,6 +529,52 @@ describe("handleCommand", () => {
       expect(result.output).toBeDefined();
       expect(result.output).toContain("consolidation.maxStaleDays");
       expect(vi.mocked(memoryConfig)).toHaveBeenCalledWith({ consolidation: { maxStaleDays: 60 } });
+    });
+  });
+
+  // --- /file ---
+
+  describe("/file read", () => {
+    it("reads a file and shows content", async () => {
+      const result = await handleCommand("/file read /tmp/hello.txt", {});
+      expect(result.handled).toBe(true);
+      expect(vi.mocked(readFile)).toHaveBeenCalledWith("/tmp/hello.txt");
+      expect(result.output).toContain("file content here");
+    });
+
+    it("returns usage when no path given", async () => {
+      const result = await handleCommand("/file read", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("Usage");
+    });
+  });
+
+  describe("/file list", () => {
+    it("lists directory contents", async () => {
+      const result = await handleCommand("/file list /tmp", {});
+      expect(result.handled).toBe(true);
+      expect(vi.mocked(listFiles)).toHaveBeenCalledWith("/tmp", { recursive: false });
+      expect(result.output).toContain("foo.ts");
+    });
+
+    it("passes recursive=true when --recursive flag given", async () => {
+      await handleCommand("/file list /tmp --recursive", {});
+      expect(vi.mocked(listFiles)).toHaveBeenCalledWith("/tmp", { recursive: true });
+    });
+
+    it("returns usage when no path given", async () => {
+      const result = await handleCommand("/file list", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("Usage");
+    });
+  });
+
+  describe("/file", () => {
+    it("shows help when no subcommand given", async () => {
+      const result = await handleCommand("/file", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("read");
+      expect(result.output).toContain("list");
     });
   });
 });

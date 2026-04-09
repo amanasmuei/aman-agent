@@ -648,6 +648,9 @@ async function handleMemoryCommand(
       `  ${pc.cyan("/memory timeline")}            View memory timeline`,
       `  ${pc.cyan("/memory clear")} <query>        Delete matching memories`,
       `  ${pc.cyan("/memory clear --type")} <type>  Delete all of a type`,
+      `  ${pc.cyan("/memory doctor")}              Run memory diagnostics`,
+      `  ${pc.cyan("/memory repair")}              Dry-run repair (safe)`,
+      `  ${pc.cyan("/memory config")} [key=value]  View or update config`,
     ].join("\n") };
   }
   if (action === "doctor") {
@@ -699,6 +702,9 @@ async function handleMemoryCommand(
         const eqIdx = kvArg.indexOf("=");
         const key = kvArg.slice(0, eqIdx);
         const rawVal = kvArg.slice(eqIdx + 1);
+        if (!rawVal) {
+          return { handled: true, output: pc.yellow(`Usage: /memory config <key>=<value>`) };
+        }
         const val = isNaN(Number(rawVal)) ? rawVal : Number(rawVal);
         await memoryConfig({ [key]: val });
         return { handled: true, output: `✅ Set \`${key}\` → \`${val}\`` };

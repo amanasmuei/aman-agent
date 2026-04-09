@@ -52,6 +52,7 @@ vi.mock("../src/memory.js", () => ({
 }));
 
 const { handleCommand } = await import("../src/commands.js");
+import { memoryDoctor, memoryRepair, memoryConfig } from "../src/memory.js";
 
 function createMockMcpManager() {
   return {
@@ -423,6 +424,17 @@ describe("handleCommand", () => {
       expect(result.output).toBeDefined();
       expect(result.output).toContain("healthy");
     });
+
+    it("shows warning icon when diagnostics finds issues", async () => {
+      vi.mocked(memoryDoctor).mockResolvedValueOnce({
+        status: "warning",
+        issues: [{ message: "Stale entries", suggestion: "run repair" }],
+      } as any);
+      const result = await handleCommand("/memory doctor", {});
+      expect(result.output).toContain("warning");
+      expect(result.output).toContain("Stale entries");
+      expect(result.output).toContain("/memory repair");
+    });
   });
 
   // --- /memory repair ---
@@ -433,6 +445,7 @@ describe("handleCommand", () => {
       expect(result.handled).toBe(true);
       expect(result.output).toBeDefined();
       expect(result.output).toContain("DRY RUN");
+      expect(vi.mocked(memoryRepair)).toHaveBeenCalledWith({ dryRun: true });
     });
 
     it("executes repair when --apply flag given", async () => {
@@ -440,6 +453,7 @@ describe("handleCommand", () => {
       expect(result.handled).toBe(true);
       expect(result.output).toBeDefined();
       expect(result.output).toContain("Repair");
+      expect(vi.mocked(memoryRepair)).toHaveBeenCalledWith({ dryRun: false });
     });
   });
 
@@ -458,6 +472,7 @@ describe("handleCommand", () => {
       expect(result.handled).toBe(true);
       expect(result.output).toBeDefined();
       expect(result.output).toContain("maxStaleDays");
+      expect(vi.mocked(memoryConfig)).toHaveBeenCalledWith({ maxStaleDays: 60 });
     });
   });
 });

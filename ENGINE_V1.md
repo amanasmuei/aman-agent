@@ -16,7 +16,7 @@ aman-agent v0.22.0 is the first release that runs on **engine v1**, a shared sub
 
 ## Why it matters
 
-aman-agent is one frontend among four. Now when you fix a bug in identity parsing or guardrail enforcement, **every** frontend (aman-agent CLI, Claude Code via aman-plugin, Telegram via aman-tg, MCP) gets the fix at once.
+aman-agent is one frontend among four. Now when you fix a bug in identity parsing or guardrail enforcement, **every** frontend (aman-agent CLI, Claude Code via aman-claude-code, Telegram via aman-tg, MCP) gets the fix at once.
 
 ## Migration impact
 

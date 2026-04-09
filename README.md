@@ -695,7 +695,7 @@ The agent adapts its personality in real-time based on signals:
 - **User sentiment**: detects frustration, excitement, confusion, fatigue from keywords
 - **Wellbeing nudges**: suggests breaks when you've been at it too long, gently mentions sleep during late-night sessions
 
-All state syncs to acore's Dynamics section — works across aman-agent, achannel, and aman-plugin.
+All state syncs to acore's Dynamics section — works across aman-agent, achannel, and aman-claude-code.
 
 ### Auto-Triggered Skills
 

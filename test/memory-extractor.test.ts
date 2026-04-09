@@ -29,7 +29,6 @@ vi.mock("../src/memory.js", () => ({
 }));
 
 vi.mock("@aman_asmuei/amem-core", () => ({
-  autoRelateMemory: vi.fn(() => ({ created: 0, relations: [] })),
   reflect: vi.fn(() => ({
     clusters: [], contradictions: [], synthesisCandidates: [], knowledgeGaps: [],
     orphans: 0, stats: { totalMemories: 0, clusteredMemories: 0, totalClusters: 0,
@@ -121,14 +120,13 @@ describe("memory-extractor", () => {
   });
 });
 
-// ── autoRelateMemory + reflect hook integration tests ─────────────────────────
+// ── reflect hook integration tests ───────────────────────────────────────────
 
-describe("extractMemories — autoRelateMemory hook", () => {
+describe("extractMemories — reflect hook", () => {
   // Import mocked modules — these will resolve to the vi.mock stubs above.
   // We use dynamic imports after mocks are registered so Vitest hoisting works.
   let memoryStore: ReturnType<typeof vi.fn>;
   let memoryRecall: ReturnType<typeof vi.fn>;
-  let autoRelateMemory: ReturnType<typeof vi.fn>;
   let reflect: ReturnType<typeof vi.fn>;
   let isReflectionDue: ReturnType<typeof vi.fn>;
 
@@ -138,7 +136,6 @@ describe("extractMemories — autoRelateMemory hook", () => {
     const coreMod = await import("@aman_asmuei/amem-core");
     memoryStore = vi.mocked(memMod.memoryStore);
     memoryRecall = vi.mocked(memMod.memoryRecall);
-    autoRelateMemory = vi.mocked(coreMod.autoRelateMemory);
     reflect = vi.mocked(coreMod.reflect);
     isReflectionDue = vi.mocked(coreMod.isReflectionDue);
   });
@@ -154,35 +151,6 @@ describe("extractMemories — autoRelateMemory hook", () => {
   const validCandidate = JSON.stringify([
     { content: "User prefers functional style", type: "preference", tags: ["style"], confidence: 0.9, scope: "global" },
   ]);
-
-  it("calls autoRelateMemory with the stored id when store succeeds", async () => {
-    memoryStore.mockResolvedValueOnce({
-      action: "stored", id: "mem-abc", type: "preference", confidence: 0.9, tags: [], total: 1, reinforced: 0,
-    });
-    isReflectionDue.mockReturnValue({ due: false, reason: "too soon" });
-
-    const state = { turnsSinceLastExtraction: 5, lastExtractionCount: 0 };
-    const client = makeLLMClient(validCandidate);
-
-    await extractMemories("user msg", "A longer assistant response that has enough substance to trigger extraction.", client, state);
-
-    expect(autoRelateMemory).toHaveBeenCalledOnce();
-    expect(autoRelateMemory).toHaveBeenCalledWith(expect.any(Object), "mem-abc");
-  });
-
-  it("does NOT call autoRelateMemory when action is private (nothing actually stored)", async () => {
-    memoryStore.mockResolvedValueOnce({
-      action: "private", id: "mem-xyz", type: "preference", confidence: 0.9, tags: [], total: 0, reinforced: 0,
-    });
-    isReflectionDue.mockReturnValue({ due: false, reason: "too soon" });
-
-    const state = { turnsSinceLastExtraction: 5, lastExtractionCount: 0 };
-    const client = makeLLMClient(validCandidate);
-
-    await extractMemories("user msg", "A longer assistant response that has enough substance to trigger extraction.", client, state);
-
-    expect(autoRelateMemory).not.toHaveBeenCalled();
-  });
 
   it("calls reflect when isReflectionDue returns true and something was stored", async () => {
     memoryStore.mockResolvedValueOnce({

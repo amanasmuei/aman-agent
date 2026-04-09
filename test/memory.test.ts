@@ -3,7 +3,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Mock database ─────────────────────────────────────────────────────────────
 // vi.hoisted runs before vi.mock so the variable is available in factory fns.
 const { mockDb } = vi.hoisted(() => {
-  const mockDb = { __mock: true } as any;
+  const mockDb: any = {
+    __mock: true,
+    updateTier: vi.fn(),
+    getById: vi.fn().mockReturnValue(null),
+    addRelation: vi.fn().mockReturnValue("relation-uuid"),
+    expireMemory: vi.fn(),
+    getVersionHistory: vi.fn().mockReturnValue([]),
+    resolveId: vi.fn((id: string) => id),
+  };
   return { mockDb };
 });
 
@@ -73,13 +81,18 @@ vi.mock("@aman_asmuei/amem-core", async () => {
       durationMs: 0,
     }),
     isReflectionDue: vi.fn().mockReturnValue({ due: false, reason: "too soon" }),
+    // Sync
+    syncFromClaude: vi.fn().mockResolvedValue({ imported: 3, skipped: 1, updated: 0, details: [], projectsScanned: 1 }),
+    exportForTeam: vi.fn().mockResolvedValue({ file: "/tmp/team-export.json", count: 5 }),
+    importFromTeam: vi.fn().mockResolvedValue({ imported: 2, skipped: 0, from: "/tmp/mem.json" }),
+    syncToCopilot: vi.fn().mockReturnValue({ file: ".github/copilot-instructions.md", memoriesExported: 4, sections: { corrections: 0, decisions: 0, preferences: 0, patterns: 0, other: 4 }, dryRun: false }),
   };
 });
 
 // ── Import memory module after mocks are set up ───────────────────────────────
 // We init the db via initMemory so getDb() works in subsequent wrapper calls.
-import { initMemory, memoryDoctor, memoryRepair, memoryConfig, memoryMultiRecall, memoryReflect, checkReflectionDue } from "../src/memory.js";
-import { runDiagnostics, repairDatabase, loadConfig, saveConfig, generateEmbedding, multiStrategyRecall, reflect, isReflectionDue } from "@aman_asmuei/amem-core";
+import { initMemory, memoryDoctor, memoryRepair, memoryConfig, memoryMultiRecall, memoryReflect, checkReflectionDue, memoryTier, memoryDetail, memoryRelate, memoryExpire, memoryVersions, memorySync } from "../src/memory.js";
+import { runDiagnostics, loadConfig, saveConfig, generateEmbedding, multiStrategyRecall, reflect, isReflectionDue, syncFromClaude, exportForTeam, importFromTeam, syncToCopilot } from "@aman_asmuei/amem-core";
 
 // Bootstrap: init memory once so getDb() doesn't throw.
 // The mocked createDatabase returns mockDb, so no real FS access happens.
@@ -223,5 +236,159 @@ describe("checkReflectionDue", () => {
     const result = checkReflectionDue();
     expect(isReflectionDue).toHaveBeenCalledWith(mockDb);
     expect(result).toMatchObject({ due: false, reason: "too soon" });
+  });
+});
+
+// ── New wrapper tests ─────────────────────────────────────────────────────────
+
+describe("memoryTier", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb.updateTier = vi.fn();
+    mockDb.resolveId = vi.fn((id: string) => id);
+  });
+
+  it("calls updateTier on the db and returns { id, tier, ok: true }", () => {
+    const result = memoryTier("mem-001", "core");
+    expect(mockDb.updateTier).toHaveBeenCalledWith("mem-001", "core");
+    expect(result).toEqual({ id: "mem-001", tier: "core", ok: true });
+  });
+
+  it("returns { ok: false } when updateTier throws", () => {
+    mockDb.updateTier = vi.fn().mockImplementation(() => { throw new Error("db error"); });
+    const result = memoryTier("mem-001", "core");
+    expect(result).toMatchObject({ ok: false });
+  });
+});
+
+describe("memoryDetail", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb.resolveId = vi.fn((id: string) => id);
+  });
+
+  it("returns the memory object when found", () => {
+    const fakeMemory = { id: "mem-001", content: "test content", type: "fact" };
+    mockDb.getById = vi.fn().mockReturnValue(fakeMemory);
+    const result = memoryDetail("mem-001");
+    expect(mockDb.getById).toHaveBeenCalledWith("mem-001");
+    expect(result).toEqual(fakeMemory);
+  });
+
+  it("returns null when memory is not found", () => {
+    mockDb.getById = vi.fn().mockReturnValue(null);
+    const result = memoryDetail("mem-999");
+    expect(result).toBeNull();
+  });
+});
+
+describe("memoryRelate", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb.addRelation = vi.fn().mockReturnValue("relation-uuid-123");
+  });
+
+  it("calls addRelation and returns { ok: true, relationId }", () => {
+    const result = memoryRelate("mem-001", "mem-002", "supports");
+    expect(mockDb.addRelation).toHaveBeenCalledWith("mem-001", "mem-002", "supports", undefined);
+    expect(result).toEqual({ ok: true, relationId: "relation-uuid-123" });
+  });
+
+  it("passes optional strength parameter through", () => {
+    memoryRelate("mem-001", "mem-002", "contradicts", 0.5);
+    expect(mockDb.addRelation).toHaveBeenCalledWith("mem-001", "mem-002", "contradicts", 0.5);
+  });
+
+  it("returns { ok: false } when addRelation throws", () => {
+    mockDb.addRelation = vi.fn().mockImplementation(() => { throw new Error("db error"); });
+    const result = memoryRelate("mem-001", "mem-002", "supports");
+    expect(result).toMatchObject({ ok: false });
+  });
+});
+
+describe("memoryExpire", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb.expireMemory = vi.fn();
+    mockDb.resolveId = vi.fn((id: string) => id);
+  });
+
+  it("calls expireMemory on the db and returns { ok: true }", () => {
+    const result = memoryExpire("mem-001", "outdated");
+    expect(mockDb.expireMemory).toHaveBeenCalledWith("mem-001");
+    expect(result).toMatchObject({ ok: true, id: "mem-001" });
+  });
+
+  it("returns { ok: false } when expireMemory throws", () => {
+    mockDb.expireMemory = vi.fn().mockImplementation(() => { throw new Error("db error"); });
+    const result = memoryExpire("mem-001");
+    expect(result).toMatchObject({ ok: false });
+  });
+});
+
+describe("memoryVersions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb.resolveId = vi.fn((id: string) => id);
+  });
+
+  it("returns an array of version history entries", () => {
+    const fakeVersions = [
+      { versionId: "v1", memoryId: "mem-001", content: "old content", confidence: 0.8, editedAt: 1000, reason: "patch" },
+    ];
+    mockDb.getVersionHistory = vi.fn().mockReturnValue(fakeVersions);
+    const result = memoryVersions("mem-001");
+    expect(mockDb.getVersionHistory).toHaveBeenCalledWith("mem-001");
+    expect(result).toEqual(fakeVersions);
+  });
+
+  it("returns an empty array when no history exists", () => {
+    mockDb.getVersionHistory = vi.fn().mockReturnValue([]);
+    const result = memoryVersions("mem-001");
+    expect(result).toEqual([]);
+  });
+});
+
+describe("memorySync", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(syncFromClaude).mockResolvedValue({ imported: 3, skipped: 1, updated: 0, details: [], projectsScanned: 1 });
+    vi.mocked(exportForTeam).mockResolvedValue({ file: "/tmp/team-export.json", count: 5 });
+    vi.mocked(importFromTeam).mockResolvedValue({ imported: 2, skipped: 0, from: "/tmp/mem.json" });
+    vi.mocked(syncToCopilot).mockReturnValue({ file: ".github/copilot-instructions.md", memoriesExported: 4, sections: { corrections: 0, decisions: 0, preferences: 0, patterns: 0, other: 4 }, dryRun: false });
+  });
+
+  it("import-claude action calls syncFromClaude and returns result", async () => {
+    const result = await memorySync("import-claude");
+    expect(syncFromClaude).toHaveBeenCalledWith(mockDb, undefined, false);
+    expect(result).toMatchObject({ imported: 3, skipped: 1 });
+  });
+
+  it("import-claude passes dryRun option", async () => {
+    await memorySync("import-claude", { dryRun: true });
+    expect(syncFromClaude).toHaveBeenCalledWith(mockDb, undefined, true);
+  });
+
+  it("export-team action calls exportForTeam and returns result", async () => {
+    const result = await memorySync("export-team", { outputDir: "/tmp", userId: "my-proj" });
+    expect(exportForTeam).toHaveBeenCalledWith(mockDb, "/tmp", expect.objectContaining({ userId: "my-proj" }));
+    expect(result).toMatchObject({ file: "/tmp/team-export.json", count: 5 });
+  });
+
+  it("import-team action calls importFromTeam and returns result", async () => {
+    const result = await memorySync("import-team", { filePath: "/tmp/mem.json" });
+    expect(importFromTeam).toHaveBeenCalledWith(mockDb, "/tmp/mem.json", undefined);
+    expect(result).toMatchObject({ imported: 2 });
+  });
+
+  it("sync-copilot action calls syncToCopilot and returns result", async () => {
+    const result = await memorySync("sync-copilot");
+    expect(syncToCopilot).toHaveBeenCalledWith(mockDb, undefined);
+    expect(result).toMatchObject({ file: ".github/copilot-instructions.md" });
+  });
+
+  it("returns { ok: false } for unknown action", async () => {
+    const result = await memorySync("unknown-action" as any);
+    expect(result).toMatchObject({ ok: false });
   });
 });

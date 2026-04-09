@@ -17,6 +17,10 @@ import {
   multiStrategyRecall,
   reflect,
   isReflectionDue,
+  syncFromClaude,
+  exportForTeam,
+  importFromTeam,
+  syncToCopilot,
   type AmemDatabase,
   type RecallResult,
   type ContextResult,
@@ -25,10 +29,18 @@ import {
   type ConsolidationReport,
   type MemoryStats,
   type Memory,
+  type MemoryVersion,
+  type MemoryRelation,
   type DiagnosticReport,
   type ReflectionReport,
   type ReflectionConfig,
   type AmemConfig,
+  type SyncResult,
+  type TeamExportOptions,
+  type TeamImportOptions,
+  type TeamImportResult,
+  type CopilotSyncOptions,
+  type CopilotSyncResult,
 } from "@aman_asmuei/amem-core";
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
@@ -331,3 +343,150 @@ export async function memoryReflect(
 export function checkReflectionDue(): { due: boolean; reason: string } {
   return isReflectionDue(getDb());
 }
+
+// ─── Tier ────────────────────────────────────────────────────────────────────
+
+/**
+ * Move a memory between tiers: "core" | "working" | "archival".
+ */
+export function memoryTier(
+  id: string,
+  tier: string,
+): { id: string; tier: string; ok: true } | { ok: false; error: string } {
+  try {
+    const db = getDb();
+    const fullId = db.resolveId(id) ?? id;
+    db.updateTier(fullId, tier);
+    return { id: fullId, tier, ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// ─── Detail ──────────────────────────────────────────────────────────────────
+
+/**
+ * Get the full Memory object for a given id. Returns null if not found.
+ */
+export function memoryDetail(id: string): Memory | null {
+  const db = getDb();
+  const fullId = db.resolveId(id) ?? id;
+  return db.getById(fullId);
+}
+
+// ─── Relate ──────────────────────────────────────────────────────────────────
+
+/**
+ * Add a knowledge-graph relation between two memories.
+ */
+export function memoryRelate(
+  fromId: string,
+  toId: string,
+  type: string,
+  strength?: number,
+): { ok: true; relationId: string } | { ok: false; error: string } {
+  try {
+    const relationId = getDb().addRelation(fromId, toId, type, strength);
+    return { ok: true, relationId };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// ─── Expire ──────────────────────────────────────────────────────────────────
+
+/**
+ * Mark a memory as expired (sets valid_until to now).
+ * The optional `reason` string is for caller-side logging only — the db
+ * itself stores the timestamp rather than a reason field.
+ */
+export function memoryExpire(
+  id: string,
+  reason?: string,
+): { ok: true; id: string; reason?: string } | { ok: false; error: string } {
+  try {
+    const db = getDb();
+    const fullId = db.resolveId(id) ?? id;
+    db.expireMemory(fullId);
+    return { ok: true, id: fullId, ...(reason !== undefined ? { reason } : {}) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// ─── Versions ────────────────────────────────────────────────────────────────
+
+/**
+ * Return the full version history for a memory.
+ */
+export function memoryVersions(id: string): MemoryVersion[] {
+  const db = getDb();
+  const fullId = db.resolveId(id) ?? id;
+  return db.getVersionHistory(fullId);
+}
+
+// ─── Sync ────────────────────────────────────────────────────────────────────
+
+export type MemorySyncAction = "import-claude" | "export-team" | "import-team" | "sync-copilot";
+
+export interface MemorySyncOptions {
+  /** For import-claude: filter to a specific project path */
+  projectFilter?: string;
+  /** For import-claude / export-team: skip actual writes */
+  dryRun?: boolean;
+  /** For export-team: output directory */
+  outputDir?: string;
+  /** For export-team: userId identifier in the export manifest */
+  userId?: string;
+  /** For import-team: path to the JSON export file */
+  filePath?: string;
+  /** For sync-copilot: options forwarded to syncToCopilot */
+  copilotOptions?: CopilotSyncOptions;
+  /** For import-team: options forwarded to importFromTeam */
+  importOptions?: TeamImportOptions;
+}
+
+/**
+ * Sync memories with Claude Code auto-memory or team members.
+ *
+ * Actions:
+ * - "import-claude" — read Claude Code memory files and import into amem
+ * - "export-team"   — write a shareable JSON export for teammates
+ * - "import-team"   — merge a teammate's JSON export into amem
+ * - "sync-copilot"  — update the Copilot instructions file from amem memories
+ */
+export async function memorySync(
+  action: MemorySyncAction,
+  opts: MemorySyncOptions = {},
+): Promise<SyncResult | TeamImportResult | { file: string; count: number } | CopilotSyncResult | { ok: false; error: string }> {
+  const db = getDb();
+  try {
+    switch (action) {
+      case "import-claude":
+        return await syncFromClaude(db, opts.projectFilter, opts.dryRun ?? false);
+
+      case "export-team": {
+        const exportOptions: TeamExportOptions = {
+          userId: opts.userId ?? currentProject,
+        };
+        return await exportForTeam(db, opts.outputDir ?? process.cwd(), exportOptions);
+      }
+
+      case "import-team":
+        if (!opts.filePath) {
+          return { ok: false, error: "filePath is required for import-team" };
+        }
+        return await importFromTeam(db, opts.filePath, opts.importOptions);
+
+      case "sync-copilot":
+        return syncToCopilot(db, opts.copilotOptions);
+
+      default:
+        return { ok: false, error: `Unknown sync action: ${action as string}` };
+    }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export type { MemoryVersion, MemoryRelation, SyncResult, TeamImportResult, CopilotSyncResult };

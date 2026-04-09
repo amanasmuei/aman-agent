@@ -10,6 +10,12 @@ import {
   recallMemories,
   generateEmbedding,
   getVectorIndex,
+  runDiagnostics,
+  loadConfig,
+  saveConfig,
+  multiStrategyRecall,
+  reflect,
+  isReflectionDue,
   type AmemDatabase,
   type RecallResult,
   type ContextResult,
@@ -18,6 +24,10 @@ import {
   type ConsolidationReport,
   type MemoryStats,
   type Memory,
+  type DiagnosticReport,
+  type ReflectionReport,
+  type ReflectionConfig,
+  type AmemConfig,
 } from "@aman_asmuei/amem-core";
 import path from "node:path";
 import os from "node:os";
@@ -158,22 +168,22 @@ export async function memoryForget(opts: { id?: string; query?: string; type?: s
   return { deleted: 0, message: "Provide an id, type, or query to forget." };
 }
 
-let memoryConfig: { maxStaleDays?: number; minConfidence?: number; minAccessCount?: number; maxRecallTokens?: number } = {};
+let _localMemoryConfig: { maxStaleDays?: number; minConfidence?: number; minAccessCount?: number; maxRecallTokens?: number } = {};
 
-export function setMemoryConfig(config: typeof memoryConfig): void {
-  memoryConfig = config;
+export function setMemoryConfig(config: typeof _localMemoryConfig): void {
+  _localMemoryConfig = config;
 }
 
 export function getMaxRecallTokens(): number {
-  return memoryConfig.maxRecallTokens ?? 1500;
+  return _localMemoryConfig.maxRecallTokens ?? 1500;
 }
 
 export function memoryConsolidate(dryRun = false): ConsolidationReport {
   return consolidateMemories(getDb(), cosineSimilarity, {
     dryRun,
-    maxStaleDays: memoryConfig.maxStaleDays ?? 90,
-    minConfidence: memoryConfig.minConfidence ?? 0.3,
-    minAccessCount: memoryConfig.minAccessCount ?? 0,
+    maxStaleDays: _localMemoryConfig.maxStaleDays ?? 90,
+    minConfidence: _localMemoryConfig.minConfidence ?? 0.3,
+    minAccessCount: _localMemoryConfig.minAccessCount ?? 0,
   });
 }
 
@@ -213,3 +223,103 @@ export function reminderComplete(id: string): boolean {
 }
 
 export { type RecallResult, type ContextResult, type StoreResult, type StoreOptions, type ConsolidationReport, type MemoryStats, type Memory };
+
+// ─── Admin: Doctor ───────────────────────────────────────────────────────────
+
+/**
+ * Run read-only health diagnostics on the amem database.
+ * Returns a structured report with status, stats, and a list of issues.
+ */
+export async function memoryDoctor(): Promise<DiagnosticReport> {
+  return runDiagnostics(getDb());
+}
+
+// ─── Admin: Repair ───────────────────────────────────────────────────────────
+
+export interface MemoryRepairResult {
+  dryRun: boolean;
+  status: "healthy" | "warning" | "critical";
+  issues: DiagnosticReport["issues"];
+  actions: { action: string; description: string }[];
+}
+
+/**
+ * Diagnose and optionally repair the memory database.
+ * By default runs in dry-run mode — set dryRun:false to apply fixes.
+ */
+export async function memoryRepair(
+  opts: { dryRun?: boolean } = {}
+): Promise<MemoryRepairResult> {
+  const dryRun = opts.dryRun ?? true;
+  const report = runDiagnostics(getDb());
+  const actions: { action: string; description: string }[] = [];
+
+  // Surface actionable suggestions from the diagnostic report
+  for (const issue of report.issues) {
+    actions.push({
+      action: issue.type,
+      description: dryRun
+        ? `[dry-run] Would: ${issue.suggestion}`
+        : issue.suggestion,
+    });
+  }
+
+  return { dryRun, status: report.status, issues: report.issues, actions };
+}
+
+// ─── Admin: Config ───────────────────────────────────────────────────────────
+
+/**
+ * Read or update the amem configuration.
+ * With no args, returns the current config.
+ * With updates, deep-merges and saves the new config.
+ */
+export async function memoryConfig(
+  updates?: Partial<AmemConfig>
+): Promise<AmemConfig> {
+  const current = loadConfig();
+  if (updates && Object.keys(updates).length > 0) {
+    saveConfig(updates);
+    // Return merged view without re-reading from disk (saveConfig merges internally)
+    return { ...current, ...updates } as AmemConfig;
+  }
+  return current;
+}
+
+// ─── Advanced Recall ─────────────────────────────────────────────────────────
+
+/**
+ * Multi-strategy recall: combines semantic, FTS5, knowledge graph, and
+ * temporal scoring into a unified ranked result.
+ */
+export async function memoryMultiRecall(
+  query: string,
+  opts: { limit?: number; scope?: string } = {}
+) {
+  const queryEmbedding = await generateEmbedding(query);
+  return multiStrategyRecall(getDb(), {
+    query,
+    queryEmbedding,
+    limit: opts.limit ?? 10,
+    scope: opts.scope ?? currentProject ?? undefined,
+  });
+}
+
+// ─── Reflection ──────────────────────────────────────────────────────────────
+
+/**
+ * Run the self-evolving memory reflection engine.
+ * Returns clusters, contradictions, and synthesis candidates.
+ */
+export async function memoryReflect(
+  config?: Partial<ReflectionConfig>
+): Promise<ReflectionReport> {
+  return reflect(getDb(), config);
+}
+
+/**
+ * Check whether a reflection run is due based on last-run metadata.
+ */
+export function checkReflectionDue(): { due: boolean; reason: string } {
+  return isReflectionDue(getDb());
+}

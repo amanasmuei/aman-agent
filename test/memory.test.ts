@@ -170,7 +170,7 @@ describe("memoryMultiRecall", () => {
       mockDb,
       expect.objectContaining({ query: "test query" })
     );
-    expect(result).toEqual([]);
+    expect(result).toEqual({ memories: [], total: 0 });
   });
 
   it("passes limit option through to multiStrategyRecall", async () => {

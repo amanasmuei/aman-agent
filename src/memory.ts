@@ -302,14 +302,15 @@ export async function memoryConfig(
 export async function memoryMultiRecall(
   query: string,
   opts: { limit?: number; scope?: string } = {}
-): Promise<ReturnType<typeof multiStrategyRecall>> {
+): Promise<{ memories: Awaited<ReturnType<typeof multiStrategyRecall>>; total: number }> {
   const queryEmbedding = await generateEmbedding(query);
-  return multiStrategyRecall(getDb(), {
+  const memories = await multiStrategyRecall(getDb(), {
     query,
     queryEmbedding,
     limit: opts.limit ?? 10,
     scope: opts.scope ?? currentProject ?? undefined,
   });
+  return { memories, total: memories.length };
 }
 
 // ─── Reflection ──────────────────────────────────────────────────────────────

@@ -31,6 +31,10 @@ vi.mock("../src/memory.js", () => ({
     memories: [{ content: "mock", type: "fact", score: 0.9 }],
     text: `Mock recall for ${query}`,
   })),
+  memoryMultiRecall: vi.fn(async (query: string) => ({
+    memories: [{ id: "1", content: `multi recall for ${query}`, type: "fact", score: 0.9 }],
+    total: 1,
+  })),
   isMemoryInitialized: vi.fn(() => true),
   memoryDoctor: vi.fn(async () => ({
     status: "healthy",
@@ -52,7 +56,7 @@ vi.mock("../src/memory.js", () => ({
 }));
 
 const { handleCommand } = await import("../src/commands.js");
-import { memoryDoctor, memoryRepair, memoryConfig } from "../src/memory.js";
+import { memoryDoctor, memoryRepair, memoryConfig, memoryMultiRecall } from "../src/memory.js";
 
 function createMockMcpManager() {
   return {
@@ -454,6 +458,21 @@ describe("handleCommand", () => {
       expect(result.output).toBeDefined();
       expect(result.output).toContain("Repair");
       expect(vi.mocked(memoryRepair)).toHaveBeenCalledWith({ dryRun: false });
+    });
+  });
+
+  // --- /memory search ---
+
+  describe("/memory search", () => {
+    it("uses memoryMultiRecall for /memory search", async () => {
+      vi.mocked(memoryMultiRecall).mockResolvedValueOnce({
+        memories: [{ id: "1", content: "TypeScript preferred", type: "preference", score: 0.9 }],
+        total: 1,
+      } as any);
+      const result = await handleCommand("/memory search typescript", {});
+      expect(result.handled).toBe(true);
+      expect(vi.mocked(memoryMultiRecall)).toHaveBeenCalledWith("typescript", expect.any(Object));
+      expect(result.output).toContain("TypeScript preferred");
     });
   });
 

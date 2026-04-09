@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import pc from "picocolors";
 import type { McpManager } from "./mcp/client.js";
 import { getEcosystemStatus } from "./layers/parsers.js";
-import { memoryContext, memoryRecall, memoryForget, memoryStats, memoryExport, memorySince, memorySearch, isMemoryInitialized, reminderSet, reminderList, reminderCheck, reminderComplete, memoryDoctor, memoryRepair, memoryConfig } from "./memory.js";
+import { memoryContext, memoryRecall, memoryMultiRecall, memoryForget, memoryStats, memoryExport, memorySince, memorySearch, isMemoryInitialized, reminderSet, reminderList, reminderCheck, reminderComplete, memoryDoctor, memoryRepair, memoryConfig } from "./memory.js";
 import { listProfiles } from "./prompt.js";
 import { BUILT_IN_PROFILES, installProfileTemplate } from "./profile-templates.js";
 import { loadUserIdentity, hasUserIdentity } from "./user-identity.js";
@@ -474,8 +474,12 @@ async function handleMemoryCommand(
     }
     const query = args.join(" ");
     try {
-      const result = await memoryRecall(query);
-      return { handled: true, output: result.total === 0 ? pc.dim("No memories found.") : result.text };
+      const result = await memoryMultiRecall(query, { limit: 10 });
+      if (result.total === 0) {
+        return { handled: true, output: pc.dim("No memories found.") };
+      }
+      const lines = result.memories.map((m) => `• ${m.content}`).join("\n");
+      return { handled: true, output: lines };
     } catch (err) {
       return { handled: true, output: pc.red(`Memory error: ${err instanceof Error ? err.message : String(err)}`) };
     }

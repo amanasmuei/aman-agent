@@ -505,11 +505,11 @@ describe("handleCommand", () => {
     });
 
     it("sets a key=value when provided", async () => {
-      const result = await handleCommand("/memory config maxStaleDays=60", {});
+      const result = await handleCommand("/memory config consolidation.maxStaleDays=60", {});
       expect(result.handled).toBe(true);
       expect(result.output).toBeDefined();
-      expect(result.output).toContain("maxStaleDays");
-      expect(vi.mocked(memoryConfig)).toHaveBeenCalledWith({ maxStaleDays: 60 });
+      expect(result.output).toContain("consolidation.maxStaleDays");
+      expect(vi.mocked(memoryConfig)).toHaveBeenCalledWith({ consolidation: { maxStaleDays: 60 } });
     });
   });
 });

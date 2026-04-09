@@ -92,6 +92,23 @@ function parseCommand(input: string): { base: string; action?: string; args: str
   return { base, action, args };
 }
 
+/**
+ * Parse dot-notation key (e.g. "consolidation.maxStaleDays") into nested object.
+ * Returns { consolidation: { maxStaleDays: val } } instead of { "consolidation.maxStaleDays": val }
+ */
+function buildNestedUpdate(key: string, val: unknown): Record<string, unknown> {
+  const parts = key.split(".");
+  if (parts.length === 1) return { [key]: val };
+  const result: Record<string, unknown> = {};
+  let curr = result;
+  for (let i = 0; i < parts.length - 1; i++) {
+    curr[parts[i]] = {};
+    curr = curr[parts[i]] as Record<string, unknown>;
+  }
+  curr[parts[parts.length - 1]] = val;
+  return result;
+}
+
 async function mcpWrite(
   ctx: CommandContext,
   layer: string,
@@ -661,7 +678,7 @@ async function handleMemoryCommand(
       `  ${pc.cyan("/memory clear --type")} <type>  Delete all of a type`,
       `  ${pc.cyan("/memory doctor")}              Run memory diagnostics`,
       `  ${pc.cyan("/memory repair")}              Dry-run repair (safe)`,
-      `  ${pc.cyan("/memory config")} [key=value]  View or update config`,
+      `  ${pc.cyan("/memory config")} [key=value]  View or update config (e.g. consolidation.maxStaleDays=60)`,
     ].join("\n") };
   }
   if (action === "doctor") {
@@ -717,7 +734,8 @@ async function handleMemoryCommand(
           return { handled: true, output: pc.yellow(`Usage: /memory config <key>=<value>`) };
         }
         const val = isNaN(Number(rawVal)) ? rawVal : Number(rawVal);
-        await memoryConfig({ [key]: val });
+        const update = buildNestedUpdate(key, val);
+        await memoryConfig(update);
         return { handled: true, output: `✅ Set \`${key}\` → \`${val}\`` };
       }
       const config = await memoryConfig();

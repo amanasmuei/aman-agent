@@ -11,6 +11,7 @@ import {
   generateEmbedding,
   getVectorIndex,
   runDiagnostics,
+  repairDatabase,
   loadConfig,
   saveConfig,
   multiStrategyRecall,
@@ -29,6 +30,8 @@ import {
   type ReflectionConfig,
   type AmemConfig,
 } from "@aman_asmuei/amem-core";
+
+type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs";
@@ -239,8 +242,8 @@ export async function memoryDoctor(): Promise<DiagnosticReport> {
 export interface MemoryRepairResult {
   dryRun: boolean;
   status: "healthy" | "warning" | "critical";
-  issues: DiagnosticReport["issues"];
-  actions: { action: string; description: string }[];
+  issues: string[];
+  actions: string[];
 }
 
 /**
@@ -251,20 +254,25 @@ export async function memoryRepair(
   opts: { dryRun?: boolean } = {}
 ): Promise<MemoryRepairResult> {
   const dryRun = opts.dryRun ?? true;
-  const report = runDiagnostics(getDb());
-  const actions: { action: string; description: string }[] = [];
-
-  // Surface actionable suggestions from the diagnostic report
-  for (const issue of report.issues) {
-    actions.push({
-      action: issue.type,
-      description: dryRun
-        ? `[dry-run] Would: ${issue.suggestion}`
-        : issue.suggestion,
-    });
+  if (dryRun) {
+    // Dry-run: run diagnostics and surface what would be repaired
+    const diag = runDiagnostics(getDb());
+    return {
+      dryRun: true,
+      status: diag.status,
+      issues: diag.issues.map((issue) => issue.message),
+      actions: diag.issues.map((issue) => `Would fix: ${issue.suggestion}`),
+    };
   }
-
-  return { dryRun, status: report.status, issues: report.issues, actions };
+  // Actual repair: call repairDatabase with the DB path
+  const dbPath = process.env.AMEM_DB ?? path.join(os.homedir(), ".amem", "memory.db");
+  const result = repairDatabase(dbPath);
+  return {
+    dryRun: false,
+    status: result.status === "repaired" ? "warning" : result.status === "failed" ? "critical" : "healthy",
+    issues: [],
+    actions: result.memoriesRecovered > 0 ? [`Recovered ${result.memoriesRecovered} memories`] : [],
+  };
 }
 
 // ─── Admin: Config ───────────────────────────────────────────────────────────
@@ -272,16 +280,15 @@ export async function memoryRepair(
 /**
  * Read or update the amem configuration.
  * With no args, returns the current config.
- * With updates, deep-merges and saves the new config.
+ * With updates, deep-merges and saves the new config, then returns authoritative post-save state.
  */
 export async function memoryConfig(
-  updates?: Partial<AmemConfig>
+  updates?: DeepPartial<AmemConfig>
 ): Promise<AmemConfig> {
   const current = loadConfig();
   if (updates && Object.keys(updates).length > 0) {
-    saveConfig(updates);
-    // Return merged view without re-reading from disk (saveConfig merges internally)
-    return { ...current, ...updates } as AmemConfig;
+    saveConfig(updates as Partial<AmemConfig>);
+    return loadConfig(); // read back authoritative merged state
   }
   return current;
 }
@@ -295,7 +302,7 @@ export async function memoryConfig(
 export async function memoryMultiRecall(
   query: string,
   opts: { limit?: number; scope?: string } = {}
-) {
+): Promise<ReturnType<typeof multiStrategyRecall>> {
   const queryEmbedding = await generateEmbedding(query);
   return multiStrategyRecall(getDb(), {
     query,

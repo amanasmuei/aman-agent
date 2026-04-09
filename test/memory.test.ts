@@ -37,6 +37,14 @@ vi.mock("@aman_asmuei/amem-core", async () => {
       },
       issues: [],
     }),
+    // Repair
+    repairDatabase: vi.fn().mockReturnValue({
+      status: "healthy",
+      integrityCheck: "ok",
+      backupUsed: null,
+      memoriesRecovered: 5,
+      message: "Database is healthy (5 memories).",
+    }),
     // Config — synchronous in amem-core
     loadConfig: vi.fn().mockReturnValue({ consolidation: { maxStaleDays: 90 } }),
     saveConfig: vi.fn().mockReturnValue(undefined),
@@ -71,7 +79,7 @@ vi.mock("@aman_asmuei/amem-core", async () => {
 // ── Import memory module after mocks are set up ───────────────────────────────
 // We init the db via initMemory so getDb() works in subsequent wrapper calls.
 import { initMemory, memoryDoctor, memoryRepair, memoryConfig, memoryMultiRecall, memoryReflect, checkReflectionDue } from "../src/memory.js";
-import { runDiagnostics, loadConfig, saveConfig, generateEmbedding, multiStrategyRecall, reflect, isReflectionDue } from "@aman_asmuei/amem-core";
+import { runDiagnostics, repairDatabase, loadConfig, saveConfig, generateEmbedding, multiStrategyRecall, reflect, isReflectionDue } from "@aman_asmuei/amem-core";
 
 // Bootstrap: init memory once so getDb() doesn't throw.
 // The mocked createDatabase returns mockDb, so no real FS access happens.
@@ -133,7 +141,11 @@ describe("memoryConfig", () => {
   });
 
   it("saves config and returns merged config when updates are provided", async () => {
-    const result = await memoryConfig({ consolidation: { maxStaleDays: 60 } } as any);
+    // After save, loadConfig should return the merged state
+    vi.mocked(loadConfig)
+      .mockReturnValueOnce({ consolidation: { maxStaleDays: 90 } } as any)
+      .mockReturnValueOnce({ consolidation: { maxStaleDays: 60 } } as any);
+    const result = await memoryConfig({ consolidation: { maxStaleDays: 60 } });
     expect(saveConfig).toHaveBeenCalledOnce();
     expect(result).toMatchObject({ consolidation: { maxStaleDays: 60 } });
   });

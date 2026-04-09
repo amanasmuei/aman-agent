@@ -466,12 +466,30 @@ describe("handleCommand", () => {
   describe("/memory search", () => {
     it("uses memoryMultiRecall for /memory search", async () => {
       vi.mocked(memoryMultiRecall).mockResolvedValueOnce({
-        memories: [{ id: "1", content: "TypeScript preferred", type: "preference", score: 0.9 }],
+        memories: [{ id: "1", content: "TypeScript preferred", type: "preference", score: 0.9, tags: [] }],
         total: 1,
       } as any);
       const result = await handleCommand("/memory search typescript", {});
       expect(result.handled).toBe(true);
       expect(vi.mocked(memoryMultiRecall)).toHaveBeenCalledWith("typescript", expect.any(Object));
+      expect(result.output).toContain("[preference]");
+      expect(result.output).toContain("TypeScript preferred");
+    });
+
+    it("returns no-results message when result is empty", async () => {
+      vi.mocked(memoryMultiRecall).mockResolvedValueOnce({ memories: [], total: 0 } as any);
+      const result = await handleCommand("/memory search nothing here", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("No memories");
+    });
+
+    it("joins multi-word query correctly", async () => {
+      vi.mocked(memoryMultiRecall).mockResolvedValueOnce({
+        memories: [{ id: "1", content: "TypeScript preferred", type: "preference", score: 0.9, tags: [] }],
+        total: 1,
+      } as any);
+      const result = await handleCommand("/memory search typescript preferences", {});
+      expect(vi.mocked(memoryMultiRecall)).toHaveBeenCalledWith("typescript preferences", expect.any(Object));
       expect(result.output).toContain("TypeScript preferred");
     });
   });

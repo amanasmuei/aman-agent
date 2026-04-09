@@ -478,8 +478,15 @@ async function handleMemoryCommand(
       if (result.total === 0) {
         return { handled: true, output: pc.dim("No memories found.") };
       }
-      const lines = result.memories.map((m) => `• ${m.content}`).join("\n");
-      return { handled: true, output: lines };
+      const header = `Search results for "${query}" (${result.total}):`;
+      const lines: string[] = [pc.bold(header), ""];
+      for (const m of result.memories) {
+        const tags = m.tags?.length > 0
+          ? ` ${pc.dim(m.tags.map((t: string) => `#${t}`).join(" "))}`
+          : "";
+        lines.push(`  [${m.type}] ${m.content}${tags}`);
+      }
+      return { handled: true, output: lines.join("\n") };
     } catch (err) {
       return { handled: true, output: pc.red(`Memory error: ${err instanceof Error ? err.message : String(err)}`) };
     }

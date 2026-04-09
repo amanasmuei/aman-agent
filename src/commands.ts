@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import pc from "picocolors";
 import type { McpManager } from "./mcp/client.js";
 import { getEcosystemStatus } from "./layers/parsers.js";
-import { memoryContext, memoryRecall, memoryForget, memoryStats, memoryExport, memorySince, memorySearch, isMemoryInitialized, reminderSet, reminderList, reminderCheck, reminderComplete } from "./memory.js";
+import { memoryContext, memoryRecall, memoryForget, memoryStats, memoryExport, memorySince, memorySearch, isMemoryInitialized, reminderSet, reminderList, reminderCheck, reminderComplete, memoryDoctor, memoryRepair, memoryConfig } from "./memory.js";
 import { listProfiles } from "./prompt.js";
 import { BUILT_IN_PROFILES, installProfileTemplate } from "./profile-templates.js";
 import { loadUserIdentity, hasUserIdentity } from "./user-identity.js";
@@ -456,7 +456,7 @@ async function handleMemoryCommand(
     }
   }
   // /memory <topic> — shortcut for context on a specific topic
-  if (action && !["search", "clear", "timeline", "stats", "export", "since", "fts", "help"].includes(action)) {
+  if (action && !["search", "clear", "timeline", "stats", "export", "since", "fts", "help", "doctor", "repair", "config"].includes(action)) {
     try {
       const topic = [action, ...args].join(" ");
       const result = await memoryContext(topic);
@@ -649,6 +649,76 @@ async function handleMemoryCommand(
       `  ${pc.cyan("/memory clear")} <query>        Delete matching memories`,
       `  ${pc.cyan("/memory clear --type")} <type>  Delete all of a type`,
     ].join("\n") };
+  }
+  if (action === "doctor") {
+    try {
+      const diag = await memoryDoctor();
+      const statusIcon = diag.status === "healthy" ? "✅" : "⚠️";
+      const lines: string[] = [
+        `**Memory Diagnostics**`,
+        `Status: ${statusIcon} ${diag.status}`,
+      ];
+      if (diag.issues?.length) {
+        lines.push("", "**Issues:**");
+        for (const issue of diag.issues) {
+          lines.push(`- ${typeof issue === "string" ? issue : (issue as { message?: string }).message ?? String(issue)}`);
+        }
+        lines.push("", "_Run `/memory repair` (dry-run) or `/memory repair --apply` to fix._");
+      }
+      return { handled: true, output: lines.join("\n") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Memory doctor error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+  if (action === "repair") {
+    try {
+      const dryRun = !args.includes("--apply");
+      const result = await memoryRepair({ dryRun });
+      const prefix = dryRun ? "[DRY RUN] " : "";
+      const lines: string[] = [`**${prefix}Memory Repair**`];
+      if (result.actions?.length) {
+        lines.push("", "**Actions:**");
+        for (const act of result.actions) {
+          lines.push(`- ${act}`);
+        }
+      } else {
+        lines.push("No actions needed.");
+      }
+      if (dryRun) {
+        lines.push("", "_Run `/memory repair --apply` to execute._");
+      }
+      return { handled: true, output: lines.join("\n") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Memory repair error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+  if (action === "config") {
+    try {
+      const kvArg = args.find((a: string) => a.includes("=") && !a.startsWith("-"));
+      if (kvArg) {
+        const eqIdx = kvArg.indexOf("=");
+        const key = kvArg.slice(0, eqIdx);
+        const rawVal = kvArg.slice(eqIdx + 1);
+        const val = isNaN(Number(rawVal)) ? rawVal : Number(rawVal);
+        await memoryConfig({ [key]: val });
+        return { handled: true, output: `✅ Set \`${key}\` → \`${val}\`` };
+      }
+      const config = await memoryConfig();
+      const lines = ["**Memory Config**", "```"];
+      for (const [k, v] of Object.entries(config as Record<string, unknown>)) {
+        if (typeof v === "object" && v !== null) {
+          for (const [sk, sv] of Object.entries(v as Record<string, unknown>)) {
+            lines.push(`${k}.${sk}: ${sv}`);
+          }
+        } else {
+          lines.push(`${k}: ${v}`);
+        }
+      }
+      lines.push("```", "", "_Use `/memory config key=value` to change a setting._");
+      return { handled: true, output: lines.join("\n") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Memory config error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
   }
   return { handled: true, output: pc.yellow(`Unknown action: /memory ${action}. Try /memory --help`) };
 }

@@ -32,6 +32,23 @@ vi.mock("../src/memory.js", () => ({
     text: `Mock recall for ${query}`,
   })),
   isMemoryInitialized: vi.fn(() => true),
+  memoryDoctor: vi.fn(async () => ({
+    status: "healthy",
+    issues: [],
+    embeddingCoverage: 1.0,
+    staleCount: 0,
+    integrityOk: true,
+  })),
+  memoryRepair: vi.fn(async ({ dryRun }: { dryRun: boolean }) => ({
+    dryRun,
+    status: "ok",
+    issues: [],
+    actions: dryRun ? [] : ["Recovered 3 memories"],
+  })),
+  memoryConfig: vi.fn(async (updates?: Record<string, unknown>) => {
+    if (updates) return { maxStaleDays: 60, ...updates };
+    return { maxStaleDays: 30, embeddingModel: "default", autoConsolidate: true };
+  }),
 }));
 
 const { handleCommand } = await import("../src/commands.js");
@@ -394,6 +411,53 @@ describe("handleCommand", () => {
     it("returns handled: true", async () => {
       const result = await handleCommand("/debug", {});
       expect(result.handled).toBe(true);
+    });
+  });
+
+  // --- /memory doctor ---
+
+  describe("/memory doctor", () => {
+    it("returns diagnostics output", async () => {
+      const result = await handleCommand("/memory doctor", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toBeDefined();
+      expect(result.output).toContain("healthy");
+    });
+  });
+
+  // --- /memory repair ---
+
+  describe("/memory repair", () => {
+    it("dry-runs by default and shows DRY RUN label", async () => {
+      const result = await handleCommand("/memory repair", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toBeDefined();
+      expect(result.output).toContain("DRY RUN");
+    });
+
+    it("executes repair when --apply flag given", async () => {
+      const result = await handleCommand("/memory repair --apply", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toBeDefined();
+      expect(result.output).toContain("Repair");
+    });
+  });
+
+  // --- /memory config ---
+
+  describe("/memory config", () => {
+    it("shows current config when no args", async () => {
+      const result = await handleCommand("/memory config", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toBeDefined();
+      expect(result.output).toContain("Memory Config");
+    });
+
+    it("sets a key=value when provided", async () => {
+      const result = await handleCommand("/memory config maxStaleDays=60", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toBeDefined();
+      expect(result.output).toContain("maxStaleDays");
     });
   });
 });

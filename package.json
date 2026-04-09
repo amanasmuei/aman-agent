@@ -20,7 +20,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@aman_asmuei/aman-core": "^0.2.0",
+    "@aman_asmuei/aman-core": "^0.3.0",
     "@aman_asmuei/acore-core": "^0.2.0",
     "@aman_asmuei/arules-core": "^0.2.0",
     "@aman_asmuei/amem-core": "^0.5.0",

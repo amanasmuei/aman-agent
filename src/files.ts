@@ -5,6 +5,7 @@ import os from "node:os";
 const MAX_READ_BYTES = 50_000;
 const HOME = fs.realpathSync(os.homedir());
 const TMPDIR = fs.realpathSync(os.tmpdir());
+const CWD = fs.realpathSync(process.cwd());
 
 function realOrBest(p: string): string {
   // Walk up the path until we find an existing ancestor, then append the rest.
@@ -23,11 +24,14 @@ function realOrBest(p: string): string {
   return p;
 }
 
+function isUnderDir(real: string, dir: string): boolean {
+  return real === dir || real.startsWith(dir + path.sep);
+}
+
 function assertSafePath(filePath: string): string {
   const resolved = path.resolve(filePath);
   const real = realOrBest(resolved);
-  const cwd = fs.realpathSync(process.cwd());
-  if (!real.startsWith(HOME) && !real.startsWith(cwd) && !real.startsWith(TMPDIR)) {
+  if (!isUnderDir(real, HOME) && !isUnderDir(real, CWD) && !isUnderDir(real, TMPDIR)) {
     throw new Error(`Path is outside allowed directories (home or cwd): ${real}`);
   }
   return resolved;

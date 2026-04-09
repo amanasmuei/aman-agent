@@ -28,7 +28,7 @@ describe("readFile", () => {
   it("truncates files over 50KB and sets truncated=true", async () => {
     const result = await readFile(path.join(tmpDir, "big.txt"));
     expect(result.truncated).toBe(true);
-    expect(result.content.length).toBeLessThanOrEqual(51_200);
+    expect(result.content.length).toBeLessThanOrEqual(50_000);
   });
 
   it("throws a user-friendly error for non-existent files", async () => {
@@ -37,6 +37,12 @@ describe("readFile", () => {
 
   it("rejects paths outside home directory (safety guard)", async () => {
     await expect(readFile("/etc/passwd")).rejects.toThrow("outside");
+  });
+
+  it("rejects a path that is a prefix sibling of home", async () => {
+    const homeParent = path.dirname(os.homedir());
+    const sibling = path.join(homeParent, path.basename(os.homedir()) + "-evil", "secret.txt");
+    await expect(readFile(sibling)).rejects.toThrow("outside");
   });
 });
 
@@ -60,5 +66,11 @@ describe("listFiles", () => {
 
   it("rejects paths outside home directory", async () => {
     await expect(listFiles("/etc")).rejects.toThrow("outside");
+  });
+
+  it("rejects a path that is a prefix sibling of home", async () => {
+    const homeParent = path.dirname(os.homedir());
+    const sibling = path.join(homeParent, path.basename(os.homedir()) + "-evil");
+    await expect(listFiles(sibling)).rejects.toThrow("outside");
   });
 });

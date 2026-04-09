@@ -1,5 +1,43 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { shouldExtract, parseExtractionResult, extractMemories } from "../src/memory-extractor.js";
+
+// ── Module-level mocks (hoisted by Vitest) ────────────────────────────────────
+
+vi.mock("../src/logger.js", () => ({
+  log: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+}));
+
+vi.mock("../src/skill-engine.js", () => ({
+  matchPatternToSkill: vi.fn(() => null),
+  enrichSkill: vi.fn(),
+}));
+
+const mockDb = { __mock: true } as unknown as import("@aman_asmuei/amem-core").AmemDatabase;
+
+vi.mock("../src/memory.js", () => ({
+  memoryRecall: vi.fn(async () => ({ total: 0, memories: [], text: "" })),
+  memoryStore: vi.fn(async () => ({
+    action: "stored" as const,
+    id: "mem-123",
+    type: "fact" as const,
+    confidence: 0.9,
+    tags: [],
+    total: 1,
+    reinforced: 0,
+  })),
+  getDb: vi.fn(() => mockDb),
+}));
+
+vi.mock("@aman_asmuei/amem-core", () => ({
+  autoRelateMemory: vi.fn(() => ({ created: 0, relations: [] })),
+  reflect: vi.fn(() => ({
+    clusters: [], contradictions: [], synthesisCandidates: [], knowledgeGaps: [],
+    orphans: 0, stats: { totalMemories: 0, clusteredMemories: 0, totalClusters: 0,
+      avgClusterSize: 0, contradictionsFound: 0, synthesisCandidates: 0,
+      knowledgeGaps: 0, healthScore: 1 }, timestamp: Date.now(), durationMs: 0,
+  })),
+  isReflectionDue: vi.fn(() => ({ due: false, reason: "too soon" })),
+}));
 
 describe("memory-extractor", () => {
   describe("shouldExtract", () => {
@@ -80,5 +118,110 @@ describe("memory-extractor", () => {
     it("accepts 5 parameters (no confirmFn)", () => {
       expect(extractMemories.length).toBeLessThanOrEqual(5);
     });
+  });
+});
+
+// ── autoRelateMemory + reflect hook integration tests ─────────────────────────
+
+describe("extractMemories — autoRelateMemory hook", () => {
+  // Import mocked modules — these will resolve to the vi.mock stubs above.
+  // We use dynamic imports after mocks are registered so Vitest hoisting works.
+  let memoryStore: ReturnType<typeof vi.fn>;
+  let memoryRecall: ReturnType<typeof vi.fn>;
+  let autoRelateMemory: ReturnType<typeof vi.fn>;
+  let reflect: ReturnType<typeof vi.fn>;
+  let isReflectionDue: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const memMod = await import("../src/memory.js");
+    const coreMod = await import("@aman_asmuei/amem-core");
+    memoryStore = vi.mocked(memMod.memoryStore);
+    memoryRecall = vi.mocked(memMod.memoryRecall);
+    autoRelateMemory = vi.mocked(coreMod.autoRelateMemory);
+    reflect = vi.mocked(coreMod.reflect);
+    isReflectionDue = vi.mocked(coreMod.isReflectionDue);
+  });
+
+  function makeLLMClient(response: string) {
+    return {
+      chat: vi.fn(async (_sys: string, _msgs: unknown[], onChunk: (c: { type: string; text?: string }) => void) => {
+        onChunk({ type: "text", text: response });
+      }),
+    } as unknown as import("../src/llm/types.js").LLMClient;
+  }
+
+  const validCandidate = JSON.stringify([
+    { content: "User prefers functional style", type: "preference", tags: ["style"], confidence: 0.9, scope: "global" },
+  ]);
+
+  it("calls autoRelateMemory with the stored id when store succeeds", async () => {
+    memoryStore.mockResolvedValueOnce({
+      action: "stored", id: "mem-abc", type: "preference", confidence: 0.9, tags: [], total: 1, reinforced: 0,
+    });
+    isReflectionDue.mockReturnValue({ due: false, reason: "too soon" });
+
+    const state = { turnsSinceLastExtraction: 5, lastExtractionCount: 0 };
+    const client = makeLLMClient(validCandidate);
+
+    await extractMemories("user msg", "A longer assistant response that has enough substance to trigger extraction.", client, state);
+
+    expect(autoRelateMemory).toHaveBeenCalledOnce();
+    expect(autoRelateMemory).toHaveBeenCalledWith(expect.any(Object), "mem-abc");
+  });
+
+  it("does NOT call autoRelateMemory when action is private (nothing actually stored)", async () => {
+    memoryStore.mockResolvedValueOnce({
+      action: "private", id: "mem-xyz", type: "preference", confidence: 0.9, tags: [], total: 0, reinforced: 0,
+    });
+    isReflectionDue.mockReturnValue({ due: false, reason: "too soon" });
+
+    const state = { turnsSinceLastExtraction: 5, lastExtractionCount: 0 };
+    const client = makeLLMClient(validCandidate);
+
+    await extractMemories("user msg", "A longer assistant response that has enough substance to trigger extraction.", client, state);
+
+    expect(autoRelateMemory).not.toHaveBeenCalled();
+  });
+
+  it("calls reflect when isReflectionDue returns true and something was stored", async () => {
+    memoryStore.mockResolvedValueOnce({
+      action: "stored", id: "mem-def", type: "fact", confidence: 0.9, tags: [], total: 5, reinforced: 0,
+    });
+    isReflectionDue.mockReturnValue({ due: true, reason: "enough new memories" });
+
+    const state = { turnsSinceLastExtraction: 5, lastExtractionCount: 0 };
+    const client = makeLLMClient(validCandidate);
+
+    await extractMemories("user msg", "A longer assistant response that has enough substance to trigger extraction.", client, state);
+
+    expect(reflect).toHaveBeenCalledOnce();
+    expect(reflect).toHaveBeenCalledWith(expect.any(Object));
+  });
+
+  it("does NOT call reflect when isReflectionDue returns false", async () => {
+    memoryStore.mockResolvedValueOnce({
+      action: "stored", id: "mem-ghi", type: "fact", confidence: 0.9, tags: [], total: 2, reinforced: 0,
+    });
+    isReflectionDue.mockReturnValue({ due: false, reason: "too soon" });
+
+    const state = { turnsSinceLastExtraction: 5, lastExtractionCount: 0 };
+    const client = makeLLMClient(validCandidate);
+
+    await extractMemories("user msg", "A longer assistant response that has enough substance to trigger extraction.", client, state);
+
+    expect(reflect).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call reflect when nothing was stored (storedCount is 0)", async () => {
+    // LLM returns empty array → nothing to store
+    isReflectionDue.mockReturnValue({ due: true, reason: "enough memories" });
+
+    const state = { turnsSinceLastExtraction: 5, lastExtractionCount: 0 };
+    const client = makeLLMClient("[]");
+
+    await extractMemories("user msg", "A longer assistant response that has enough substance to trigger extraction.", client, state);
+
+    expect(reflect).not.toHaveBeenCalled();
   });
 });

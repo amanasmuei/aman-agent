@@ -1,7 +1,8 @@
 import type { LLMClient } from "./llm/types.js";
 import { log } from "./logger.js";
 import { matchPatternToSkill, enrichSkill } from "./skill-engine.js";
-import { memoryRecall, memoryStore } from "./memory.js";
+import { memoryRecall, memoryStore, getDb } from "./memory.js";
+import { autoRelateMemory, reflect, isReflectionDue } from "@aman_asmuei/amem-core";
 
 export interface ExtractionCandidate {
   content: string;
@@ -128,7 +129,7 @@ export async function extractMemories(
 
       // Store
       try {
-        await memoryStore({
+        const storeResult = await memoryStore({
           content: candidate.content,
           type: candidate.type,
           tags: candidate.tags,
@@ -136,18 +137,34 @@ export async function extractMemories(
           source: "auto-extraction",
           scope: candidate.scope,
         });
-        stored++;
-        log.debug("extractor", "Stored " + candidate.type + ": " + candidate.content);
-
-        // Self-improving skills: enrich skills with learned patterns
-        if (candidate.type === "pattern" || candidate.type === "preference") {
-          const skillMatch = matchPatternToSkill(candidate.content, candidate.tags);
-          if (skillMatch) {
-            enrichSkill(skillMatch, candidate.content);
+        if (storeResult.action !== "private") {
+          stored++;
+          log.debug("extractor", "Stored " + candidate.type + ": " + candidate.content);
+          // Fire-and-forget: build knowledge graph links in background
+          try {
+            autoRelateMemory(getDb(), storeResult.id);
+          } catch {
+            // Relation-building is best-effort — never block extraction
+          }
+          // Self-improving skills: enrich skills with learned patterns
+          if (candidate.type === "pattern" || candidate.type === "preference") {
+            const skillMatch = matchPatternToSkill(candidate.content, candidate.tags);
+            if (skillMatch) {
+              enrichSkill(skillMatch, candidate.content);
+            }
           }
         }
       } catch (err) {
         log.warn("extractor", "Failed to store: " + candidate.content, err);
+      }
+    }
+
+    // Post-extraction: trigger reflection if enough memories have accumulated
+    if (stored > 0 && isReflectionDue(getDb()).due) {
+      try {
+        reflect(getDb());
+      } catch {
+        // Reflection is background synthesis — never block extraction result
       }
     }
 

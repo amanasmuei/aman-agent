@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import pc from "picocolors";
 import type { McpManager } from "./mcp/client.js";
 import { getEcosystemStatus } from "./layers/parsers.js";
-import { memoryContext, memoryRecall, memoryMultiRecall, memoryForget, memoryStats, memoryExport, memorySince, memorySearch, isMemoryInitialized, reminderSet, reminderList, reminderCheck, reminderComplete, memoryDoctor, memoryRepair, memoryConfig } from "./memory.js";
+import { memoryContext, memoryRecall, memoryMultiRecall, memoryForget, memoryStats, memoryExport, memorySince, memorySearch, isMemoryInitialized, reminderSet, reminderList, reminderCheck, reminderComplete, memoryDoctor, memoryRepair, memoryConfig, memoryReflect, memoryConsolidate, memoryTier, memoryDetail, memoryRelate, memoryExpire, memoryVersions, memorySync } from "./memory.js";
 import { listProfiles } from "./prompt.js";
 import { BUILT_IN_PROFILES, installProfileTemplate } from "./profile-templates.js";
 import { loadUserIdentity, hasUserIdentity } from "./user-identity.js";
@@ -474,7 +474,7 @@ async function handleMemoryCommand(
     }
   }
   // /memory <topic> — shortcut for context on a specific topic
-  if (action && !["search", "clear", "timeline", "stats", "export", "since", "fts", "help", "doctor", "repair", "config"].includes(action)) {
+  if (action && !["search", "clear", "timeline", "stats", "export", "since", "fts", "help", "doctor", "repair", "config", "reflect", "consolidate", "tier", "detail", "relate", "expire", "versions", "sync"].includes(action)) {
     try {
       const topic = [action, ...args].join(" ");
       const result = await memoryContext(topic);
@@ -754,6 +754,133 @@ async function handleMemoryCommand(
       return { handled: true, output: lines.join("\n") };
     } catch (err) {
       return { handled: true, output: pc.red(`Memory config error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+  if (action === "reflect") {
+    try {
+      const report = await memoryReflect();
+      const lines = [
+        pc.bold("Reflection complete"),
+        `Clusters: ${report.clusters.length}`,
+        `Contradictions: ${report.contradictions.length}`,
+        `Synthesis candidates: ${report.synthesisCandidates.length}`,
+        `Knowledge gaps: ${report.knowledgeGaps.length}`,
+        `Health score: ${(report.stats.healthScore * 100).toFixed(0)}%`,
+        `Duration: ${report.durationMs}ms`,
+      ];
+      return { handled: true, output: lines.join("\n") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Reflect error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+  if (action === "consolidate") {
+    const apply = args.includes("--apply");
+    try {
+      const report = memoryConsolidate(!apply);
+      const lines = [
+        apply ? pc.bold("Consolidation applied") : pc.bold("Consolidation dry-run"),
+        `Merged: ${report.merged}`,
+        `Pruned: ${report.pruned}`,
+        `Promoted: ${report.promoted}`,
+        `Decayed: ${report.decayed}`,
+        `Health score: ${(report.healthScore * 100).toFixed(0)}%`,
+        `Before: ${report.before.total} → After: ${report.after.total}`,
+      ];
+      if (!apply) lines.push(pc.dim("Run with --apply to execute."));
+      return { handled: true, output: lines.join("\n") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Consolidate error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
+  if (action === "tier") {
+    const id = args[0];
+    const tier = args[1];
+    if (!id || !tier) {
+      return { handled: true, output: pc.yellow("Usage: /memory tier <id> <core|working|archival>") };
+    }
+    const tierResult = memoryTier(id, tier);
+    if (!tierResult.ok) {
+      return { handled: true, output: pc.red(`Tier error: ${tierResult.error}`) };
+    }
+    return { handled: true, output: `✅ Memory ${tierResult.id} moved to tier: ${tierResult.tier}` };
+  }
+  if (action === "detail") {
+    const id = args[0];
+    if (!id) {
+      return { handled: true, output: pc.yellow("Usage: /memory detail <id>") };
+    }
+    const memory = memoryDetail(id);
+    if (!memory) {
+      return { handled: true, output: pc.dim(`Memory not found: ${id}`) };
+    }
+    const lines = [
+      pc.bold(`Memory: ${memory.id}`),
+      `Content: ${memory.content}`,
+      `Type: ${memory.type}`,
+      `Confidence: ${memory.confidence}`,
+      `Tier: ${(memory as any).tier ?? "working"}`,
+      `Access count: ${memory.accessCount}`,
+      `Created: ${new Date(memory.createdAt).toISOString()}`,
+      memory.tags?.length ? `Tags: ${memory.tags.join(", ")}` : "",
+    ].filter(Boolean);
+    return { handled: true, output: lines.join("\n") };
+  }
+  if (action === "relate") {
+    const [fromId, toId, relType, strengthStr] = args;
+    if (!fromId || !toId || !relType) {
+      return { handled: true, output: pc.yellow("Usage: /memory relate <fromId> <toId> <type> [strength]") };
+    }
+    const strength = strengthStr !== undefined ? parseFloat(strengthStr) : undefined;
+    const relResult = memoryRelate(fromId, toId, relType, strength);
+    if (!relResult.ok) {
+      return { handled: true, output: pc.red(`Relate error: ${relResult.error}`) };
+    }
+    return { handled: true, output: `✅ Relation created: ${fromId} --[${relType}]--> ${toId} (id: ${relResult.relationId})` };
+  }
+  if (action === "expire") {
+    const id = args[0];
+    if (!id) {
+      return { handled: true, output: pc.yellow("Usage: /memory expire <id> [reason]") };
+    }
+    const reason = args.slice(1).join(" ") || undefined;
+    const expireResult = memoryExpire(id, reason);
+    if (!expireResult.ok) {
+      return { handled: true, output: pc.red(`Expire error: ${expireResult.error}`) };
+    }
+    return { handled: true, output: `✅ Memory ${expireResult.id} expired${reason ? `: ${reason}` : ""}` };
+  }
+  if (action === "versions") {
+    const id = args[0];
+    if (!id) {
+      return { handled: true, output: pc.yellow("Usage: /memory versions <id>") };
+    }
+    const versions = memoryVersions(id);
+    if (!versions.length) {
+      return { handled: true, output: pc.dim(`No version history for: ${id}`) };
+    }
+    const lines = [pc.bold(`Version history for ${id}:`)];
+    for (const v of versions) {
+      lines.push(`  [${new Date(v.editedAt).toISOString()}] ${v.content.slice(0, 80)}${v.content.length > 80 ? "\u2026" : ""}`);
+    }
+    return { handled: true, output: lines.join("\n") };
+  }
+  if (action === "sync") {
+    const syncAction = args[0] as "import-claude" | "export-team" | "import-team" | "sync-copilot" | undefined;
+    if (!syncAction) {
+      return { handled: true, output: pc.yellow("Usage: /memory sync <import-claude|export-team|import-team|sync-copilot>") };
+    }
+    try {
+      const opts: Record<string, string | boolean | undefined> = {};
+      for (const arg of args.slice(1)) {
+        if (arg.startsWith("--")) {
+          const [k, v] = arg.slice(2).split("=");
+          opts[k] = v ?? true;
+        }
+      }
+      const result = await memorySync(syncAction, opts as any);
+      return { handled: true, output: `✅ Sync [${syncAction}] complete:\n${JSON.stringify(result, null, 2)}` };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Sync error: ${err instanceof Error ? err.message : String(err)}`) };
     }
   }
   return { handled: true, output: pc.yellow(`Unknown action: /memory ${action}. Try /memory --help`) };

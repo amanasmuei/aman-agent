@@ -71,10 +71,27 @@ vi.mock("../src/memory.js", () => ({
     if (updates) return { maxStaleDays: 60, ...updates };
     return { maxStaleDays: 30, embeddingModel: "default", autoConsolidate: true };
   }),
+  memoryReflect: vi.fn(async () => ({
+    clusters: [],
+    contradictions: [],
+    synthesisCandidates: [],
+    knowledgeGaps: [],
+    orphans: 0,
+    stats: { totalMemories: 5, clusteredMemories: 0, totalClusters: 0, avgClusterSize: 0, contradictionsFound: 0, synthesisCandidates: 0, knowledgeGaps: 0, healthScore: 1 },
+    timestamp: Date.now(),
+    durationMs: 100,
+  })),
+  memoryConsolidate: vi.fn(() => ({ merged: 2, pruned: 1, promoted: 0, decayed: 0, actions: [], healthScore: 0.9, before: { total: 10 }, after: { total: 9 } })),
+  memoryTier: vi.fn(() => ({ id: "mem-001", tier: "core", ok: true as const })),
+  memoryDetail: vi.fn(() => ({ id: "mem-001", content: "Test memory", type: "fact", confidence: 0.9, scope: "global", tags: [], createdAt: 1000, accessCount: 3, tier: "working" })),
+  memoryRelate: vi.fn(() => ({ ok: true as const, relationId: "rel-123" })),
+  memoryExpire: vi.fn(() => ({ ok: true as const, id: "mem-001" })),
+  memoryVersions: vi.fn(() => [{ versionId: "v1", memoryId: "mem-001", content: "Old content", confidence: 0.8, editedAt: 1000, reason: "patch" }]),
+  memorySync: vi.fn(async () => ({ imported: 3, skipped: 0, updated: 0, details: [], projectsScanned: 1 })),
 }));
 
 const { handleCommand } = await import("../src/commands.js");
-import { memoryDoctor, memoryRepair, memoryConfig, memoryMultiRecall } from "../src/memory.js";
+import { memoryDoctor, memoryRepair, memoryConfig, memoryMultiRecall, memoryReflect, memoryConsolidate, memoryTier, memoryDetail, memoryRelate, memoryExpire, memoryVersions, memorySync } from "../src/memory.js";
 import { readFile, listFiles } from "../src/files.js";
 
 function createMockMcpManager() {
@@ -598,6 +615,108 @@ describe("handleCommand", () => {
       expect(result.output).toContain("read");
       expect(result.output).toContain("convert");
       expect(result.output).toContain("list");
+    });
+  });
+
+  describe("/memory reflect", () => {
+    it("runs reflection and returns summary output", async () => {
+      const result = await handleCommand("/memory reflect", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toBeDefined();
+      expect(vi.mocked(memoryReflect)).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("/memory consolidate", () => {
+    it("runs consolidation in dry-run mode by default", async () => {
+      const result = await handleCommand("/memory consolidate", {});
+      expect(result.handled).toBe(true);
+      expect(vi.mocked(memoryConsolidate)).toHaveBeenCalledWith(true);
+    });
+
+    it("applies changes when --apply is given", async () => {
+      await handleCommand("/memory consolidate --apply", {});
+      expect(vi.mocked(memoryConsolidate)).toHaveBeenCalledWith(false);
+    });
+  });
+
+  describe("/memory tier", () => {
+    it("sets the tier for a memory", async () => {
+      const result = await handleCommand("/memory tier mem-001 core", {});
+      expect(result.handled).toBe(true);
+      expect(vi.mocked(memoryTier)).toHaveBeenCalledWith("mem-001", "core");
+    });
+
+    it("returns usage when no id given", async () => {
+      const result = await handleCommand("/memory tier", {});
+      expect(result.output).toContain("Usage");
+    });
+  });
+
+  describe("/memory detail", () => {
+    it("returns full memory detail", async () => {
+      const result = await handleCommand("/memory detail mem-001", {});
+      expect(result.handled).toBe(true);
+      expect(vi.mocked(memoryDetail)).toHaveBeenCalledWith("mem-001");
+      expect(result.output).toContain("mem-001");
+    });
+
+    it("returns not-found message when detail returns null", async () => {
+      vi.mocked(memoryDetail).mockReturnValueOnce(null);
+      const result = await handleCommand("/memory detail mem-999", {});
+      expect(result.output).toMatch(/not found/i);
+    });
+  });
+
+  describe("/memory relate", () => {
+    it("creates a relation between two memories", async () => {
+      const result = await handleCommand("/memory relate mem-001 mem-002 supports", {});
+      expect(result.handled).toBe(true);
+      expect(vi.mocked(memoryRelate)).toHaveBeenCalledWith("mem-001", "mem-002", "supports", undefined);
+    });
+
+    it("returns usage when fewer than 3 args given", async () => {
+      const result = await handleCommand("/memory relate mem-001", {});
+      expect(result.output).toContain("Usage");
+    });
+  });
+
+  describe("/memory expire", () => {
+    it("expires a memory by id", async () => {
+      const result = await handleCommand("/memory expire mem-001", {});
+      expect(result.handled).toBe(true);
+      expect(vi.mocked(memoryExpire)).toHaveBeenCalledWith("mem-001", undefined);
+    });
+
+    it("passes optional reason through", async () => {
+      await handleCommand("/memory expire mem-001 outdated info", {});
+      expect(vi.mocked(memoryExpire)).toHaveBeenCalledWith("mem-001", "outdated info");
+    });
+  });
+
+  describe("/memory versions", () => {
+    it("returns version history for a memory", async () => {
+      const result = await handleCommand("/memory versions mem-001", {});
+      expect(result.handled).toBe(true);
+      expect(vi.mocked(memoryVersions)).toHaveBeenCalledWith("mem-001");
+    });
+
+    it("returns usage when no id given", async () => {
+      const result = await handleCommand("/memory versions", {});
+      expect(result.output).toContain("Usage");
+    });
+  });
+
+  describe("/memory sync", () => {
+    it("calls memorySync with the given action", async () => {
+      const result = await handleCommand("/memory sync import-claude", {});
+      expect(result.handled).toBe(true);
+      expect(vi.mocked(memorySync)).toHaveBeenCalledWith("import-claude", expect.any(Object));
+    });
+
+    it("returns usage when no action given", async () => {
+      const result = await handleCommand("/memory sync", {});
+      expect(result.output).toContain("Usage");
     });
   });
 });

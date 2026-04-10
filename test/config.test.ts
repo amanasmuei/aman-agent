@@ -13,6 +13,7 @@ vi.mock("node:os", async () => {
 
 // Import after mocking
 const { loadConfig, saveConfig, configExists } = await import("../src/config.js");
+import type { HooksConfig } from "../src/config.js";
 
 const CONFIG_DIR = path.join(tmpHome, ".aman-agent");
 const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
@@ -110,6 +111,23 @@ describe("config", () => {
       fs.writeFileSync(CONFIG_PATH, "{}", "utf-8");
 
       expect(configExists()).toBe(true);
+    });
+  });
+
+  describe("HooksConfig observation fields", () => {
+    it("accepts recordObservations and autoPostmortem flags", () => {
+      const config: HooksConfig = {
+        recordObservations: true,
+        autoPostmortem: true,
+      };
+      expect(config.recordObservations).toBe(true);
+      expect(config.autoPostmortem).toBe(true);
+    });
+
+    it("defaults are undefined (treated as true by hooks)", () => {
+      const config: HooksConfig = {};
+      expect(config.recordObservations).toBeUndefined();
+      expect(config.autoPostmortem).toBeUndefined();
     });
   });
 });

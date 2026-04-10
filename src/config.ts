@@ -12,6 +12,8 @@ export interface HooksConfig {
   extractMemories?: boolean;
   featureHints?: boolean;
   personalityAdapt?: boolean;
+  recordObservations?: boolean;
+  autoPostmortem?: boolean;
 }
 
 const DEFAULT_HOOKS: HooksConfig = {

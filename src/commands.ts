@@ -36,6 +36,21 @@ import {
   setActivePlan,
   formatPlan,
 } from "./plans.js";
+import {
+  type ObservationSession,
+  recordEvent,
+  getSessionStats,
+  pauseObservation,
+  resumeObservation,
+} from "./observation.js";
+import {
+  generatePostmortemReport,
+  savePostmortem,
+  listPostmortems,
+  readPostmortem,
+  analyzePostmortemRange,
+  formatPostmortemMarkdown,
+} from "./postmortem.js";
 
 // ── aman engine layers (Phase 5: replace file IO + mcpWrite for identity/rules) ──
 import {
@@ -76,6 +91,8 @@ export interface CommandContext {
   mcpManager?: McpManager;
   llmClient?: import("./llm/types.js").LLMClient;
   tools?: import("./llm/types.js").ToolDefinition[];
+  observationSession?: ObservationSession;
+  messages?: import("./llm/types.js").Message[];
 }
 
 function readEcosystemFile(filePath: string, label: string): string {
@@ -1125,6 +1142,8 @@ function handleHelp(): CommandResult {
       `  ${pc.cyan("/showcase")}     Browse & switch companion templates`,
       `  ${pc.cyan("/delegate")}     Delegate tasks to sub-agents`,
       `  ${pc.cyan("/team")}         Manage agent teams`,
+      `  ${pc.cyan("/observe")}      Session observation dashboard [pause|resume]`,
+      `  ${pc.cyan("/postmortem")}   Generate post-mortem [last|list|--since 7d]`,
       `  ${pc.cyan("/update")}       Check for updates`,
       `  ${pc.cyan("/reset")}       Full reset [all|memory|config|identity|rules]`,
       `  ${pc.cyan("/clear")}        Clear conversation history`,
@@ -2016,7 +2035,89 @@ const KNOWN_COMMANDS = new Set([
   "workflows", "tools", "akit", "skills", "eval", "memory", "status", "doctor",
   "save", "decisions", "export", "debug", "reset", "reminder",
   "update", "upgrade", "plan", "profile", "delegate", "team", "showcase", "file",
+  "observe", "postmortem",
 ]);
+
+async function handleObserveCommand(
+  action: string | undefined,
+  ctx: CommandContext,
+): Promise<CommandResult> {
+  if (!ctx.observationSession) {
+    return {
+      handled: true,
+      output: pc.dim("Observation is disabled. Enable with recordObservations: true in config."),
+    };
+  }
+
+  switch (action) {
+    case "pause":
+      pauseObservation(ctx.observationSession);
+      return { handled: true, output: pc.dim("Observation paused. Use /observe resume to continue.") };
+
+    case "resume":
+      resumeObservation(ctx.observationSession);
+      return { handled: true, output: pc.dim("Observation resumed.") };
+
+    default:
+      return { handled: true, output: getSessionStats(ctx.observationSession) };
+  }
+}
+
+async function handlePostmortemCommand(
+  action: string | undefined,
+  args: string[],
+  ctx: CommandContext,
+): Promise<CommandResult> {
+  switch (action) {
+    case "last": {
+      const files = await listPostmortems();
+      if (files.length === 0) return { handled: true, output: pc.dim("No post-mortems found.") };
+      const content = await readPostmortem(files[0]);
+      return { handled: true, output: content ?? pc.red("Could not read post-mortem.") };
+    }
+
+    case "list": {
+      const files = await listPostmortems();
+      if (files.length === 0) return { handled: true, output: pc.dim("No post-mortems found.") };
+      return { handled: true, output: "Post-mortems:\n" + files.map((f) => `  ${f}`).join("\n") };
+    }
+
+    default: {
+      // Check for --since flag (in either action or args position)
+      const allArgs = action ? [action, ...args] : args;
+      const sinceIdx = allArgs.indexOf("--since");
+      if (sinceIdx !== -1 && allArgs[sinceIdx + 1]) {
+        const daysStr = allArgs[sinceIdx + 1];
+        const days = parseInt(daysStr.replace("d", ""), 10) || 7;
+        if (!ctx.llmClient) {
+          return { handled: true, output: pc.red("LLM client not available for analysis.") };
+        }
+        const analysis = await analyzePostmortemRange(days, ctx.llmClient);
+        return { handled: true, output: analysis ?? pc.red("Could not analyze post-mortems.") };
+      }
+
+      // Generate post-mortem for current session
+      if (!ctx.observationSession || !ctx.llmClient || !ctx.messages) {
+        return {
+          handled: true,
+          output: pc.dim("Cannot generate post-mortem: missing session context."),
+        };
+      }
+      const report = await generatePostmortemReport(
+        ctx.observationSession.sessionId,
+        ctx.messages,
+        ctx.observationSession,
+        ctx.llmClient,
+      );
+      if (!report) return { handled: true, output: pc.red("Could not generate post-mortem.") };
+      const filePath = await savePostmortem(report);
+      return {
+        handled: true,
+        output: formatPostmortemMarkdown(report) + `\n\n${pc.dim(`Saved → ${filePath}`)}`,
+      };
+    }
+  }
+}
 
 export async function handleCommand(input: string, ctx: CommandContext): Promise<CommandResult> {
   const trimmed = input.trim();
@@ -2085,6 +2186,10 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
     case "update":
     case "upgrade":
       return handleUpdate();
+    case "observe":
+      return handleObserveCommand(action, ctx);
+    case "postmortem":
+      return handlePostmortemCommand(action, args, ctx);
     default:
       return { handled: false }; // Pass to LLM if not matched
   }

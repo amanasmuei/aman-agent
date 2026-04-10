@@ -33,36 +33,93 @@
 </p>
 
 <p align="center">
-  <a href="#-quick-start">Quick Start</a> &bull;
-  <a href="#-intelligent-companion-features">Features</a> &bull;
-  <a href="#-how-it-works">How It Works</a> &bull;
-  <a href="#-commands">Commands</a> &bull;
-  <a href="#-supported-llms">LLMs</a> &bull;
-  <a href="#-the-ecosystem">Ecosystem</a>
+  <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#features">Features</a> &bull;
+  <a href="#how-it-works">How It Works</a> &bull;
+  <a href="#commands">Commands</a> &bull;
+  <a href="#supported-llms">LLMs</a> &bull;
+  <a href="#the-ecosystem">Ecosystem</a> &bull;
+  <a href="#faq">FAQ</a>
 </p>
 
 ---
 
-## What's New in v0.18.0
+<details>
+<summary><strong>Table of Contents</strong></summary>
 
-> **Personalized onboarding, showcase templates, and 10 runtime reliability fixes.**
+- [What's New](#whats-new-in-v0240)
+- [The Problem](#the-problem)
+- [The Solution](#the-solution)
+- [Quick Start](#quick-start)
+- [Usage Guide](#usage-guide)
+  - [Your First Conversation](#your-first-conversation)
+  - [How Memory Works](#how-memory-works)
+  - [Files & Images](#working-with-files--images)
+  - [Plans](#working-with-plans)
+  - [Skills](#skills-in-action)
+  - [Project Workflow](#project-workflow)
+  - [Personality & Wellbeing](#personality--wellbeing)
+  - [Customization](#customization)
+  - [Showcase Templates](#showcase-templates)
+  - [Profiles](#your-profile-vs-agent-profiles)
+  - [Delegation](#agent-delegation)
+  - [Teams](#agent-teams)
+  - [Daily Workflow](#daily-workflow-summary)
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Commands](#commands)
+- [What It Loads](#what-it-loads)
+- [Supported LLMs](#supported-llms)
+- [Configuration](#configuration)
+- [The Ecosystem](#the-ecosystem)
+- [What Makes This Different](#what-makes-this-different)
+- [FAQ](#faq)
+- [Contributing](#contributing)
+
+</details>
+
+---
+
+## What's New in v0.24.0
+
+> **Session telemetry, post-mortem analysis, and a smarter feedback loop.**
+
+The agent now passively observes what happens during a session — tool calls, file changes, sentiment shifts, blockers, milestones — and on session end can generate a structured post-mortem with actionable patterns stored back as memories.
 
 | Feature | What it does |
 |:---|:---|
-| **User onboarding** | Interactive first-run setup — captures your name, role, expertise, and communication style |
-| **Showcase templates** | 13 pre-built companion personalities (fitness, freelancer, Muslim, finance, etc.) from [aman-showcase](https://github.com/amanasmuei/aman-showcase) |
-| **User profile** | `/profile me` to view, `/profile edit` to update — injected into every system prompt |
-| **Streaming cancellation** | Ctrl+C aborts current response instead of killing the session |
-| **Session checkpointing** | Auto-saves every 10 turns — crash-safe, no more lost conversations |
-| **Sub-agent guardrails** | Delegated agents now enforce the same safety rules as the main agent |
-| **Sub-agent memory** | Delegated agents recall relevant memories for better context |
-| **MCP auto-reconnect** | Tool servers automatically reconnect on connection failure |
-| **Token-safe tool loop** | Conversation trimming runs inside the tool loop — no more context blowups |
-| **System prompt ceiling** | 16K token cap prevents unbounded system prompt growth |
-| **Non-blocking extraction** | Memory extraction runs fire-and-forget — never blocks your next message |
-| **Image-aware trimming** | Image blocks properly counted in token estimates for conversation trimming |
+| **Observation system** | Passive event capture: tool calls, errors, file changes, sentiment, topic shifts, blockers, milestones — all written to JSONL, never blocking the user |
+| **Post-mortem reports** | LLM-generated session analysis with goals, completed work, blockers, decisions, sentiment arc, recurring patterns, and recommendations |
+| **Smart auto-trigger** | Reports generate automatically when sessions hit ≥3 tool errors, ≥2 blockers, &gt;60min, abandoned plan steps, or sustained frustration |
+| **Pattern memory loop** | Recurring patterns from post-mortems are stored as `pattern` memories — your AI learns from its own session history |
+| **`/observe` dashboard** | Live session stats: tool calls, errors, files changed, blockers, milestones, topic shifts |
+| **`/postmortem` commands** | Generate now, view last, list all, or `--since 7d` for cross-session trend analysis |
+| **Eval reliability fix** | `/eval report` now uses `fs.existsSync` instead of an ANSI-sensitive prefix check |
+| **CI dependency stability** | Switched `npm ci` → `npm install` to handle platform-specific native deps |
 
-<a href="https://github.com/amanasmuei/aman-agent/releases">Full release history</a>
+<details>
+<summary><strong>Highlights from earlier releases</strong></summary>
+
+**v0.18 — User onboarding**
+- Interactive first-run setup capturing name, role, expertise, communication style
+- 13 showcase templates (fitness, freelancer, Muslim, finance, etc.)
+- `/profile me` and `/profile edit` for user identity management
+
+**v0.16 — Session resilience**
+- Streaming cancellation (Ctrl+C aborts response, not session)
+- Session checkpointing every 10 turns — crash-safe
+- MCP auto-reconnect on connection failure
+- Token-safe tool loop with conversation trimming inside
+- Non-blocking memory extraction
+
+**v0.14 — Sub-agent infrastructure**
+- Sub-agent guardrails enforce same safety rules as main agent
+- Sub-agent memory recall for better delegation context
+- 16K system prompt token ceiling
+
+</details>
+
+<a href="https://github.com/amanasmuei/aman-agent/releases">Full release history →</a>
 
 ---
 
@@ -152,7 +209,10 @@ aman-agent --budget 12000
 
 ## Usage Guide
 
-A step-by-step walkthrough of how to use aman-agent day-to-day.
+A step-by-step walkthrough of how to use aman-agent day-to-day. Click any section below to expand.
+
+<details open>
+<summary><strong>Your First Conversation</strong></summary>
 
 ### Your First Conversation
 
@@ -184,6 +244,11 @@ You > Hey, I'm working on a Node.js API
 ```
 
 That's it. No setup required. The agent remembers your stack from this point forward.
+
+</details>
+
+<details>
+<summary><strong>How Memory Works</strong></summary>
 
 ### How Memory Works
 
@@ -217,6 +282,11 @@ You > Let's add a new endpoint
 /decisions               View your decision log
 ```
 
+</details>
+
+<details>
+<summary><strong>Working with Files & Images</strong></summary>
+
 ### Working with Files & Images
 
 Reference any file path in your message — it gets attached automatically:
@@ -247,6 +317,11 @@ You > What's wrong with this schema? ~/Desktop/schema.png
 - **Documents:** `.pdf`, `.docx`, `.xlsx`, `.pptx` (via Docling)
 
 Multiple files in one message work too.
+
+</details>
+
+<details>
+<summary><strong>Working with Plans</strong></summary>
 
 ### Working with Plans
 
@@ -310,6 +385,11 @@ $ aman-agent
 
 Plans are stored as markdown in `.acore/plans/` — they're git-trackable.
 
+</details>
+
+<details>
+<summary><strong>Skills in Action</strong></summary>
+
 ### Skills in Action
 
 Skills activate automatically based on what you're talking about. No commands needed.
@@ -340,6 +420,11 @@ Skills also self-improve — when the agent learns your patterns (e.g., "user pr
 
 **10 knowledge library items** auto-suggested when relevant: security-headers, docker-node, github-actions, env-config, error-handling, rate-limiter, prisma-setup, zod-validation, testing-patterns, git-hooks
 
+</details>
+
+<details>
+<summary><strong>Project Workflow</strong></summary>
+
 ### Project Workflow
 
 aman-agent is project-aware. When you run it in a project directory, it loads project-specific context.
@@ -365,6 +450,11 @@ cd ~/project-b && aman-agent   # Loads project-b context + memories
 ```
 
 Global preferences (coding style, tool choices) carry across all projects.
+
+</details>
+
+<details>
+<summary><strong>Personality & Wellbeing</strong></summary>
 
 ### Personality & Wellbeing
 
@@ -393,6 +483,11 @@ You > ugh nothing works, tried everything!!
 - User seems tired → concise responses, support wrapping up
 
 These are one-time nudges — the agent won't nag.
+
+</details>
+
+<details>
+<summary><strong>Customization</strong></summary>
 
 ### Customization
 
@@ -432,6 +527,11 @@ aman-agent init
 
 Set any to `false` to disable.
 
+</details>
+
+<details>
+<summary><strong>Showcase Templates</strong></summary>
+
 ### Showcase Templates
 
 Give your companion a pre-built specialty from [aman-showcase](https://github.com/amanasmuei/aman-showcase):
@@ -460,6 +560,11 @@ npx @aman_asmuei/aman-showcase install muslim
 
 Each template includes identity, workflows, rules, and domain skills — all installed into your ecosystem.
 
+</details>
+
+<details>
+<summary><strong>Your Profile vs Agent Profiles</strong></summary>
+
 ### Your Profile vs Agent Profiles
 
 **Your profile** is who YOU are — name, role, expertise, communication style. Set during onboarding, injected into every conversation:
@@ -486,6 +591,11 @@ Each agent profile has its own identity, rules, and skills — but shares the sa
 /profile list               Show all profiles
 ```
 
+</details>
+
+<details>
+<summary><strong>Agent Delegation</strong></summary>
+
 ### Agent Delegation
 
 Delegate tasks to sub-agents with specialist profiles:
@@ -510,6 +620,11 @@ Delegate tasks to sub-agents with specialist profiles:
 ```
 
 The AI also **auto-suggests delegation** when it recognizes a task matches a specialist profile — always asks for your permission first.
+
+</details>
+
+<details>
+<summary><strong>Agent Teams</strong></summary>
 
 ### Agent Teams
 
@@ -553,6 +668,80 @@ Create custom teams:
 
 The AI auto-suggests teams when appropriate — always asks permission first.
 
+</details>
+
+<details>
+<summary><strong>Session Telemetry & Post-Mortems</strong> (new in v0.24)</summary>
+
+### Session Telemetry & Post-Mortems
+
+aman-agent now passively observes what happens during a session and can produce a structured post-mortem on demand or automatically.
+
+**Live observation dashboard:**
+
+```
+You > /observe
+
+  Session: 47 min | Tools: 23 calls (2 errors) | Files: 5 changed
+  Blockers: 1 | Milestones: 3 | Topic shifts: 2
+```
+
+**Pause / resume capture** when you don't want noisy commands recorded:
+
+```
+You > /observe pause
+  Observation paused. Use /observe resume to continue.
+```
+
+**Generate a post-mortem on demand:**
+
+```
+You > /postmortem
+
+  # Post-Mortem: 2026-04-11
+  **Session:** session-2026-04-11-2143 | **Duration:** 47 min | **Turns:** 23
+
+  ## Summary
+  Refactored the auth middleware and shipped JWT validation...
+
+  ## Completed
+  - [x] Extracted token handler
+  - [x] Wired rate limiter
+
+  ## Blockers
+  - Rate limit hit on token endpoint mid-session
+
+  ## Patterns
+  - Detect rate limits earlier
+  ...
+
+  Saved → ~/.acore/postmortems/2026-04-11-sess.md
+```
+
+**Automatic on session end** when any of these triggers fire:
+- ≥3 tool errors
+- ≥2 user blockers
+- &gt;60 minute session
+- Plan steps abandoned
+- Sustained frustration (5+ frustration signals)
+
+Recurring patterns from the report are stored as `pattern` memories so the next session benefits.
+
+**Cross-session trends:**
+
+```
+/postmortem --since 7d   Analyze the last 7 days of post-mortems
+/postmortem last         Show the most recent report
+/postmortem list         List all saved post-mortems
+```
+
+**Storage:** `~/.acore/observations/*.jsonl` (raw events) and `~/.acore/postmortems/*.md` (reports). Old observations auto-prune after 30 days. Disable with `recordObservations: false` or `autoPostmortem: false` in config.
+
+</details>
+
+<details>
+<summary><strong>Daily Workflow Summary</strong></summary>
+
 ### Daily Workflow Summary
 
 Here's what a typical day looks like with aman-agent:
@@ -581,9 +770,13 @@ Next morning:
   → Everything picks up where you left off
 ```
 
+</details>
+
 ---
 
-## Intelligent Companion Features
+## Features
+
+### Intelligent Companion Features
 
 ### Per-Message Memory Recall with Progressive Disclosure
 
@@ -761,6 +954,14 @@ On every startup, the agent automatically merges duplicate memories, prunes stal
 
 Every operation that can fail logs to `~/.aman-agent/debug.log` with structured JSON. No more silent failures — use `/debug` to see what's happening under the hood.
 
+### Passive Session Observation
+
+Every tool call, error, file change, sentiment shift, blocker, milestone, and topic shift is captured as a typed event and written to `~/.acore/observations/*.jsonl`. Capture is non-blocking (events buffer in memory and flush in batches). Stats are visible live via `/observe`.
+
+### LLM-Powered Post-Mortems
+
+On session end, if any smart trigger fires (≥3 tool errors, ≥2 blockers, &gt;60 min, abandoned plan steps, or sustained frustration), the agent uses your LLM to generate a structured post-mortem report — summary, goals, completed work, blockers, decisions, sentiment arc, recurring patterns, and actionable recommendations. Patterns are stored back as `pattern` memories. Reports persist as markdown in `~/.acore/postmortems/`.
+
 ---
 
 ## How It Works
@@ -846,6 +1047,8 @@ Every operation that can fail logs to `~/.aman-agent/debug.log` with structured 
 | `/skills` | View skills `[install\|uninstall ...]` |
 | `/eval` | View evaluation `[milestone ...]` |
 | `/memory` | View memories `[search\|clear\|timeline]` |
+| `/observe` | Live session telemetry dashboard `[pause\|resume]` |
+| `/postmortem` | Generate session post-mortem `[last\|list\|--since 7d]` |
 | `/decisions` | View decision log `[<project>]` |
 | `/export` | Export conversation to markdown |
 | `/debug` | Show debug log (last 20 entries) |
@@ -945,7 +1148,10 @@ Config is stored in `~/.aman-agent/config.json`:
     "evalPrompt": true,
     "autoSessionSave": true,
     "extractMemories": true,
-    "featureHints": true
+    "featureHints": true,
+    "personalityAdapt": true,
+    "recordObservations": true,
+    "autoPostmortem": true
   }
 }
 ```
@@ -970,6 +1176,8 @@ All hooks are on by default. Disable any in `config.json`:
 | `extractMemories` | Auto-extract memories from conversation |
 | `featureHints` | Show progressive feature discovery tips |
 | `personalityAdapt` | Adapt tone based on time, sentiment, and session signals |
+| `recordObservations` | Capture passive session telemetry to JSONL |
+| `autoPostmortem` | Auto-generate post-mortem on session end (smart trigger) |
 
 > Treat the config file like a credential — it contains your API key.
 
@@ -1052,16 +1260,74 @@ aman
 
 ---
 
+## FAQ
+
+<details>
+<summary><strong>Is my data sent anywhere?</strong></summary>
+
+No. All memory, observations, and post-mortems live in your local filesystem (`~/.acore`, `~/.amem`, `~/.aman-agent`). The only data leaving your machine is what you send to your chosen LLM provider — and you control that with your own API key.
+
+</details>
+
+<details>
+<summary><strong>Can I use this without Claude?</strong></summary>
+
+Yes. aman-agent supports Anthropic, OpenAI, Ollama (local), GitHub Copilot, and the Claude Code CLI as authentication backends. Anything that speaks tool use will work — see [Supported LLMs](#supported-llms).
+
+</details>
+
+<details>
+<summary><strong>How is this different from Claude Code's memory or `mem0`?</strong></summary>
+
+Claude Code's memory is markdown read at startup — no per-message recall, no learning. `mem0` is a cloud vector DB focused on OpenAI. **amem** (the memory layer aman-agent uses) is local SQLite + embeddings + a knowledge graph, with typed memories, progressive disclosure (~10x token savings), reminders, and consolidation. See [the comparison table](#what-makes-this-different).
+
+</details>
+
+<details>
+<summary><strong>What does "progressive disclosure" mean for memory?</strong></summary>
+
+Instead of injecting full memory content (~500-1000 tokens) on every recall, the agent injects a compact index (~50-100 tokens) with IDs and previews. The LLM can then call `memory_detail` with specific IDs if it needs full content. Result: ~10x token savings on most turns.
+
+</details>
+
+<details>
+<summary><strong>How do I disable post-mortems / observations?</strong></summary>
+
+Set `recordObservations: false` and/or `autoPostmortem: false` in `~/.aman-agent/config.json`. You can still generate post-mortems on demand with `/postmortem` even if auto-trigger is off.
+
+</details>
+
+<details>
+<summary><strong>Does this work in CI / non-interactive mode?</strong></summary>
+
+aman-agent is primarily an interactive REPL. For programmatic use, the underlying packages (`@aman_asmuei/amem`, `acore-core`, `arules-core`) are available as standalone Node libraries.
+
+</details>
+
+<details>
+<summary><strong>I'm getting "MCP error -32000: Connection closed"</strong></summary>
+
+This usually means an MCP server crashed on startup. Run `npx @aman_asmuei/aman-mcp` directly to see the underlying error. The most common cause is a stale package install — try `rm -rf ~/.npm/_npx && npx @aman_asmuei/aman-agent`.
+
+</details>
+
+---
+
 ## Contributing
 
 ```bash
 git clone https://github.com/amanasmuei/aman-agent.git
 cd aman-agent && npm install
 npm run build   # zero errors
-npm test        # 111 tests pass
+npm test        # 304 tests pass
 ```
 
 PRs welcome. See [Issues](https://github.com/amanasmuei/aman-agent/issues).
+
+**Project standards:**
+- All new modules ship with tests (TDD encouraged)
+- Type errors block merge — `npm run build` must be clean
+- Commits follow conventional format (`feat:`, `fix:`, `chore:`, `docs:`)
 
 ---
 

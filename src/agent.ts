@@ -45,6 +45,14 @@ import { listProfiles } from "./prompt.js";
 import { listTeams, loadTeam, runTeam, formatTeamResult } from "./teams.js";
 import { humanizeError } from "./errors.js";
 import { getHint, loadShownHints, saveShownHints, type HintState } from "./hints.js";
+import {
+  createObservationSession,
+  recordEvent,
+  flushEvents,
+  detectTopicShift,
+  cleanupOldObservations,
+  type ObservationSession,
+} from "./observation.js";
 
 // markedTerminal() returns a MarkedExtension — types lag behind, cast is safe
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -218,6 +226,9 @@ export async function runAgent(
       await bgTasks.waitAll();
       bgTasks.displayCompleted();
     }
+    if (observationSession) {
+      await flushEvents(observationSession).catch(() => {});
+    }
     if (mcpManager && hooksConfig) {
       try {
         const hookCtx: HookContext = { mcpManager, config: hooksConfig };
@@ -271,6 +282,15 @@ export async function runAgent(
     } catch (err) { log.warn("agent", "session start hook failed", err); }
   }
 
+  // Initialize observation session (passive session telemetry)
+  let observationSession: ObservationSession | undefined;
+  let prevSentiment: string | undefined;
+  if (hooksConfig?.recordObservations !== false) {
+    observationSession = createObservationSession(sessionId);
+    // Cleanup old observation files (non-blocking, fire-and-forget)
+    cleanupOldObservations().catch(() => {});
+  }
+
   while (true) {
     // Check for completed background tasks — inject as proper tool results
     if (bgTasks.hasCompleted) {
@@ -311,6 +331,9 @@ export async function runAgent(
     const cmdResult = await handleCommand(input, { model, mcpManager, llmClient: client, tools });
     if (cmdResult.handled) {
       if (cmdResult.quit) {
+        if (observationSession) {
+          await flushEvents(observationSession).catch(() => {});
+        }
         if (mcpManager && hooksConfig) {
           try {
             const hookCtx: HookContext = { mcpManager, config: hooksConfig };
@@ -579,6 +602,39 @@ ${knowledgeItem.content}
 
       syncPersonalityToCore(state, mcpManager).catch(() => {});
 
+      // Record sentiment shift observation
+      if (observationSession && prevSentiment !== state.sentiment.dominant) {
+        recordEvent(observationSession, {
+          type: "sentiment_shift",
+          summary: `${prevSentiment ?? "neutral"} → ${state.sentiment.dominant}`,
+          data: { from: prevSentiment ?? "neutral", to: state.sentiment.dominant },
+        });
+        prevSentiment = state.sentiment.dominant;
+      }
+
+      // Record blocker observation on sustained frustration
+      if (observationSession && state.sentiment.frustration > 0.6) {
+        recordEvent(observationSession, {
+          type: "blocker",
+          summary: "User expressing frustration",
+          data: { frustrationLevel: state.sentiment.frustration },
+        });
+      }
+
+      // Detect topic shift based on recent vs prior user messages
+      if (observationSession && recentUserMsgs.length >= 6) {
+        const recent = recentUserMsgs.slice(-3);
+        const previous = recentUserMsgs.slice(-6, -3);
+        const shift = detectTopicShift(recent, previous);
+        if (shift.shifted) {
+          recordEvent(observationSession, {
+            type: "topic_shift",
+            summary: `Topics: ${shift.newTopics.join(", ")}`,
+            data: { newTopics: shift.newTopics },
+          });
+        }
+      }
+
       const nudge = formatWellbeingNudge(state);
       if (nudge) {
         augmentedSystemPrompt += "\n" + nudge;
@@ -687,7 +743,42 @@ ${knowledgeItem.content}
             }
 
             process.stdout.write(pc.dim(`  [using ${toolUse.name}...]\n`));
-            const result = await mcpManager.callTool(toolUse.name, toolUse.input);
+            const toolStartMs = Date.now();
+            let result: string;
+            try {
+              result = await mcpManager.callTool(toolUse.name, toolUse.input);
+            } catch (toolErr) {
+              const errMsg = toolErr instanceof Error ? toolErr.message : String(toolErr);
+              if (observationSession) {
+                recordEvent(observationSession, {
+                  type: "tool_error",
+                  summary: `${toolUse.name}: ${errMsg}`,
+                  data: { tool: toolUse.name, error: errMsg },
+                });
+              }
+              throw toolErr;
+            }
+
+            // Record successful tool call observation
+            if (observationSession) {
+              const durationMs = Date.now() - toolStartMs;
+              recordEvent(observationSession, {
+                type: "tool_call",
+                summary: `${toolUse.name} (${durationMs}ms)`,
+                data: { tool: toolUse.name, durationMs, success: true },
+              });
+
+              // Detect file-modifying tools and record file_change events
+              const FILE_TOOLS = new Set(["file_write", "file_edit", "file_create", "file_delete"]);
+              if (FILE_TOOLS.has(toolUse.name)) {
+                const filePath = (toolUse.input as Record<string, unknown>)?.path ?? "unknown";
+                recordEvent(observationSession, {
+                  type: "file_change",
+                  summary: `${toolUse.name}: ${String(filePath)}`,
+                  data: { tool: toolUse.name, path: filePath },
+                });
+              }
+            }
 
             // Log tool observation to memory (passive capture, fire-and-forget)
             const skipLogging = ["memory_log", "memory_recall", "memory_context", "memory_detail", "reminder_check"].includes(toolUse.name);
@@ -740,6 +831,11 @@ ${knowledgeItem.content}
         lastCheckpointTurn = currentTurn;
         saveConversationToMemory(messages, sessionId).catch(() => {});
         log.debug("agent", `checkpoint saved at turn ${currentTurn}`);
+      }
+
+      // Periodic flush of buffered observation events (fire-and-forget)
+      if (observationSession && observationSession.events.length >= 5) {
+        flushEvents(observationSession).catch(() => {});
       }
 
       // Memory extraction (fire-and-forget — never blocks the prompt)

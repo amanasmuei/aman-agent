@@ -1666,7 +1666,7 @@ function handleProfileCommand(action: string | undefined, args: string[]): Comma
 
 // --- Plan management ---
 
-function handlePlanCommand(action: string | undefined, args: string[]): CommandResult {
+function handlePlanCommand(action: string | undefined, args: string[], ctx?: CommandContext): CommandResult {
   if (!action) {
     // /plan — show active plan
     const active = getActivePlan();
@@ -1699,12 +1699,24 @@ function handlePlanCommand(action: string | undefined, args: string[]): CommandR
       const active = getActivePlan();
       if (!active) return { handled: true, output: pc.yellow("No active plan.") };
 
+      const recordPlanMilestone = (stepIndex: number) => {
+        if (ctx?.observationSession) {
+          const step = active.steps[stepIndex];
+          recordEvent(ctx.observationSession, {
+            type: "milestone",
+            summary: `Plan step done: ${step.text}`,
+            data: { plan: active.name, stepIndex, stepText: step.text },
+          });
+        }
+      };
+
       if (args.length > 0) {
         const stepNum = parseInt(args[0], 10);
         if (isNaN(stepNum) || stepNum < 1 || stepNum > active.steps.length) {
           return { handled: true, output: pc.yellow(`Invalid step number. Range: 1-${active.steps.length}`) };
         }
         markStepDone(active, stepNum - 1);
+        recordPlanMilestone(stepNum - 1);
         return { handled: true, output: pc.green(`Step ${stepNum} done!`) + "\n\n" + formatPlan(active) };
       }
 
@@ -1712,6 +1724,7 @@ function handlePlanCommand(action: string | undefined, args: string[]): CommandR
       const next = active.steps.findIndex((s) => !s.done);
       if (next < 0) return { handled: true, output: pc.green("All steps already complete!") };
       markStepDone(active, next);
+      recordPlanMilestone(next);
       return { handled: true, output: pc.green(`Step ${next + 1} done!`) + "\n\n" + formatPlan(active) };
     }
 
@@ -2170,7 +2183,7 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
     case "reset":
       return handleReset(action);
     case "plan":
-      return handlePlanCommand(action, args);
+      return handlePlanCommand(action, args, ctx);
     case "profile":
       return handleProfileCommand(action, args);
     case "delegate":

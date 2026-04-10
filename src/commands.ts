@@ -581,10 +581,10 @@ async function handleEvalCommand(
   }
   if (action === "report") {
     const evalFile = path.join(home, ".aeval", "eval.md");
-    const content = readEcosystemFile(evalFile, "evaluation (aeval)");
-    if (content.startsWith("No ")) {
+    if (!fs.existsSync(evalFile)) {
       return { handled: true, output: pc.dim("No eval report found. Log milestones with /eval milestone <text>.") };
     }
+    const content = fs.readFileSync(evalFile, "utf-8").trim();
     return { handled: true, output: [pc.bold("Eval Report"), "", content].join("\n") };
   }
   return { handled: true, output: pc.yellow(`Unknown action: /eval ${action}. Use /eval, /eval report, or /eval milestone <text>.`) };

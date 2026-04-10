@@ -3,7 +3,7 @@ import * as p from "@clack/prompts";
 import fs from "node:fs";
 import path from "node:path";
 import type { McpManager } from "./mcp/client.js";
-import type { Message } from "./llm/types.js";
+import type { LLMClient, Message } from "./llm/types.js";
 import type { HooksConfig } from "./config.js";
 import { log } from "./logger.js";
 import {
@@ -11,8 +11,10 @@ import {
   syncPersonalityToCore,
   formatWellbeingNudge,
 } from "./personality.js";
-import { memoryRecall, memoryContext, reminderCheck, memoryLog, isMemoryInitialized } from "./memory.js";
+import { memoryRecall, memoryContext, reminderCheck, memoryLog, isMemoryInitialized, memoryStore } from "./memory.js";
 import { loadUserIdentity } from "./user-identity.js";
+import { shouldAutoPostmortem, generatePostmortemReport, savePostmortem } from "./postmortem.js";
+import type { ObservationSession } from "./observation.js";
 
 function getTimeContext(): string {
   const now = new Date();
@@ -36,6 +38,7 @@ function getTimeContext(): string {
 export interface HookContext {
   mcpManager: McpManager;
   config: HooksConfig;
+  llmClient?: LLMClient; // needed for auto-postmortem generation
 }
 
 let isHookCall = false;
@@ -318,6 +321,7 @@ export async function onSessionEnd(
   ctx: HookContext,
   messages: Message[],
   sessionId: string,
+  observationSession?: ObservationSession,
 ): Promise<void> {
   try {
     // Auto-save conversation to amem memory_log
@@ -447,6 +451,45 @@ export async function onSessionEnd(
         } finally {
           isHookCall = false;
         }
+      }
+    }
+
+    // Auto post-mortem (smart trigger)
+    if (
+      ctx.config.autoPostmortem !== false &&
+      observationSession &&
+      shouldAutoPostmortem(observationSession, messages)
+    ) {
+      try {
+        const client = ctx.llmClient;
+        if (client) {
+          const report = await generatePostmortemReport(
+            sessionId,
+            messages,
+            observationSession,
+            client,
+          );
+          if (report) {
+            const filePath = await savePostmortem(report);
+            console.log(pc.dim(`\n  Post-mortem saved → ${filePath}`));
+
+            // Store actionable patterns as memories
+            for (const pattern of report.patterns) {
+              try {
+                await memoryStore({
+                  content: pattern,
+                  type: "pattern",
+                  tags: ["postmortem", "auto"],
+                  confidence: 0.7,
+                });
+              } catch {
+                // Silent — don't block exit
+              }
+            }
+          }
+        }
+      } catch (err) {
+        log.debug("hooks", "auto post-mortem failed", err);
       }
     }
   } catch (err) {

@@ -231,8 +231,8 @@ export async function runAgent(
     }
     if (mcpManager && hooksConfig) {
       try {
-        const hookCtx: HookContext = { mcpManager, config: hooksConfig };
-        await onSessionEnd(hookCtx, messages, sessionId);
+        const hookCtx: HookContext = { mcpManager, config: hooksConfig, llmClient: client };
+        await onSessionEnd(hookCtx, messages, sessionId, observationSession);
       } catch (err) { log.debug("agent", "session end hook failed on SIGINT", err); }
     }
     console.log(pc.dim("\nGoodbye.\n"));
@@ -336,8 +336,8 @@ export async function runAgent(
         }
         if (mcpManager && hooksConfig) {
           try {
-            const hookCtx: HookContext = { mcpManager, config: hooksConfig };
-            await onSessionEnd(hookCtx, messages, sessionId);
+            const hookCtx: HookContext = { mcpManager, config: hooksConfig, llmClient: client };
+            await onSessionEnd(hookCtx, messages, sessionId, observationSession);
           } catch (err) { log.debug("agent", "session end hook failed on quit", err); }
         }
         console.log(pc.dim("\nGoodbye.\n"));

@@ -90,13 +90,18 @@ export function validateCandidate(raw: unknown): SkillCandidate | null {
   if (c.triggers.length > 10) return null;
   if (!Array.isArray(c.steps)) return null;
   if (typeof c.confidence !== "number") return null;
+  if (!Number.isFinite(c.confidence)) return null;
 
   if (c.confidence < 0.6) return null;
 
-  const triggers = c.triggers
-    .filter((t): t is string => typeof t === "string")
-    .map((t) => t.toLowerCase().trim())
-    .filter((t) => t.length > 0 && !STOPWORDS.has(t));
+  const triggers = Array.from(
+    new Set(
+      c.triggers
+        .filter((t): t is string => typeof t === "string")
+        .map((t) => t.toLowerCase().trim())
+        .filter((t) => t.length > 0 && !STOPWORDS.has(t))
+    )
+  );
 
   if (triggers.length === 0) return null;
 
@@ -262,6 +267,10 @@ export async function writeSkillToFile(
     try {
       existingContent = await fs.readFile(skillsMdPath, "utf-8");
     } catch {
+      existingContent = "# Skills\n\n";
+    }
+
+    if (existingContent.trim() === "") {
       existingContent = "# Skills\n\n";
     }
 

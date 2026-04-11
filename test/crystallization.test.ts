@@ -104,6 +104,63 @@ describe("validateCandidate", () => {
   it("rejects confidence < 0.6", () => {
     expect(validateCandidate(validCandidate({ confidence: 0.5 }))).toBeNull();
   });
+
+  it("rejects NaN confidence", () => {
+    expect(validateCandidate(validCandidate({ confidence: NaN }))).toBeNull();
+  });
+
+  it("rejects Infinity confidence", () => {
+    expect(validateCandidate(validCandidate({ confidence: Infinity }))).toBeNull();
+  });
+
+  it("deduplicates triggers (case-insensitive)", () => {
+    const result = validateCandidate(
+      validCandidate({ triggers: ["stripe", "Stripe", "STRIPE", "webhook"] }),
+    );
+    expect(result?.triggers).toEqual(["stripe", "webhook"]);
+  });
+
+  it("rejects null", () => {
+    expect(validateCandidate(null)).toBeNull();
+  });
+
+  it("rejects a primitive", () => {
+    expect(validateCandidate("not an object")).toBeNull();
+  });
+
+  it("rejects an array", () => {
+    expect(validateCandidate([1, 2, 3])).toBeNull();
+  });
+
+  it("rejects when description is not a string", () => {
+    expect(validateCandidate({ ...validCandidate(), description: 42 })).toBeNull();
+  });
+
+  it("rejects when approach is not a string", () => {
+    expect(validateCandidate({ ...validCandidate(), approach: null })).toBeNull();
+  });
+
+  it("rejects when steps is not an array", () => {
+    expect(validateCandidate({ ...validCandidate(), steps: "not an array" })).toBeNull();
+  });
+
+  it("rejects when confidence is not a number", () => {
+    expect(validateCandidate({ ...validCandidate(), confidence: "0.85" })).toBeNull();
+  });
+
+  it("defaults gotchas to empty array when missing", () => {
+    const candidate = validCandidate();
+    delete (candidate as Partial<SkillCandidate>).gotchas;
+    const result = validateCandidate(candidate);
+    expect(result?.gotchas).toEqual([]);
+  });
+
+  it("filters non-string entries from triggers", () => {
+    const result = validateCandidate(
+      validCandidate({ triggers: ["stripe", 42 as unknown as string, null as unknown as string, "webhook"] }),
+    );
+    expect(result?.triggers).toEqual(["stripe", "webhook"]);
+  });
 });
 
 describe("formatSkillMarkdown", () => {
@@ -172,6 +229,39 @@ Just a regular skill with no marker.
     const md = "# Skills\n\n# Built-in Skill\nContent.";
     expect(extractSkillsWithMarkers(md).size).toBe(0);
   });
+
+  it("returns multiple skills when multiple markers present", () => {
+    const md = `# Skills
+
+# First Skill
+<!-- aman-auto source=postmortem date=2026-04-11 confidence=0.85 triggers="alpha,beta" -->
+## When to use
+First.
+
+# Second Skill
+<!-- aman-auto source=postmortem date=2026-04-11 confidence=0.9 triggers="gamma,delta" -->
+## When to use
+Second.
+`;
+    const result = extractSkillsWithMarkers(md);
+    expect(result.size).toBe(2);
+    expect(result.get("first-skill")?.triggers).toEqual(["alpha", "beta"]);
+    expect(result.get("second-skill")?.triggers).toEqual(["gamma", "delta"]);
+  });
+
+  it("ignores marker that is not on the line immediately after the heading", () => {
+    // The contract: marker MUST be on line N+1 where N is the heading line
+    const md = `# Skills
+
+# Loose Skill
+
+<!-- aman-auto source=postmortem date=2026-04-11 confidence=0.85 triggers="alpha" -->
+## When to use
+This skill has a blank line between heading and marker, so it's skipped.
+`;
+    const result = extractSkillsWithMarkers(md);
+    expect(result.size).toBe(0);
+  });
 });
 
 describe("findCollision", () => {
@@ -194,6 +284,25 @@ describe("findCollision", () => {
     const result = findCollision("different-name", ["stripe", "webhook", "signature", "event"], existing);
     expect(result.collides).toBe(true);
     expect(result.collidesWith).toBe("other-name");
+  });
+
+  it("returns no collision when overlap is below 0.8", () => {
+    const existing = new Map([
+      ["other", { triggers: ["stripe", "webhook", "signature", "event", "handler"], source: "postmortem", date: "2026-04-10", confidence: 0.9 }],
+    ]);
+    // 3 of 5 shared = intersection 3, union 6 → 0.5 overlap (we add 1 unique to "different")
+    const result = findCollision("different", ["stripe", "webhook", "signature", "unique"], existing);
+    expect(result.collides).toBe(false);
+  });
+
+  it("checks all existing skills for collision", () => {
+    const existing = new Map([
+      ["first", { triggers: ["foo", "bar"], source: "postmortem", date: "2026-04-10", confidence: 0.9 }],
+      ["second", { triggers: ["stripe", "webhook", "signature", "event", "handler"], source: "postmortem", date: "2026-04-10", confidence: 0.9 }],
+    ]);
+    const result = findCollision("new-name", ["stripe", "webhook", "signature", "event"], existing);
+    expect(result.collides).toBe(true);
+    expect(result.collidesWith).toBe("second");
   });
 });
 
@@ -221,6 +330,20 @@ describe("writeSkillToFile", () => {
     const result = await writeSkillToFile(validCandidate(), skillsMdPath, "2026-04-11-other.md");
     expect(result.written).toBe(false);
     expect(result.reason).toContain("collision");
+  });
+
+  it("treats an empty existing file as a fresh file with header", async () => {
+    // Pre-create an empty skills.md (simulating `touch`)
+    await fs.writeFile(skillsMdPath, "", "utf-8");
+
+    const result = await writeSkillToFile(validCandidate(), skillsMdPath, "2026-04-11-a3b2.md");
+    expect(result.written).toBe(true);
+
+    const content = await fs.readFile(skillsMdPath, "utf-8");
+    expect(content.startsWith("# Skills")).toBe(true);
+    expect(content).toContain("# Stripe Webhook Setup");
+    // Should not start with leading blank lines
+    expect(content).not.toMatch(/^\n/);
   });
 });
 
@@ -274,5 +397,23 @@ describe("appendRejection", () => {
     expect(content).toHaveLength(100);
     expect(content[content.length - 1].name).toBe("new-rejection");
     expect(content[0].name).toBe("old-1");
+  });
+});
+
+describe("round-trip: write → extract", () => {
+  it("a skill written via writeSkillToFile is parseable via extractSkillsWithMarkers with identical triggers", async () => {
+    const candidate = validCandidate({
+      name: "round-trip-test",
+      triggers: ["alpha", "beta", "gamma"],
+    });
+
+    await writeSkillToFile(candidate, skillsMdPath, "2026-04-11-test.md");
+
+    const content = await fs.readFile(skillsMdPath, "utf-8");
+    const parsed = extractSkillsWithMarkers(content);
+
+    expect(parsed.size).toBe(1);
+    expect(parsed.has("round-trip-test")).toBe(true);
+    expect(parsed.get("round-trip-test")?.triggers).toEqual(["alpha", "beta", "gamma"]);
   });
 });

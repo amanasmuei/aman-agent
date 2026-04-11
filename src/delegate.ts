@@ -53,6 +53,27 @@ export async function delegateTask(
   mcpManager: McpManager,
   options: DelegateOptions = {},
 ): Promise<DelegationResult> {
+  // Route @name profiles to remote delegation via MCP server mode.
+  if (profile.startsWith("@")) {
+    const remoteName = profile.slice(1).trim();
+    if (!remoteName) {
+      return {
+        profile,
+        task,
+        response: "",
+        toolsUsed: [],
+        turns: 0,
+        success: false,
+        error: "empty remote agent name",
+      };
+    }
+    // Lazy import to insulate against future cycles between delegate.ts
+    // and delegate-remote.ts → server/*. The static graph is acyclic today
+    // but this is cheap insurance.
+    const { delegateRemote } = await import("./delegate-remote.js");
+    return delegateRemote(task, remoteName, {});
+  }
+
   const maxTurns = options.maxTurns ?? 10;
   const silent = options.silent ?? false;
   const tools = options.tools;

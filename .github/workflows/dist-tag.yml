@@ -1,0 +1,58 @@
+name: Manage npm dist-tag
+
+# Manually dispatch this workflow to add or move an npm dist-tag
+# without publishing a new version. Useful for:
+#   - Restoring `latest` to a stable version after a pre-release
+#     accidentally clobbered it
+#   - Promoting a pre-release to `latest` once it's been validated
+#   - Adding a new tag (e.g. `lts`, `beta`, `rc`) to an existing version
+#
+# Uses the same NPM_TOKEN secret as the release workflow, which is an
+# automation token that bypasses 2FA — local `npm dist-tag add` often
+# fails with E403 because a personal token with 2FA can't perform
+# dist-tag changes without an OTP per call.
+#
+# Trigger via:
+#   gh workflow run "Manage npm dist-tag" \
+#     -f version=0.30.0 \
+#     -f tag=latest
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version to point the tag at (e.g. 0.30.0)"
+        required: true
+        type: string
+      tag:
+        description: "Dist-tag name (e.g. latest, next, beta, rc)"
+        required: true
+        type: string
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Show current dist-tags (before)
+        run: npm view @aman_asmuei/aman-agent dist-tags
+
+      # Inputs routed through env: to avoid shell injection — matches the
+      # pattern documented in the GitHub Actions workflow security guide.
+      - name: Apply dist-tag
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          echo "Setting @aman_asmuei/aman-agent@$VERSION as dist-tag '$TAG'"
+          npm dist-tag add "@aman_asmuei/aman-agent@$VERSION" "$TAG"
+
+      - name: Show current dist-tags (after)
+        run: npm view @aman_asmuei/aman-agent dist-tags

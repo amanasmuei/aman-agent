@@ -56,6 +56,10 @@ import {
   writeSkillToFile,
   appendCrystallizationLog,
 } from "./crystallization.js";
+import {
+  loadUserModel,
+  defaultModelPath,
+} from "./user-model.js";
 
 // ── aman engine layers (Phase 5: replace file IO + mcpWrite for identity/rules) ──
 import {
@@ -203,24 +207,91 @@ async function handleIdentityCommand(
     }
   }
   if (action === "dynamics") {
+    // --json flag: raw JSON output
+    if (args.includes("--json")) {
+      const model = await loadUserModel();
+      if (!model) return { handled: true, output: pc.dim("No user model yet. Complete a few sessions first.") };
+      return { handled: true, output: JSON.stringify(model, null, 2) };
+    }
+
+    // --reset flag: delete model
+    if (args.includes("--reset")) {
+      const modelPath = defaultModelPath();
+      if (fs.existsSync(modelPath)) {
+        fs.unlinkSync(modelPath);
+        return { handled: true, output: pc.green("User model reset. Starting fresh.") };
+      }
+      return { handled: true, output: pc.dim("No user model to reset.") };
+    }
+
+    // key=val args: manual dynamics override (existing behavior)
     const updates: Record<string, string> = {};
     for (const arg of args) {
       const eq = arg.indexOf("=");
       if (eq > 0) updates[arg.slice(0, eq)] = arg.slice(eq + 1);
     }
-    if (!Object.keys(updates).length) {
-      return { handled: true, output: pc.yellow("Usage: /identity dynamics energy=high mode=focused read='Book Title'") };
+    if (Object.keys(updates).length > 0) {
+      try {
+        await acoreUpdateDynamics({
+          energy: updates.energy,
+          activeMode: updates.mode,
+          currentRead: updates.read,
+        }, AGENT_SCOPE);
+        return { handled: true, output: `Dynamics updated: ${Object.entries(updates).map(([k, v]) => `${k}=${v}`).join(", ")}` };
+      } catch (err) {
+        return { handled: true, output: pc.red(`Dynamics error: ${err instanceof Error ? err.message : String(err)}`) };
+      }
     }
-    try {
-      await acoreUpdateDynamics({
-        energy: updates.energy,
-        activeMode: updates.mode,
-        currentRead: updates.read,
-      }, AGENT_SCOPE);
-      return { handled: true, output: `Dynamics updated: ${Object.entries(updates).map(([k, v]) => `${k}=${v}`).join(", ")}` };
-    } catch (err) {
-      return { handled: true, output: pc.red(`Dynamics error: ${err instanceof Error ? err.message : String(err)}`) };
+
+    // No args: show user model summary
+    const model = await loadUserModel();
+    if (!model) {
+      return { handled: true, output: pc.dim("No user model yet. Complete a few sessions to start building your profile.") };
     }
+
+    const p = model.profile;
+    const trustBar = "█".repeat(Math.round(p.trustScore * 10)) + "░".repeat(10 - Math.round(p.trustScore * 10));
+    const frustBar = "█".repeat(Math.round(p.baselineFrustration * 10)) + "░".repeat(10 - Math.round(p.baselineFrustration * 10));
+
+    const lines = [
+      pc.bold("  Dynamic User Model"),
+      "",
+      `  ${pc.cyan("Trust")}        ${trustBar} ${(p.trustScore * 100).toFixed(0)}%  ${p.trustTrajectory === "ascending" ? pc.green("↑") : p.trustTrajectory === "declining" ? pc.red("↓") : "→"}`,
+      `  ${pc.cyan("Sessions")}     ${p.totalSessions} total (${model.sessions.length} in window)`,
+      `  ${pc.cyan("Sentiment")}    ${frustBar} frustration baseline  ${p.sentimentTrend === "improving" ? pc.green("improving") : p.sentimentTrend === "worsening" ? pc.red("worsening") : "stable"}`,
+      "",
+      `  ${pc.cyan("Preferred")}    ${p.preferredTimePeriod} (${Object.entries(p.energyDistribution).map(([k, v]) => `${k}: ${v}`).join(", ")})`,
+      `  ${pc.cyan("Avg session")}  ${p.avgSessionMinutes.toFixed(0)} min, ${p.avgTurnsPerSession.toFixed(0)} turns  ${p.engagementTrend === "increasing" ? pc.green("↑") : p.engagementTrend === "decreasing" ? pc.red("↓") : "→"}`,
+    ];
+
+    // Frustration correlations (only show if enough data)
+    if (p.totalSessions >= 10) {
+      const corrs: string[] = [];
+      if (Math.abs(p.frustrationCorrelations.toolErrors) > 0.3) {
+        corrs.push(`tool errors (${p.frustrationCorrelations.toolErrors.toFixed(2)})`);
+      }
+      if (Math.abs(p.frustrationCorrelations.longSessions) > 0.3) {
+        corrs.push(`long sessions (${p.frustrationCorrelations.longSessions.toFixed(2)})`);
+      }
+      if (Math.abs(p.frustrationCorrelations.lateNight) > 0.3) {
+        corrs.push(`late night (${p.frustrationCorrelations.lateNight.toFixed(2)})`);
+      }
+      if (corrs.length > 0) {
+        lines.push(`  ${pc.cyan("Frustration")}  correlates with: ${corrs.join(", ")}`);
+      }
+    }
+
+    // Nudge stats
+    const nudgeKeys = Object.keys(p.nudgeStats);
+    if (nudgeKeys.length > 0) {
+      lines.push("");
+      lines.push(`  ${pc.cyan("Nudges")}       ${nudgeKeys.map(k => `${k}: ${p.nudgeStats[k].fired}×`).join(", ")}`);
+    }
+
+    lines.push("");
+    lines.push(pc.dim(`  Use --json for raw data, --reset to start fresh`));
+
+    return { handled: true, output: lines.join("\n") };
   }
   if (action === "summary") {
     try {
@@ -244,7 +315,10 @@ async function handleIdentityCommand(
         pc.bold("Identity commands:"),
         `  ${pc.cyan("/identity")}                  View current identity`,
         `  ${pc.cyan("/identity update")} <section>  Update a section`,
+        `  ${pc.cyan("/identity dynamics")}           View user model (trust, sentiment, patterns)`,
         `  ${pc.cyan("/identity dynamics")} key=val   Update dynamic fields (energy, mode, read)`,
+        `  ${pc.cyan("/identity dynamics")} --json    Raw JSON user model`,
+        `  ${pc.cyan("/identity dynamics")} --reset   Reset user model`,
         `  ${pc.cyan("/identity summary")}            Show structured identity summary`,
       ].join("\n"),
     };

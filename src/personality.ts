@@ -243,18 +243,26 @@ export function formatWellbeingNudge(state: PersonalityState): string | null {
 
 /**
  * Push current personality state to acore via identity_update_dynamics.
+ * Optionally includes user model metrics (trust, sessions, sentiment trend).
  * Fire-and-forget — failures are logged but don't block.
  */
 export async function syncPersonalityToCore(
   state: PersonalityState,
   mcpManager: McpManager,
+  modelMetrics?: { trustScore: number; totalSessions: number; sentimentTrend: string },
 ): Promise<void> {
   try {
-    await mcpManager.callTool("identity_update_dynamics", {
+    const payload: Record<string, unknown> = {
       currentRead: state.currentRead,
       energy: state.energy,
       activeMode: state.activeMode,
-    });
+    };
+    if (modelMetrics) {
+      payload.trust = `${(modelMetrics.trustScore * 100).toFixed(0)}%`;
+      payload.sessions = modelMetrics.totalSessions;
+      payload.sentimentTrend = modelMetrics.sentimentTrend;
+    }
+    await mcpManager.callTool("identity_update_dynamics", payload);
   } catch (err) {
     log.debug("personality", "identity_update_dynamics failed", err);
   }

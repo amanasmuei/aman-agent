@@ -47,7 +47,7 @@
 <details>
 <summary><strong>Table of Contents</strong></summary>
 
-- [What's New](#whats-new-in-v0260)
+- [What's New](#whats-new-in-v0270)
 - [The Problem](#the-problem)
 - [The Solution](#the-solution)
 - [Quick Start](#quick-start)
@@ -80,23 +80,31 @@
 
 ---
 
-## What's New in v0.26.0
+## What's New in v0.27.0
 
-> **Your agent learns new skills from its own sessions.**
+> **Your agent remembers you across sessions.**
 
-When a post-mortem runs, the LLM now proposes 0–2 reusable procedures it noticed you demonstrated. You accept or reject each one via a simple prompt at session end. Accepted skills are written to `~/.askill/skills.md` with embedded trigger keywords and **auto-activate** on subsequent sessions — zero extra LLM calls.
+Every session now contributes to a persistent **dynamic user model** — trust score, sentiment baseline, energy patterns, frustration correlations — all computed from real session signals. The next session starts calibrated to *your* actual patterns instead of generic time-based heuristics. Zero new LLM calls.
 
 | Feature | What it does |
 |:---|:---|
-| **Skill crystallization** | Post-mortems identify reusable procedures → opt-in prompt → saved as auto-triggering skills |
-| **Runtime trigger matching** | Crystallized skills merge with hardcoded skill triggers — keyword match fires both |
-| **`/skills crystallize`** | Manually crystallize skills from the most recent post-mortem JSON sidecar |
-| **`/skills list --auto`** | List all crystallized skills with dates, confidence, and trigger keywords |
-| **Post-mortem JSON sidecar** | Every post-mortem now writes a `.json` alongside the `.md` for lossless re-parsing |
-| **Extended LLM schema** | Post-mortem prompt includes crystallization rules — narrow, reusable, confidence-gated |
+| **Dynamic user model** | Cross-session profile: trust (EMA), sentiment baseline, energy distribution, engagement trends |
+| **Feed-forward** | Next session starts with personalized energy/mode overrides based on your history |
+| **Trust scoring** | 0–100% trust from explicit ratings + implicit signals (frustration, blockers, milestones) |
+| **Frustration correlations** | Pearson r analysis: are tool errors, long sessions, or late nights causing frustration? |
+| **Nudge tracking** | Tracks which wellbeing nudges fire and session quality after — data for adaptive nudging |
+| **`/identity dynamics`** | View your user model: trust, sentiment trend, preferred time, avg session length |
+| **`/identity dynamics --json`** | Raw JSON dump of the full user model |
+| **`/identity dynamics --reset`** | Start fresh — delete the model and rebuild |
+| **acore Dynamics sync** | Trust %, session count, and sentiment trend written to `## Dynamics` in core.md |
 
 <details>
 <summary><strong>Highlights from earlier releases</strong></summary>
+
+**v0.26 — Skill crystallization**
+- Post-mortems identify reusable procedures → opt-in prompt → saved as auto-triggering skills
+- Runtime trigger matching, `/skills crystallize`, `/skills list --auto`
+- Post-mortem JSON sidecar for lossless re-parsing
 
 **v0.24 — Observation & post-mortem**
 - Passive session telemetry (tool calls, errors, file changes, sentiment, blockers)
@@ -1044,7 +1052,7 @@ On session end, if any smart trigger fires (≥3 tool errors, ≥2 blockers, &gt
 | `/profile` | Your profile + agent profiles `[me\|edit\|setup\|create\|list\|show\|delete]` |
 | `/delegate` | Delegate task to a profile `[<profile> <task>\|pipeline]` |
 | `/team` | Manage agent teams `[create\|run\|list\|show\|delete]` |
-| `/identity` | View identity `[update <section>]` |
+| `/identity` | View identity `[update <section>]` `[dynamics [--json\|--reset]]` |
 | `/rules` | View guardrails `[add\|remove\|toggle ...]` |
 | `/workflows` | View workflows `[add\|remove ...]` |
 | `/tools` | View tools `[add\|remove ...]` |

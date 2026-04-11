@@ -22,6 +22,15 @@ import {
   appendRejection,
 } from "./crystallization.js";
 import type { ObservationSession } from "./observation.js";
+import {
+  loadUserModel,
+  saveUserModel,
+  createEmptyModel,
+  aggregateSession,
+  feedForward,
+  type SessionSnapshot,
+  type PersonalityOverrides,
+} from "./user-model.js";
 
 function getTimeContext(): string {
   const now = new Date();
@@ -183,7 +192,7 @@ This is your FIRST conversation with this user. Introduce yourself warmly:
     isHookCall = false;
   }
 
-  // Compute initial personality state
+  // Compute initial personality state (with feed-forward from user model)
   if (ctx.config.personalityAdapt !== false) {
     sessionStartTime = Date.now();
     const hour = new Date().getHours();
@@ -199,6 +208,42 @@ This is your FIRST conversation with this user. Introduce yourself warmly:
       sessionMinutes: 0,
       turnCount: 0,
     });
+
+    // Load user model for feed-forward overrides
+    try {
+      const model = await loadUserModel();
+      if (model) {
+        const overrides = feedForward(model);
+        if (overrides) {
+          log.debug("hooks", `Feed-forward active (trust=${model.profile.trustScore.toFixed(2)}, sessions=${model.profile.totalSessions})`);
+
+          // Apply energy override (e.g., night owls stay "steady" instead of "reflective")
+          if (overrides.energyOverride && (period === "late-night" || period === "night")) {
+            (state as { energy: string }).energy = overrides.energyOverride as typeof state.energy;
+          }
+
+          // Apply default-to-Personal-mode when sentiment is worsening
+          if (overrides.defaultToPersonalMode && state.activeMode === "Default") {
+            (state as { activeMode: string }).activeMode = "Personal";
+          }
+
+          // Inject trust context into greeting
+          if (overrides.compactGreeting) {
+            greeting += "\n<user-model-context>High trust user (score: " +
+              model.profile.trustScore.toFixed(2) +
+              ", " + model.profile.totalSessions +
+              " sessions). Keep greeting compact — they know you well.</user-model-context>";
+          }
+
+          // Surface sentiment trend if concerning
+          if (model.profile.sentimentTrend === "worsening") {
+            greeting += "\n<user-model-context>Sentiment trend is worsening across recent sessions. Be more attentive and patient.</user-model-context>";
+          }
+        }
+      }
+    } catch (err) {
+      log.debug("hooks", "user model feed-forward failed", err);
+    }
 
     // Sync to acore (fire-and-forget)
     syncPersonalityToCore(state, ctx.mcpManager).catch(() => {});
@@ -409,23 +454,23 @@ export async function onSessionEnd(
     }
 
     // Persist final personality state
+    const sessionMinutes = Math.round((Date.now() - sessionStartTime) / 60000);
+    const hour = new Date().getHours();
+    let period: string;
+    if (hour < 6) period = "late-night";
+    else if (hour < 12) period = "morning";
+    else if (hour < 17) period = "afternoon";
+    else if (hour < 21) period = "evening";
+    else period = "night";
+
+    const turnCount = messages.filter((m) => m.role === "user").length;
+    const finalState = computePersonality({
+      timePeriod: period,
+      sessionMinutes,
+      turnCount,
+    });
+
     if (ctx.config.personalityAdapt !== false) {
-      const sessionMinutes = Math.round((Date.now() - sessionStartTime) / 60000);
-      const hour = new Date().getHours();
-      let period: string;
-      if (hour < 6) period = "late-night";
-      else if (hour < 12) period = "morning";
-      else if (hour < 17) period = "afternoon";
-      else if (hour < 21) period = "evening";
-      else period = "night";
-
-      const turnCount = messages.filter((m) => m.role === "user").length;
-      const finalState = computePersonality({
-        timePeriod: period,
-        sessionMinutes,
-        turnCount,
-      });
-
       try {
         isHookCall = true;
         await syncPersonalityToCore(finalState, ctx.mcpManager);
@@ -435,6 +480,7 @@ export async function onSessionEnd(
     }
 
     // Session rating prompt
+    let sessionRating: string | undefined;
     if (ctx.config.evalPrompt) {
       const rating = await p.select({
         message: "Quick rating for this session?",
@@ -448,16 +494,66 @@ export async function onSessionEnd(
       });
 
       if (!p.isCancel(rating) && rating !== "skip") {
+        sessionRating = rating as string;
         try {
           isHookCall = true;
           await ctx.mcpManager.callTool("eval_log", {
-            rating: rating as string,
+            rating: sessionRating,
             highlights: "Quick session rating",
             improvements: "",
           });
         } finally {
           isHookCall = false;
         }
+      }
+    }
+
+    // Aggregate session into user model (v0.27)
+    if (turnCount >= 2 && sessionMinutes >= 1) {
+      try {
+        const snapshot: SessionSnapshot = {
+          sessionId,
+          date: new Date().toISOString().split("T")[0],
+          durationMinutes: sessionMinutes,
+          turnCount,
+          dominantSentiment: finalState.sentiment.dominant,
+          avgFrustration: finalState.sentiment.frustration,
+          avgExcitement: finalState.sentiment.excitement,
+          avgConfusion: finalState.sentiment.confusion,
+          avgFatigue: finalState.sentiment.fatigue,
+          toolCalls: observationSession?.stats.toolCalls ?? 0,
+          toolErrors: observationSession?.stats.toolErrors ?? 0,
+          blockers: observationSession?.stats.blockers ?? 0,
+          milestones: observationSession?.stats.milestones ?? 0,
+          topicShifts: observationSession?.stats.topicShifts ?? 0,
+          peakEnergy: finalState.energy,
+          primaryMode: finalState.activeMode,
+          timePeriod: period,
+          rating: sessionRating,
+          hadPostmortem: false, // updated below if postmortem is generated
+          wellbeingNudges: finalState.wellbeingNudge ? [finalState.wellbeingNudge] : [],
+        };
+
+        const model = (await loadUserModel()) ?? createEmptyModel();
+        const updated = aggregateSession(model, snapshot);
+        await saveUserModel(updated);
+        log.debug("hooks", `User model updated (session ${updated.profile.totalSessions})`);
+
+        // Sync model metrics to acore dynamics section
+        if (ctx.config.personalityAdapt !== false) {
+          try {
+            isHookCall = true;
+            await syncPersonalityToCore(finalState, ctx.mcpManager, {
+              trustScore: updated.profile.trustScore,
+              totalSessions: updated.profile.totalSessions,
+              sentimentTrend: updated.profile.sentimentTrend,
+            });
+          } finally {
+            isHookCall = false;
+          }
+        }
+      } catch (err) {
+        log.debug("hooks", "user model aggregation failed", err);
       }
     }
 

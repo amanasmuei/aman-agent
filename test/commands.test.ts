@@ -738,10 +738,11 @@ describe("handleCommand", () => {
       expect(result.output).toContain("mode=focused");
     });
 
-    it("returns usage when no key=value pairs given", async () => {
+    it("shows user model or placeholder when no key=value pairs given", async () => {
       const result = await handleCommand("/identity dynamics", {});
       expect(result.handled).toBe(true);
-      expect(result.output).toContain("Usage");
+      // Without a model file, shows the "no model yet" message
+      expect(result.output).toMatch(/No user model|Dynamic User Model/);
     });
   });
 

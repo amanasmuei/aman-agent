@@ -3,11 +3,9 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { loadConfig, saveConfig } from "./config.js";
 import { assembleSystemPrompt, getProfileAiName } from "./prompt.js";
-import { createAnthropicClient } from "./llm/anthropic.js";
-import { createOpenAIClient } from "./llm/openai.js";
-import { createOllamaClient } from "./llm/ollama.js";
-import { createClaudeCodeClient, isClaudeCliInstalled } from "./llm/claude-code.js";
-import { createCopilotClient, isCopilotCliInstalled, isCopilotCliAuthenticated } from "./llm/copilot.js";
+import { pickLLMClient } from "./llm/index.js";
+import { isClaudeCliInstalled } from "./llm/claude-code.js";
+import { isCopilotCliInstalled, isCopilotCliAuthenticated } from "./llm/copilot.js";
 import { McpManager } from "./mcp/client.js";
 import { runAgent } from "./agent.js";
 import fs from "node:fs";
@@ -17,6 +15,7 @@ import { applyPreset, PRESETS, type PresetName } from "./presets.js";
 import { initMemory, memoryConsolidate, isMemoryInitialized, setMemoryConfig } from "./memory.js";
 import { hasUserIdentity, loadUserIdentity } from "./user-identity.js";
 import { runOnboarding } from "./onboarding.js";
+import { runServe } from "./server/serve-command.js";
 
 declare const __VERSION__: string;
 
@@ -491,18 +490,7 @@ program
     }));
 
     // Create LLM client
-    let client;
-    if (config.provider === "claude-code") {
-      client = createClaudeCodeClient(model);
-    } else if (config.provider === "copilot") {
-      client = createCopilotClient(model);
-    } else if (config.provider === "anthropic") {
-      client = createAnthropicClient(config.apiKey, model);
-    } else if (config.provider === "ollama") {
-      client = createOllamaClient(model);
-    } else {
-      client = createOpenAIClient(config.apiKey, model);
-    }
+    const client = pickLLMClient(config, model);
 
     const userIdentity = loadUserIdentity();
     if (userIdentity) {
@@ -591,6 +579,21 @@ program
     console.log(`  ${pc.dim("Add tools:")}  npx @aman_asmuei/akit add github`);
     console.log(`  ${pc.dim("Browse:")}     npx @aman_asmuei/akit search <query>`);
     console.log("");
+  });
+
+program
+  .command("serve")
+  .description("Run aman-agent as a local MCP server other agents can delegate to")
+  .requiredOption("--name <name>", "Unique handle for @-mention (e.g. 'coder')")
+  .option("--profile <profile>", "Which profile to load", "default")
+  .action(async (opts) => {
+    try {
+      await runServe({ name: opts.name, profile: opts.profile });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(pc.red(`aman-agent serve failed: ${msg}`));
+      process.exit(1);
+    }
   });
 
 program.parse();

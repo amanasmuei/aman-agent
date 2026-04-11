@@ -4,7 +4,10 @@ import { readFileSync } from "fs";
 const pkg = JSON.parse(readFileSync("./package.json", "utf-8"));
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  // Secondary entries (delegate, delegate-remote) exist so the A2A integration
+  // test (and any future programmatic caller) can import them without pulling
+  // in src/index.ts's top-level `program.parse()` CLI bootstrap.
+  entry: ["src/index.ts", "src/delegate.ts", "src/delegate-remote.ts"],
   format: ["esm"],
   target: "node18",
   outDir: "dist",

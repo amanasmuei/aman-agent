@@ -1,6 +1,6 @@
 {
   "name": "@aman_asmuei/aman-agent",
-  "version": "0.30.0",
+  "version": "0.31.0-next.0",
   "description": "Your AI companion, running locally — powered by the aman ecosystem",
   "type": "module",
   "bin": {
@@ -32,7 +32,8 @@
     "marked": "^15.0.12",
     "marked-terminal": "^7.3.0",
     "openai": "^4.80.0",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/marked-terminal": "^6.1.1",

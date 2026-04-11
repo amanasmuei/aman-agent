@@ -32,7 +32,8 @@
     "marked": "^15.0.12",
     "marked-terminal": "^7.3.0",
     "openai": "^4.80.0",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/marked-terminal": "^6.1.1",

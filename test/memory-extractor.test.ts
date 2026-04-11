@@ -36,6 +36,7 @@ vi.mock("@aman_asmuei/amem-core", () => ({
       knowledgeGaps: 0, healthScore: 1 }, timestamp: Date.now(), durationMs: 0,
   })),
   isReflectionDue: vi.fn(() => ({ due: false, reason: "too soon" })),
+  autoRelateMemory: vi.fn(() => ({ created: 0, relations: [] })),
 }));
 
 describe("memory-extractor", () => {
@@ -215,5 +216,75 @@ describe("extractMemories — reflect hook", () => {
     await extractMemories("user msg", "A longer assistant response that has enough substance to trigger extraction.", client, state);
 
     expect(reflect).not.toHaveBeenCalled();
+  });
+});
+
+// ── autoRelate hook integration tests ─────────────────────────────────────────
+
+describe("extractMemories — autoRelate hook", () => {
+  let memoryStore: ReturnType<typeof vi.fn>;
+  let memoryRecall: ReturnType<typeof vi.fn>;
+  let autoRelateMemory: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const memMod = await import("../src/memory.js");
+    const coreMod = await import("@aman_asmuei/amem-core");
+    memoryStore = vi.mocked(memMod.memoryStore);
+    memoryRecall = vi.mocked(memMod.memoryRecall);
+    autoRelateMemory = vi.mocked(coreMod.autoRelateMemory);
+  });
+
+  function makeLLMClient(response: string) {
+    return {
+      chat: vi.fn(async (_sys: string, _msgs: unknown[], onChunk: (c: { type: string; text?: string }) => void) => {
+        onChunk({ type: "text", text: response });
+      }),
+    } as unknown as import("../src/llm/types.js").LLMClient;
+  }
+
+  const validCandidate = JSON.stringify([
+    { content: "User prefers functional style", type: "preference", tags: ["style"], confidence: 0.9, scope: "global" },
+  ]);
+
+  it("calls autoRelateMemory after successful store", async () => {
+    memoryStore.mockResolvedValueOnce({
+      action: "stored", id: "mem-abc", type: "preference", confidence: 0.9, tags: [], total: 1, reinforced: 0,
+    });
+
+    const state = { turnsSinceLastExtraction: 5, lastExtractionCount: 0 };
+    const client = makeLLMClient(validCandidate);
+
+    await extractMemories("user msg", "A longer assistant response that has enough substance to trigger extraction.", client, state);
+
+    expect(autoRelateMemory).toHaveBeenCalledOnce();
+    expect(autoRelateMemory).toHaveBeenCalledWith(expect.any(Object), "mem-abc");
+  });
+
+  it("does NOT call autoRelateMemory when store returns private", async () => {
+    memoryStore.mockResolvedValueOnce({
+      action: "private", id: "mem-xyz", type: "fact", confidence: 0.9, tags: [], total: 1, reinforced: 0,
+    });
+
+    const state = { turnsSinceLastExtraction: 5, lastExtractionCount: 0 };
+    const client = makeLLMClient(validCandidate);
+
+    await extractMemories("user msg", "A longer assistant response that has enough substance to trigger extraction.", client, state);
+
+    expect(autoRelateMemory).not.toHaveBeenCalled();
+  });
+
+  it("does not throw when autoRelateMemory fails", async () => {
+    memoryStore.mockResolvedValueOnce({
+      action: "stored", id: "mem-fail", type: "fact", confidence: 0.9, tags: [], total: 1, reinforced: 0,
+    });
+    autoRelateMemory.mockImplementation(() => { throw new Error("embedding unavailable"); });
+
+    const state = { turnsSinceLastExtraction: 5, lastExtractionCount: 0 };
+    const client = makeLLMClient(validCandidate);
+
+    // Should not throw — autoRelate errors are suppressed
+    const stored = await extractMemories("user msg", "A longer assistant response that has enough substance to trigger extraction.", client, state);
+    expect(stored).toBe(1);
   });
 });

@@ -47,7 +47,7 @@
 <details>
 <summary><strong>Table of Contents</strong></summary>
 
-- [What's New](#whats-new-in-v0280)
+- [What's New](#whats-new-in-v0290)
 - [The Problem](#the-problem)
 - [The Solution](#the-solution)
 - [Quick Start](#quick-start)
@@ -80,26 +80,24 @@
 
 ---
 
-## What's New in v0.28.0
+## What's New in v0.29.0
 
-> **The learning loop is complete.**
+> **Ecosystem parity — the knowledge graph wires up.**
 
-aman-agent now closes the full crystallization + adaptive intelligence cycle. Rejected skills are remembered. Repeated suggestions get reinforced. Near-duplicates get merged with version history. Nudges adapt to your actual response patterns. Frustration is predicted before it happens. All zero or near-zero LLM overhead.
+Memories now auto-relate after extraction, building a knowledge graph of connected insights across sessions. Admin tools for memory health diagnostics, repair, config, and reflection are fully wired. Stale references cleaned up.
 
 | Feature | What it does |
 |:---|:---|
-| **Rejection feedback loop** | Rejected skill names injected into postmortem prompt — agent won't suggest them again |
-| **Cross-session reinforcement** | Tracks how many times each skill candidate appears; auto-recommends after 3+ suggestions |
-| **Skill merging + versioning** | Near-duplicate skills prompt merge instead of skip; old versions archived as `.v1`, `.v2`, etc. |
-| **Adaptive nudge learning** | Wellbeing nudges that consistently precede low-rated sessions get automatically suppressed |
-| **Semantic trigger matching** | TF-IDF cosine similarity alongside keyword matching — skills trigger on meaning, not just words |
-| **Feed-forward v2** | Preemptive context injection from frustration correlations (late-night, long sessions) |
-| **LLM-based sentiment** | Piggybacks tone analysis on memory extraction — zero extra LLM calls |
-| **Burnout predictor** | Forecasts burnout risk from session patterns; surfaces care nudge when risk > 70% |
-| **`/skills list --auto`** | Now shows reinforcement count (★) and version history per skill |
+| **Auto-relate memories** | After each successful extraction, `autoRelateMemory` finds and links semantically similar memories — builds a knowledge graph automatically |
+| **Stale reference cleanup** | `aman-claude-code` → `aman-plugin` across all docs |
 
 <details>
 <summary><strong>Highlights from earlier releases</strong></summary>
+
+**v0.28 — Learning loop completion**
+- Rejection feedback, cross-session reinforcement, skill merging + versioning
+- Adaptive nudge learning, semantic trigger matching, feed-forward v2
+- LLM-based sentiment, burnout predictor, `/skills list --auto` enhancements
 
 **v0.27 — Dynamic user model**
 - Cross-session profile: trust (EMA), sentiment baseline, energy distribution
@@ -906,7 +904,7 @@ The agent adapts its personality in real-time based on signals:
 - **User sentiment**: detects frustration, excitement, confusion, fatigue from keywords
 - **Wellbeing nudges**: suggests breaks when you've been at it too long, gently mentions sleep during late-night sessions
 
-All state syncs to acore's Dynamics section — works across aman-agent, achannel, and aman-claude-code.
+All state syncs to acore's Dynamics section — works across aman-agent, achannel, and aman-plugin.
 
 ### Auto-Triggered Skills
 

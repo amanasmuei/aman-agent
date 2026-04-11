@@ -2,7 +2,7 @@ import type { LLMClient } from "./llm/types.js";
 import { log } from "./logger.js";
 import { matchPatternToSkill, enrichSkill } from "./skill-engine.js";
 import { memoryRecall, memoryStore, getDb } from "./memory.js";
-import { reflect, isReflectionDue } from "@aman_asmuei/amem-core";
+import { reflect, isReflectionDue, autoRelateMemory } from "@aman_asmuei/amem-core";
 
 export interface ExtractionCandidate {
   content: string;
@@ -198,6 +198,12 @@ export async function extractMemories(
         if (storeResult.action !== "private") {
           stored++;
           log.debug("extractor", "Stored " + candidate.type + ": " + candidate.content);
+          // Auto-relate: build knowledge graph edges to similar memories
+          try {
+            autoRelateMemory(getDb(), storeResult.id);
+          } catch {
+            // Best-effort — never block extraction
+          }
           // Self-improving skills: enrich skills with learned patterns
           if (candidate.type === "pattern" || candidate.type === "preference") {
             const skillMatch = matchPatternToSkill(candidate.content, candidate.tags);

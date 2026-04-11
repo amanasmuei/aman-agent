@@ -3,11 +3,9 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { loadConfig, saveConfig } from "./config.js";
 import { assembleSystemPrompt, getProfileAiName } from "./prompt.js";
-import { createAnthropicClient } from "./llm/anthropic.js";
-import { createOpenAIClient } from "./llm/openai.js";
-import { createOllamaClient } from "./llm/ollama.js";
-import { createClaudeCodeClient, isClaudeCliInstalled } from "./llm/claude-code.js";
-import { createCopilotClient, isCopilotCliInstalled, isCopilotCliAuthenticated } from "./llm/copilot.js";
+import { pickLLMClient } from "./llm/index.js";
+import { isClaudeCliInstalled } from "./llm/claude-code.js";
+import { isCopilotCliInstalled, isCopilotCliAuthenticated } from "./llm/copilot.js";
 import { McpManager } from "./mcp/client.js";
 import { runAgent } from "./agent.js";
 import fs from "node:fs";
@@ -491,18 +489,7 @@ program
     }));
 
     // Create LLM client
-    let client;
-    if (config.provider === "claude-code") {
-      client = createClaudeCodeClient(model);
-    } else if (config.provider === "copilot") {
-      client = createCopilotClient(model);
-    } else if (config.provider === "anthropic") {
-      client = createAnthropicClient(config.apiKey, model);
-    } else if (config.provider === "ollama") {
-      client = createOllamaClient(model);
-    } else {
-      client = createOpenAIClient(config.apiKey, model);
-    }
+    const client = pickLLMClient(config, model);
 
     const userIdentity = loadUserIdentity();
     if (userIdentity) {

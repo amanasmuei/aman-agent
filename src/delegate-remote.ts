@@ -43,6 +43,20 @@ export async function delegateRemote(
     requestInit: {
       headers: { Authorization: `Bearer ${entry.token}` },
     },
+    // Disable SSE reconnection scheduling. On close(), the SDK aborts
+    // the controller; without this override, the SSE stream's error
+    // handler races to schedule a new _reconnectionTimeout AFTER close()
+    // cleared the old one, and the timer (plus its referenced socket)
+    // pins Node's event loop until the undici keepalive times out. A
+    // delegateRemote caller then can't exit cleanly. maxRetries: 0
+    // drops the schedule-on-error path entirely; we're doing a single
+    // RPC, not a persistent stream, so reconnection has no value here.
+    reconnectionOptions: {
+      maxRetries: 0,
+      initialReconnectionDelay: 1,
+      maxReconnectionDelay: 1,
+      reconnectionDelayGrowFactor: 1,
+    },
   });
   const client = new Client({ name: "aman-agent-a2a-caller", version: "0.1.0" });
 
@@ -57,13 +71,26 @@ export async function delegateRemote(
         ...(options.context ? { context: options.context } : {}),
       },
     });
-    const timeout = new Promise<never>((_, rej) =>
-      setTimeout(
+
+    // Promise.race picks a winner but does NOT cancel the losing promise's
+    // resources. Capturing the timer id lets us clear it after the call
+    // resolves — otherwise the setTimeout keeps a Timeout handle alive for
+    // the full timeoutMs (120 s default) and pins Node's event loop long
+    // after the caller thinks the RPC is done. Equivalent effect to using
+    // AbortSignal.timeout() but keeps the existing error message.
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, rej) => {
+      timeoutId = setTimeout(
         () => rej(new Error(`remote delegate timed out after ${timeoutMs}ms`)),
         timeoutMs,
-      ),
-    );
-    const result = await Promise.race([call, timeout]);
+      );
+    });
+    let result;
+    try {
+      result = await Promise.race([call, timeout]);
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    }
 
     const text = Array.isArray(result.content)
       ? (result.content as Array<{ type: string; text?: string }>)
@@ -127,13 +154,21 @@ export async function delegateRemote(
       error: normalized,
     };
   } finally {
-    // Tear down in order: client (releases SDK state) → transport session
-    // (tells the server to drop the session) → transport (aborts any pending
-    // fetch/SSE keepalive that would otherwise pin the event loop open).
-    // All three are best-effort: any throw here is logged and swallowed so
-    // a teardown failure never masks a real result from the caller.
-    try { await client.close(); } catch { /* best effort */ }
+    // Teardown order matters:
+    //   1. terminateSession() sends an MCP DELETE to drop the server-side
+    //      session. This needs the transport's abort controller to still
+    //      be alive, so it MUST run BEFORE client.close() (which aborts
+    //      the controller). Earlier order threw DOMException[AbortError].
+    //   2. client.close() then releases SDK-side state and aborts the
+    //      transport. Combined with reconnectionOptions: { maxRetries: 0 }
+    //      on construction, this leaves zero handles pinning the event
+    //      loop — verified via process.getActiveResourcesInfo() === [].
+    //   3. transport.close() is a no-op after client.close() (which
+    //      transitively closes the transport) but kept for symmetry.
+    // All three are best-effort: any throw here is swallowed so a
+    // teardown failure never masks a real result from the caller.
     try { await transport.terminateSession(); } catch { /* best effort */ }
+    try { await client.close(); } catch { /* best effort */ }
     try { await transport.close(); } catch { /* best effort */ }
   }
 }

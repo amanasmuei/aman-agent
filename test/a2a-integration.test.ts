@@ -44,6 +44,19 @@ describe("A2A integration", () => {
 
   beforeEach(async () => {
     home = await fs.mkdtemp(path.join(os.tmpdir(), "aman-a2a-"));
+    // Pre-seed a minimal config.json so `loadConfig()` returns non-null
+    // in the spawned serve process. The provider/apiKey/model are ignored
+    // at runtime because AMAN_AGENT_FAKE_LLM=1 short-circuits the factory
+    // in src/llm/index.ts — but loadConfig() still needs a file to read.
+    // This mirrors how a real user's ~/.aman-agent/config.json looks.
+    await fs.writeFile(
+      path.join(home, "config.json"),
+      JSON.stringify({
+        provider: "anthropic",
+        apiKey: "fake-integration-test-key",
+        model: "claude-sonnet-4-6",
+      }),
+    );
   });
 
   afterEach(async () => {
@@ -155,13 +168,10 @@ import { delegateTask } from ${JSON.stringify(DIST_DELEGATE)};
 // Local client/mgr args are not touched on the @-path, so nulls are safe.
 const r = await delegateTask("ping", "@coder", null, null);
 console.log("RESULT=" + JSON.stringify(r));
-// KNOWN ISSUE: the @modelcontextprotocol/sdk StreamableHTTPClientTransport
-// keeps an internal resource alive after client.close() + transport.close()
-// + terminateSession(), so a plain 'await' script does not exit cleanly.
-// This is a documented follow-up (see README and docs/superpowers/plans/).
-// For the interactive REPL path it's a tiny per-call leak released on /quit.
-// For non-REPL callers, force exit is required.
-process.exit(0);
+// No process.exit() — delegate-remote.ts now disables SSE reconnection
+// scheduling and uses terminateSession→close teardown order, so the
+// event loop drains cleanly after the RPC. If this script hangs, the
+// fix in src/delegate-remote.ts has regressed.
 `;
     const caller = spawn(
       "node",

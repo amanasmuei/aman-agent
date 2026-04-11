@@ -153,6 +153,126 @@ export function matchSkills(
   return Array.from(matched);
 }
 
+// --- Semantic Trigger Matching (TF-IDF cosine similarity) ---
+
+const SEMANTIC_STOPWORDS = new Set([
+  "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+  "have", "has", "had", "do", "does", "did", "will", "would", "shall",
+  "should", "may", "might", "must", "can", "could", "to", "of", "in",
+  "for", "on", "with", "at", "by", "from", "as", "into", "through",
+  "during", "before", "after", "above", "below", "between", "and",
+  "but", "or", "nor", "not", "so", "yet", "both", "either", "neither",
+  "each", "every", "all", "any", "few", "more", "most", "other",
+  "some", "such", "no", "only", "own", "same", "than", "too", "very",
+  "just", "because", "if", "when", "while", "how", "what", "which",
+  "who", "whom", "this", "that", "these", "those", "i", "me", "my",
+  "we", "us", "our", "you", "your", "he", "him", "his", "she", "her",
+  "it", "its", "they", "them", "their",
+]);
+
+/**
+ * Tokenize text into lowercased words, filtering stopwords and short tokens.
+ */
+export function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !SEMANTIC_STOPWORDS.has(w));
+}
+
+/**
+ * Build a term frequency map for tokens.
+ */
+function termFrequency(tokens: string[]): Map<string, number> {
+  const tf = new Map<string, number>();
+  for (const t of tokens) {
+    tf.set(t, (tf.get(t) || 0) + 1);
+  }
+  // Normalize by document length
+  for (const [k, v] of tf) {
+    tf.set(k, v / tokens.length);
+  }
+  return tf;
+}
+
+/**
+ * Compute cosine similarity between two term frequency maps.
+ */
+function cosineSimilarity(a: Map<string, number>, b: Map<string, number>): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (const [k, v] of a) {
+    normA += v * v;
+    const bv = b.get(k);
+    if (bv !== undefined) dot += v * bv;
+  }
+  for (const [, v] of b) {
+    normB += v * v;
+  }
+
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+/**
+ * Check if user input semantically matches a set of trigger keywords.
+ * Uses TF-IDF-like bag-of-words cosine similarity.
+ * @returns similarity score (0-1)
+ */
+export function semanticSimilarity(userInput: string, triggers: string[]): number {
+  const inputTokens = tokenize(userInput);
+  if (inputTokens.length === 0) return 0;
+
+  // Build trigger "document" from all trigger keywords
+  const triggerTokens = triggers.flatMap((t) => tokenize(t));
+  if (triggerTokens.length === 0) return 0;
+
+  const inputTf = termFrequency(inputTokens);
+  const triggerTf = termFrequency(triggerTokens);
+
+  return cosineSimilarity(inputTf, triggerTf);
+}
+
+const SEMANTIC_THRESHOLD = 0.15;
+
+/**
+ * Enhanced matchSkills with semantic similarity fallback.
+ */
+export function matchSkillsSemantic(
+  userInput: string,
+  installedSkillNames: string[],
+  runtimeTriggers: Map<string, string[]> = new Map(),
+): string[] {
+  // First, get exact keyword matches
+  const exact = matchSkills(userInput, installedSkillNames, runtimeTriggers);
+  const matched = new Set(exact);
+
+  // Then, check semantic similarity for skills not already matched
+  for (const skillName of installedSkillNames) {
+    if (matched.has(skillName)) continue;
+    const triggers = SKILL_TRIGGERS[skillName];
+    if (!triggers) continue;
+
+    const sim = semanticSimilarity(userInput, triggers);
+    if (sim >= SEMANTIC_THRESHOLD) {
+      matched.add(skillName);
+    }
+  }
+
+  for (const [skillName, triggers] of runtimeTriggers) {
+    if (matched.has(skillName)) continue;
+    const sim = semanticSimilarity(userInput, triggers);
+    if (sim >= SEMANTIC_THRESHOLD) {
+      matched.add(skillName);
+    }
+  }
+
+  return Array.from(matched);
+}
+
 /**
  * Format skill context block for injection into system prompt.
  * Adapts detail level based on skill level.
@@ -201,8 +321,8 @@ export async function autoTriggerSkills(
 
     if (installed.length === 0 && runtimeTriggers.size === 0) return "";
 
-    // Match user input against skill triggers
-    const matched = matchSkills(userInput, installed, runtimeTriggers);
+    // Match user input against skill triggers (keyword + semantic)
+    const matched = matchSkillsSemantic(userInput, installed, runtimeTriggers);
     if (matched.length === 0) return "";
 
     // Load skill content and build context blocks

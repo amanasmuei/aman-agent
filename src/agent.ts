@@ -29,6 +29,7 @@ import {
   computePersonality,
   syncPersonalityToCore,
   formatWellbeingNudge,
+  shouldFireNudge,
 } from "./personality.js";
 import type { HooksConfig } from "./config.js";
 import { trimConversation } from "./context-manager.js";
@@ -643,8 +644,80 @@ ${knowledgeItem.content}
       }
 
       const nudge = formatWellbeingNudge(state);
-      if (nudge) {
-        augmentedSystemPrompt += "\n" + nudge;
+      if (nudge && state.wellbeingNudge) {
+        // Adaptive nudge: check user model stats before firing
+        let fireNudge = true;
+        try {
+          const { loadUserModel, computeProfile } = await import("./user-model.js");
+          const model = await loadUserModel();
+          if (model && model.sessions.length >= 5) {
+            const profile = computeProfile(model.sessions, model.sessions.length);
+            fireNudge = shouldFireNudge(state.wellbeingNudge, profile);
+          }
+        } catch {
+          // No model yet — always fire
+        }
+        if (fireNudge) {
+          augmentedSystemPrompt += "\n" + nudge;
+        }
+      }
+
+      // Feed-forward v2: preemptive context from frustration correlations
+      try {
+        const { loadUserModel, computeProfile } = await import("./user-model.js");
+        const model = await loadUserModel();
+        if (model && model.sessions.length >= 10) {
+          const profile = computeProfile(model.sessions, model.sessions.length);
+          const preemptive: string[] = [];
+
+          // Late night + high correlation → extra gentle mode
+          const hour = new Date().getHours();
+          const isLate = hour >= 21 || hour < 6;
+          if (isLate && profile.frustrationCorrelations.lateNight > 0.4) {
+            preemptive.push(
+              "Based on past patterns, late-night sessions tend to increase frustration for this user. " +
+              "Be extra concise, proactive about blockers, and gently suggest wrapping up if frustration rises."
+            );
+          }
+
+          // Long session + high correlation → preemptive break suggestion
+          const sessionMins = Math.round((Date.now() - getSessionStartTime()) / 60000);
+          if (sessionMins > 60 && profile.frustrationCorrelations.longSessions > 0.4) {
+            preemptive.push(
+              "This session is getting long and past patterns show long sessions correlate with frustration. " +
+              "Proactively suggest natural breakpoints."
+            );
+          }
+
+          if (preemptive.length > 0) {
+            augmentedSystemPrompt += `\n<feed-forward-v2>\n${preemptive.join("\n")}\n</feed-forward-v2>`;
+          }
+        }
+      } catch {
+        // No model — skip feed-forward v2
+      }
+
+      // Burnout predictor
+      try {
+        const { loadUserModel, predictBurnout } = await import("./user-model.js");
+        const model = await loadUserModel();
+        if (model && model.sessions.length >= 5) {
+          const sessionMins = Math.round((Date.now() - getSessionStartTime()) / 60000);
+          const burnout = predictBurnout(model.sessions, {
+            minutes: sessionMins,
+            frustration: state.sentiment.frustration,
+            timePeriod: period,
+          });
+          if (burnout.risk > 0.7) {
+            const burnoutState = { ...state, wellbeingNudge: "burnout-warning" };
+            const burnoutNudge = formatWellbeingNudge(burnoutState);
+            if (burnoutNudge) {
+              augmentedSystemPrompt += "\n" + burnoutNudge;
+            }
+          }
+        }
+      } catch {
+        // No model — skip
       }
     }
 

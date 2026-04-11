@@ -10,8 +10,12 @@ import {
   extractSkillsWithMarkers,
   findCollision,
   writeSkillToFile,
+  mergeSkillInFile,
   appendCrystallizationLog,
   appendRejection,
+  loadRejectedNames,
+  loadSuggestionCounts,
+  incrementSuggestionCount,
   type SkillCandidate,
 } from "../src/crystallization.js";
 
@@ -397,6 +401,101 @@ describe("appendRejection", () => {
     expect(content).toHaveLength(100);
     expect(content[content.length - 1].name).toBe("new-rejection");
     expect(content[0].name).toBe("old-1");
+  });
+});
+
+describe("loadRejectedNames", () => {
+  it("returns unique names from rejections file", async () => {
+    const entries = [
+      { name: "skill-a", rejectedAt: "2026-04-10T00:00:00Z", fromPostmortem: "a.md", triggers: ["x"] },
+      { name: "skill-b", rejectedAt: "2026-04-10T00:00:00Z", fromPostmortem: "b.md", triggers: ["y"] },
+      { name: "skill-a", rejectedAt: "2026-04-11T00:00:00Z", fromPostmortem: "c.md", triggers: ["x"] },
+    ];
+    await fs.writeFile(rejectionsPath, JSON.stringify(entries), "utf-8");
+
+    const names = await loadRejectedNames(rejectionsPath);
+    expect(names).toEqual(["skill-a", "skill-b"]);
+  });
+
+  it("returns empty array when file doesn't exist", async () => {
+    const names = await loadRejectedNames(path.join(testDir, "nope.json"));
+    expect(names).toEqual([]);
+  });
+});
+
+describe("suggestion tracking (cross-session reinforcement)", () => {
+  it("increments suggestion count and persists", async () => {
+    const sugPath = path.join(testDir, "suggestions.json");
+    const count1 = await incrementSuggestionCount("my-skill", sugPath);
+    expect(count1).toBe(1);
+
+    const count2 = await incrementSuggestionCount("my-skill", sugPath);
+    expect(count2).toBe(2);
+
+    const count3 = await incrementSuggestionCount("other-skill", sugPath);
+    expect(count3).toBe(1);
+
+    const counts = await loadSuggestionCounts(sugPath);
+    expect(counts["my-skill"]).toBe(2);
+    expect(counts["other-skill"]).toBe(1);
+  });
+
+  it("returns empty object when file doesn't exist", async () => {
+    const counts = await loadSuggestionCounts(path.join(testDir, "nope.json"));
+    expect(counts).toEqual({});
+  });
+});
+
+describe("mergeSkillInFile", () => {
+  it("archives existing skill with .v1 suffix and writes new version", async () => {
+    const original = validCandidate({ name: "deploy-helper", triggers: ["deploy", "ci"] });
+    await writeSkillToFile(original, skillsMdPath, "pm-old.md");
+
+    const updated = validCandidate({
+      name: "deploy-helper",
+      triggers: ["deploy", "ci", "pipeline"],
+      approach: "Updated deploy helper approach",
+    });
+    const result = await mergeSkillInFile(updated, "deploy-helper", skillsMdPath, "pm-new.md");
+
+    expect(result.written).toBe(true);
+    expect(result.reason).toContain("archived as .v1");
+
+    const content = await fs.readFile(skillsMdPath, "utf-8");
+    expect(content).toContain("Updated deploy helper approach");
+    // Old version should be archived
+    expect(content).toContain("# Deploy Helper.v1");
+    expect(content).toContain("aman-archived");
+    // New version should exist
+    expect(content).toContain("# Deploy Helper\n");
+  });
+
+  it("increments version number on subsequent merges", async () => {
+    const original = validCandidate({ name: "deploy-helper", triggers: ["deploy"] });
+    await writeSkillToFile(original, skillsMdPath, "pm-1.md");
+
+    // First merge → .v1
+    const v2 = validCandidate({ name: "deploy-helper", triggers: ["deploy", "ci"], approach: "v2 approach" });
+    await mergeSkillInFile(v2, "deploy-helper", skillsMdPath, "pm-2.md");
+
+    // Second merge → .v2
+    const v3 = validCandidate({ name: "deploy-helper", triggers: ["deploy", "ci", "pipeline"], approach: "v3 approach" });
+    const result = await mergeSkillInFile(v3, "deploy-helper", skillsMdPath, "pm-3.md");
+
+    expect(result.reason).toContain("archived as .v2");
+    const content = await fs.readFile(skillsMdPath, "utf-8");
+    expect(content).toContain("# Deploy Helper.v1");
+    expect(content).toContain("# Deploy Helper.v2");
+    expect(content).toContain("v3 approach");
+  });
+
+  it("falls back to append if existing skill not found", async () => {
+    await fs.writeFile(skillsMdPath, "# Skills\n\n", "utf-8");
+    const candidate = validCandidate({ name: "new-skill", triggers: ["test"] });
+    const result = await mergeSkillInFile(candidate, "nonexistent-skill", skillsMdPath, "pm.md");
+    expect(result.written).toBe(true);
+    const content = await fs.readFile(skillsMdPath, "utf-8");
+    expect(content).toContain("New Skill");
   });
 });
 

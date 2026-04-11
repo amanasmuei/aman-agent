@@ -289,6 +289,98 @@ export function feedForward(model: UserModel): PersonalityOverrides | null {
   return overrides;
 }
 
+// ── Burnout Predictor ──
+
+export interface BurnoutPrediction {
+  risk: number; // 0-1
+  factors: string[];
+  recommendation?: string;
+}
+
+/**
+ * Predict burnout risk from session patterns.
+ * Looks at recent 7 sessions for:
+ * - Rising frustration trend
+ * - Declining session ratings
+ * - Long sessions without breaks
+ * - Late-night clustering
+ * - High blocker frequency
+ */
+export function predictBurnout(
+  sessions: SessionSnapshot[],
+  currentSession?: { minutes: number; frustration: number; timePeriod: string },
+): BurnoutPrediction {
+  const recent = sessions.slice(-7);
+  if (recent.length < 3) {
+    return { risk: 0, factors: [] };
+  }
+
+  const factors: string[] = [];
+  let risk = 0;
+
+  // Factor 1: Rising frustration (compare first half vs second half)
+  const mid = Math.floor(recent.length / 2);
+  const firstHalf = recent.slice(0, mid);
+  const secondHalf = recent.slice(mid);
+  const avgFrustFirst = avg(firstHalf.map((s) => s.avgFrustration));
+  const avgFrustSecond = avg(secondHalf.map((s) => s.avgFrustration));
+  if (avgFrustSecond > avgFrustFirst + 0.1 && avgFrustSecond > 0.4) {
+    risk += 0.25;
+    factors.push("rising frustration trend");
+  }
+
+  // Factor 2: Declining ratings
+  const ratings = recent.filter((s) => s.rating).map((s) => ratingSignal(s));
+  if (ratings.length >= 3) {
+    const lastThree = ratings.slice(-3);
+    const avgLast3 = avg(lastThree);
+    if (avgLast3 < 0.5) {
+      risk += 0.2;
+      factors.push("low recent ratings");
+    }
+  }
+
+  // Factor 3: Long sessions (avg > 90 min)
+  const avgMins = avg(recent.map((s) => s.durationMinutes));
+  if (avgMins > 90) {
+    risk += 0.15;
+    factors.push("consistently long sessions");
+  }
+
+  // Factor 4: Late-night clustering
+  const lateNightCount = recent.filter((s) => s.timePeriod === "late-night" || s.timePeriod === "night").length;
+  if (lateNightCount / recent.length > 0.5) {
+    risk += 0.15;
+    factors.push("frequent late-night sessions");
+  }
+
+  // Factor 5: High blocker frequency
+  const avgBlockers = avg(recent.map((s) => s.blockers));
+  if (avgBlockers > 1) {
+    risk += 0.15;
+    factors.push("frequent blockers");
+  }
+
+  // Current session amplifier
+  if (currentSession) {
+    if (currentSession.minutes > 120 && currentSession.frustration > 0.5) {
+      risk += 0.1;
+      factors.push("current session: long + frustrated");
+    }
+  }
+
+  risk = clamp(risk, 0, 1);
+
+  let recommendation: string | undefined;
+  if (risk > 0.7) {
+    recommendation = "Consider taking a longer break. You've been pushing hard — rest is productive too.";
+  } else if (risk > 0.5) {
+    recommendation = "Watch for signs of fatigue. A change of pace or shorter sessions might help.";
+  }
+
+  return { risk, factors, recommendation };
+}
+
 // ── Math Utilities ──
 
 function clamp(val: number, min: number, max: number): number {

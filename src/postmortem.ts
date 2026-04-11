@@ -123,6 +123,7 @@ export async function generatePostmortemReport(
   session: ObservationSession,
   client: LLMClient,
   obsDir?: string,
+  rejectedSkillNames?: string[],
 ): Promise<PostmortemReport | null> {
   try {
     const events = await readObservationEvents(sessionId, obsDir ?? defaultObservationsDir());
@@ -167,7 +168,11 @@ export async function generatePostmortemReport(
 
     const durationMin = Math.round((Date.now() - session.startedAt) / 60_000);
 
-    const prompt = `${POSTMORTEM_PROMPT}
+    const prompt = `${POSTMORTEM_PROMPT}${
+      rejectedSkillNames && rejectedSkillNames.length > 0
+        ? `\n\nPREVIOUSLY REJECTED SKILLS (do NOT suggest these again):\n${rejectedSkillNames.map((n) => `- ${n}`).join("\n")}`
+        : ""
+    }
 
 Session ID: ${sessionId}
 Duration: ${durationMin} minutes

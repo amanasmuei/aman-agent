@@ -97,3 +97,56 @@ describe("matchSkills with runtime triggers", () => {
     expect(matched).toContain("testing");
   });
 });
+
+// v0.28 — Semantic trigger matching
+import { tokenize, semanticSimilarity, matchSkillsSemantic } from "../src/skill-engine.js";
+
+describe("tokenize", () => {
+  it("lowercases and removes stopwords", () => {
+    const tokens = tokenize("How do I set up a PostgreSQL database with Prisma?");
+    expect(tokens).toContain("postgresql");
+    expect(tokens).toContain("database");
+    expect(tokens).toContain("prisma");
+    expect(tokens).not.toContain("how");
+    expect(tokens).not.toContain("do");
+    expect(tokens).not.toContain("i");
+  });
+
+  it("returns empty for all-stopword input", () => {
+    expect(tokenize("I am the")).toEqual([]);
+  });
+});
+
+describe("semanticSimilarity", () => {
+  it("returns high similarity for related terms", () => {
+    const sim = semanticSimilarity(
+      "I need to write unit tests with vitest and mocking",
+      ["test", "spec", "coverage", "tdd", "jest", "vitest", "mocha", "assert", "mock"],
+    );
+    expect(sim).toBeGreaterThan(0.1);
+  });
+
+  it("returns 0 for completely unrelated terms", () => {
+    const sim = semanticSimilarity(
+      "what is the weather today",
+      ["database", "schema", "migration", "index", "query", "sql"],
+    );
+    expect(sim).toBe(0);
+  });
+});
+
+describe("matchSkillsSemantic", () => {
+  it("includes exact keyword matches", () => {
+    const matched = matchSkillsSemantic("I need to debug this error", ["debugging"]);
+    expect(matched).toContain("debugging");
+  });
+
+  it("can match semantically even without exact keyword", () => {
+    // "performance optimization bottleneck" shares terms with performance triggers
+    const matched = matchSkillsSemantic(
+      "my app has a performance bottleneck and needs optimization",
+      ["performance"],
+    );
+    expect(matched).toContain("performance");
+  });
+});

@@ -62,26 +62,26 @@ describe("memory-extractor", () => {
   });
 
   describe("parseExtractionResult", () => {
-    it("parses valid JSON array of candidates", () => {
+    it("parses valid JSON array of candidates (legacy format)", () => {
       const json = JSON.stringify([
         { content: "User prefers TypeScript", type: "preference", tags: ["lang"], confidence: 0.9, scope: "global" },
       ]);
       const result = parseExtractionResult(json);
-      expect(result).toHaveLength(1);
-      expect(result[0].content).toBe("User prefers TypeScript");
-      expect(result[0].type).toBe("preference");
+      expect(result.memories).toHaveLength(1);
+      expect(result.memories[0].content).toBe("User prefers TypeScript");
+      expect(result.memories[0].type).toBe("preference");
     });
 
-    it("returns empty array for empty JSON array", () => {
-      expect(parseExtractionResult("[]")).toEqual([]);
+    it("returns empty memories for empty JSON array", () => {
+      expect(parseExtractionResult("[]").memories).toEqual([]);
     });
 
-    it("returns empty array for invalid JSON", () => {
-      expect(parseExtractionResult("not json")).toEqual([]);
+    it("returns empty memories for invalid JSON", () => {
+      expect(parseExtractionResult("not json").memories).toEqual([]);
     });
 
-    it("returns empty array for non-array JSON", () => {
-      expect(parseExtractionResult('{"key": "value"}')).toEqual([]);
+    it("returns empty memories for non-array non-object JSON", () => {
+      expect(parseExtractionResult('"just a string"').memories).toEqual([]);
     });
 
     it("filters out candidates with missing required fields", () => {
@@ -91,14 +91,14 @@ describe("memory-extractor", () => {
         { type: "preference", tags: [], confidence: 0.8, scope: "global" },
       ]);
       const result = parseExtractionResult(json);
-      expect(result).toHaveLength(1);
+      expect(result.memories).toHaveLength(1);
     });
 
     it("extracts JSON from markdown code blocks", () => {
       const wrapped = '```json\n[{"content":"test","type":"fact","tags":[],"confidence":0.8,"scope":"global"}]\n```';
       const result = parseExtractionResult(wrapped);
-      expect(result).toHaveLength(1);
-      expect(result[0].content).toBe("test");
+      expect(result.memories).toHaveLength(1);
+      expect(result.memories[0].content).toBe("test");
     });
 
     it("accepts decision and correction types", () => {
@@ -107,9 +107,33 @@ describe("memory-extractor", () => {
         { content: "User corrected: project uses pnpm not npm", type: "correction", tags: ["tooling"], confidence: 0.95, scope: "global" },
       ]);
       const result = parseExtractionResult(json);
-      expect(result).toHaveLength(2);
-      expect(result[0].type).toBe("decision");
-      expect(result[1].type).toBe("correction");
+      expect(result.memories).toHaveLength(2);
+      expect(result.memories[0].type).toBe("decision");
+      expect(result.memories[1].type).toBe("correction");
+    });
+
+    it("parses new format with memories and sentiment", () => {
+      const json = JSON.stringify({
+        memories: [
+          { content: "User uses pnpm", type: "fact", tags: ["tooling"], confidence: 0.8, scope: "global" },
+        ],
+        sentiment: { tone: "frustrated", confidence: 0.9, context: "struggling with config" },
+      });
+      const result = parseExtractionResult(json);
+      expect(result.memories).toHaveLength(1);
+      expect(result.sentiment).toBeDefined();
+      expect(result.sentiment!.tone).toBe("frustrated");
+      expect(result.sentiment!.confidence).toBe(0.9);
+    });
+
+    it("handles new format with empty memories", () => {
+      const json = JSON.stringify({
+        memories: [],
+        sentiment: { tone: "positive", confidence: 0.7 },
+      });
+      const result = parseExtractionResult(json);
+      expect(result.memories).toHaveLength(0);
+      expect(result.sentiment?.tone).toBe("positive");
     });
   });
 

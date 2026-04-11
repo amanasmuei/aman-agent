@@ -391,3 +391,99 @@ describe("feedForward", () => {
     expect(overrides!.compactGreeting).toBe(true);
   });
 });
+
+// shouldFireNudge tests (from personality.ts, depends on UserProfile)
+import { shouldFireNudge } from "../src/personality.js";
+
+describe("shouldFireNudge", () => {
+  it("returns true when no profile provided", () => {
+    expect(shouldFireNudge("sleep")).toBe(true);
+  });
+
+  it("returns true when nudge type has fewer than 5 fires", () => {
+    const profile = computeProfile([], 0);
+    profile.nudgeStats["sleep"] = { fired: 3, sessionRatingAfter: 0.2 };
+    expect(shouldFireNudge("sleep", profile)).toBe(true);
+  });
+
+  it("suppresses nudge when fired 5+ times with low avg rating", () => {
+    const profile = computeProfile([], 0);
+    profile.nudgeStats["break-frustrated"] = { fired: 6, sessionRatingAfter: 0.3 };
+    expect(shouldFireNudge("break-frustrated", profile)).toBe(false);
+  });
+
+  it("allows nudge when fired 5+ times with good avg rating", () => {
+    const profile = computeProfile([], 0);
+    profile.nudgeStats["sleep"] = { fired: 8, sessionRatingAfter: 0.7 };
+    expect(shouldFireNudge("sleep", profile)).toBe(true);
+  });
+
+  it("returns true for unknown nudge types", () => {
+    const profile = computeProfile([], 0);
+    expect(shouldFireNudge("nonexistent-type", profile)).toBe(true);
+  });
+});
+
+import { predictBurnout } from "../src/user-model.js";
+
+describe("predictBurnout", () => {
+  const makeSession = (overrides: Partial<import("../src/user-model.js").SessionSnapshot> = {}): import("../src/user-model.js").SessionSnapshot => ({
+    sessionId: "test",
+    date: "2026-04-11",
+    durationMinutes: 60,
+    turnCount: 20,
+    avgFrustration: 0.2,
+    avgExcitement: 0.5,
+    avgConfusion: 0.1,
+    avgFatigue: 0.1,
+    toolCalls: 10,
+    toolErrors: 1,
+    blockers: 0,
+    milestones: 1,
+    topicShifts: 1,
+    peakEnergy: "steady",
+    primaryMode: "Default",
+    timePeriod: "morning",
+    rating: "good",
+    hadPostmortem: false,
+    wellbeingNudges: [],
+    ...overrides,
+  });
+
+  it("returns 0 risk with fewer than 3 sessions", () => {
+    const result = predictBurnout([makeSession()]);
+    expect(result.risk).toBe(0);
+  });
+
+  it("detects high burnout risk from multiple factors", () => {
+    const sessions = [
+      makeSession({ avgFrustration: 0.2, rating: "good", timePeriod: "morning", durationMinutes: 60 }),
+      makeSession({ avgFrustration: 0.3, rating: "okay", timePeriod: "night", durationMinutes: 100 }),
+      makeSession({ avgFrustration: 0.5, rating: "frustrating", timePeriod: "late-night", durationMinutes: 120, blockers: 2 }),
+      makeSession({ avgFrustration: 0.6, rating: "frustrating", timePeriod: "late-night", durationMinutes: 130, blockers: 3 }),
+      makeSession({ avgFrustration: 0.7, rating: "frustrating", timePeriod: "night", durationMinutes: 110, blockers: 2 }),
+    ];
+    const result = predictBurnout(sessions);
+    expect(result.risk).toBeGreaterThan(0.5);
+    expect(result.factors.length).toBeGreaterThan(0);
+  });
+
+  it("returns low risk for healthy sessions", () => {
+    const sessions = Array.from({ length: 5 }, () =>
+      makeSession({ avgFrustration: 0.1, rating: "great", durationMinutes: 45, timePeriod: "morning" })
+    );
+    const result = predictBurnout(sessions);
+    expect(result.risk).toBeLessThan(0.3);
+  });
+
+  it("includes recommendation for high risk", () => {
+    const sessions = [
+      makeSession({ avgFrustration: 0.2, rating: "okay" }),
+      makeSession({ avgFrustration: 0.4, rating: "frustrating", durationMinutes: 120, timePeriod: "late-night", blockers: 2 }),
+      makeSession({ avgFrustration: 0.6, rating: "frustrating", durationMinutes: 150, timePeriod: "late-night", blockers: 3 }),
+      makeSession({ avgFrustration: 0.7, rating: "frustrating", durationMinutes: 140, timePeriod: "night", blockers: 2 }),
+    ];
+    const result = predictBurnout(sessions, { minutes: 150, frustration: 0.7, timePeriod: "late-night" });
+    expect(result.recommendation).toBeDefined();
+  });
+});

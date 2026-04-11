@@ -47,7 +47,7 @@
 <details>
 <summary><strong>Table of Contents</strong></summary>
 
-- [What's New](#whats-new-in-v0270)
+- [What's New](#whats-new-in-v0280)
 - [The Problem](#the-problem)
 - [The Solution](#the-solution)
 - [Quick Start](#quick-start)
@@ -80,26 +80,32 @@
 
 ---
 
-## What's New in v0.27.0
+## What's New in v0.28.0
 
-> **Your agent remembers you across sessions.**
+> **The learning loop is complete.**
 
-Every session now contributes to a persistent **dynamic user model** — trust score, sentiment baseline, energy patterns, frustration correlations — all computed from real session signals. The next session starts calibrated to *your* actual patterns instead of generic time-based heuristics. Zero new LLM calls.
+aman-agent now closes the full crystallization + adaptive intelligence cycle. Rejected skills are remembered. Repeated suggestions get reinforced. Near-duplicates get merged with version history. Nudges adapt to your actual response patterns. Frustration is predicted before it happens. All zero or near-zero LLM overhead.
 
 | Feature | What it does |
 |:---|:---|
-| **Dynamic user model** | Cross-session profile: trust (EMA), sentiment baseline, energy distribution, engagement trends |
-| **Feed-forward** | Next session starts with personalized energy/mode overrides based on your history |
-| **Trust scoring** | 0–100% trust from explicit ratings + implicit signals (frustration, blockers, milestones) |
-| **Frustration correlations** | Pearson r analysis: are tool errors, long sessions, or late nights causing frustration? |
-| **Nudge tracking** | Tracks which wellbeing nudges fire and session quality after — data for adaptive nudging |
-| **`/identity dynamics`** | View your user model: trust, sentiment trend, preferred time, avg session length |
-| **`/identity dynamics --json`** | Raw JSON dump of the full user model |
-| **`/identity dynamics --reset`** | Start fresh — delete the model and rebuild |
-| **acore Dynamics sync** | Trust %, session count, and sentiment trend written to `## Dynamics` in core.md |
+| **Rejection feedback loop** | Rejected skill names injected into postmortem prompt — agent won't suggest them again |
+| **Cross-session reinforcement** | Tracks how many times each skill candidate appears; auto-recommends after 3+ suggestions |
+| **Skill merging + versioning** | Near-duplicate skills prompt merge instead of skip; old versions archived as `.v1`, `.v2`, etc. |
+| **Adaptive nudge learning** | Wellbeing nudges that consistently precede low-rated sessions get automatically suppressed |
+| **Semantic trigger matching** | TF-IDF cosine similarity alongside keyword matching — skills trigger on meaning, not just words |
+| **Feed-forward v2** | Preemptive context injection from frustration correlations (late-night, long sessions) |
+| **LLM-based sentiment** | Piggybacks tone analysis on memory extraction — zero extra LLM calls |
+| **Burnout predictor** | Forecasts burnout risk from session patterns; surfaces care nudge when risk > 70% |
+| **`/skills list --auto`** | Now shows reinforcement count (★) and version history per skill |
 
 <details>
 <summary><strong>Highlights from earlier releases</strong></summary>
+
+**v0.27 — Dynamic user model**
+- Cross-session profile: trust (EMA), sentiment baseline, energy distribution
+- Feed-forward personalized energy/mode overrides
+- Frustration correlations (Pearson r), nudge tracking
+- `/identity dynamics` view + `--json` + `--reset`
 
 **v0.26 — Skill crystallization**
 - Post-mortems identify reusable procedures → opt-in prompt → saved as auto-triggering skills

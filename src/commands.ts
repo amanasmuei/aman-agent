@@ -55,6 +55,7 @@ import {
   validateCandidate,
   writeSkillToFile,
   appendCrystallizationLog,
+  loadSuggestionCounts,
 } from "./crystallization.js";
 import {
   loadUserModel,
@@ -661,10 +662,34 @@ async function handleSkillsCommand(
         if (entries.length === 0) {
           return { handled: true, output: pc.dim("No crystallized skills yet.") };
         }
+        const suggestionsPath = path.join(os.homedir(), ".aman-agent", "crystallization-suggestions.json");
+        let sugCounts: Record<string, number> = {};
+        try {
+          const sc = fs.readFileSync(suggestionsPath, "utf-8");
+          sugCounts = JSON.parse(sc);
+        } catch { /* noop */ }
+
+        // Count archived versions per skill from skills.md
+        let versionCounts: Record<string, number> = {};
+        try {
+          const skillsContent = fs.readFileSync(path.join(os.homedir(), ".askill", "skills.md"), "utf-8");
+          const versionRe = /^# (.+)\.v(\d+)$/gm;
+          let vMatch;
+          while ((vMatch = versionRe.exec(skillsContent)) !== null) {
+            const skillHeading = vMatch[1].toLowerCase().replace(/ /g, "-");
+            const ver = parseInt(vMatch[2], 10);
+            versionCounts[skillHeading] = Math.max(versionCounts[skillHeading] || 0, ver);
+          }
+        } catch { /* noop */ }
+
         const lines = [pc.bold(`Crystallized skills (${entries.length}):`)];
         for (const entry of entries) {
           const date = entry.createdAt.slice(0, 10);
-          lines.push(`  ${pc.cyan(entry.name)} (${date}, conf ${entry.confidence})`);
+          const count = sugCounts[entry.name];
+          const reinforced = count && count >= 3 ? pc.green(` ★ reinforced (${count}×)`) : "";
+          const versions = versionCounts[entry.name];
+          const versionLabel = versions ? pc.dim(` [v${versions + 1}]`) : "";
+          lines.push(`  ${pc.cyan(entry.name)} (${date}, conf ${entry.confidence})${reinforced}${versionLabel}`);
           lines.push(pc.dim(`    triggers: ${entry.triggers.join(", ")}`));
         }
         return { handled: true, output: lines.join("\n") };

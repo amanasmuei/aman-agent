@@ -19,6 +19,7 @@ export interface CrystallizationResult {
   filePath: string;
   skillName: string;
   reason?: string;
+  collidesWith?: string;
 }
 
 export interface MarkerData {
@@ -283,6 +284,7 @@ export async function writeSkillToFile(
         filePath: skillsMdPath,
         skillName: candidate.name,
         reason: `collision with "${collision.collidesWith}" (${collision.reason})`,
+        collidesWith: collision.collidesWith,
       };
     }
 
@@ -305,6 +307,93 @@ export async function writeSkillToFile(
     };
   } catch (err) {
     log.warn("crystallization", "writeSkillToFile failed", err);
+    return {
+      written: false,
+      filePath: skillsMdPath,
+      skillName: candidate.name,
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+// ── mergeSkillInFile ──
+
+/**
+ * Replace an existing skill block in skills.md with a new candidate.
+ * Finds the heading for `existingName`, removes everything up to the next heading or EOF,
+ * and writes the new candidate in its place.
+ */
+export async function mergeSkillInFile(
+  candidate: SkillCandidate,
+  existingName: string,
+  skillsMdPath: string,
+  postmortemFilename: string,
+): Promise<CrystallizationResult> {
+  try {
+    const content = await fs.readFile(skillsMdPath, "utf-8");
+    const lines = content.split("\n");
+
+    // Find the heading line for the existing skill
+    const heading = toTitleCase(existingName);
+    let startIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith("# ") && lines[i].slice(2).trim() === heading) {
+        startIdx = i;
+        break;
+      }
+    }
+
+    if (startIdx === -1) {
+      return writeSkillToFile(candidate, skillsMdPath, postmortemFilename);
+    }
+
+    // Find the end of this skill block (next heading or EOF)
+    let endIdx = lines.length;
+    for (let i = startIdx + 1; i < lines.length; i++) {
+      if (lines[i].startsWith("# ") && !lines[i].startsWith("## ")) {
+        endIdx = i;
+        break;
+      }
+    }
+
+    // Determine version number — count existing archived versions
+    const versionPattern = new RegExp(`^# ${heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.v\\d+`);
+    let maxVersion = 0;
+    for (const line of lines) {
+      if (versionPattern.test(line)) {
+        const vMatch = line.match(/\.v(\d+)/);
+        if (vMatch) maxVersion = Math.max(maxVersion, parseInt(vMatch[1], 10));
+      }
+    }
+    const archiveVersion = maxVersion + 1;
+
+    // Archive the old version by renaming its heading
+    const oldBlock = lines.slice(startIdx, endIdx);
+    oldBlock[0] = `# ${heading}.v${archiveVersion}`;
+    // Add archive marker
+    const archiveMarker = `<!-- aman-archived version=${archiveVersion} archived-at=${new Date().toISOString().slice(0, 10)} -->`;
+    if (oldBlock.length > 1 && oldBlock[1].includes("aman-auto")) {
+      oldBlock.splice(2, 0, archiveMarker);
+    } else {
+      oldBlock.splice(1, 0, archiveMarker);
+    }
+
+    // Write: archived old block + new candidate
+    const newSkillMarkdown = formatSkillMarkdown(candidate, postmortemFilename);
+    const before = lines.slice(0, startIdx);
+    const after = lines.slice(endIdx);
+    const merged = [...before, ...oldBlock, "", newSkillMarkdown, ...after].join("\n");
+
+    await fs.writeFile(skillsMdPath, merged, "utf-8");
+
+    return {
+      written: true,
+      filePath: skillsMdPath,
+      skillName: candidate.name,
+      reason: `merged with "${existingName}" (archived as .v${archiveVersion})`,
+    };
+  } catch (err) {
+    log.warn("crystallization", "mergeSkillInFile failed", err);
     return {
       written: false,
       filePath: skillsMdPath,
@@ -367,5 +456,59 @@ export async function appendRejection(
     await fs.writeFile(rejectionsPath, JSON.stringify(existing, null, 2), "utf-8");
   } catch (err) {
     log.debug("crystallization", "appendRejection failed", err);
+  }
+}
+
+/**
+ * Load rejected skill names from the rejections log.
+ * Returns unique names. Never throws.
+ */
+export async function loadRejectedNames(rejectionsPath: string): Promise<string[]> {
+  try {
+    const content = await fs.readFile(rejectionsPath, "utf-8");
+    const entries: RejectionLogEntry[] = JSON.parse(content);
+    if (!Array.isArray(entries)) return [];
+    return [...new Set(entries.map((e) => e.name))];
+  } catch {
+    return [];
+  }
+}
+
+// ── Suggestion tracking (cross-session reinforcement) ──
+
+export interface SuggestionCounts {
+  [name: string]: number;
+}
+
+/**
+ * Load suggestion counts. Never throws.
+ */
+export async function loadSuggestionCounts(suggestionsPath: string): Promise<SuggestionCounts> {
+  try {
+    const content = await fs.readFile(suggestionsPath, "utf-8");
+    const parsed = JSON.parse(content);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+    return parsed as SuggestionCounts;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Increment suggestion count for a candidate name. Returns the new count.
+ */
+export async function incrementSuggestionCount(
+  name: string,
+  suggestionsPath: string,
+): Promise<number> {
+  try {
+    await fs.mkdir(path.dirname(suggestionsPath), { recursive: true });
+    const counts = await loadSuggestionCounts(suggestionsPath);
+    counts[name] = (counts[name] || 0) + 1;
+    await fs.writeFile(suggestionsPath, JSON.stringify(counts, null, 2), "utf-8");
+    return counts[name];
+  } catch (err) {
+    log.debug("crystallization", "incrementSuggestionCount failed", err);
+    return 0;
   }
 }

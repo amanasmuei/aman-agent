@@ -16,16 +16,23 @@ const VALID_TYPES = new Set(["preference", "fact", "pattern", "topology", "decis
 const MIN_RESPONSE_LENGTH = 50;
 const MIN_TURNS_BETWEEN_EMPTY = 3;
 
-const EXTRACTION_PROMPT = `Analyze this conversation turn. Extract any information worth remembering long-term.
+const EXTRACTION_PROMPT = `Analyze this conversation turn. Extract any information worth remembering long-term, and assess the user's emotional tone.
 
-Return a JSON array (empty [] if nothing worth storing):
-[{
-  "content": "what to remember — be specific and self-contained",
-  "type": "preference|fact|pattern|decision|correction|topology",
-  "tags": ["relevant", "tags"],
-  "confidence": 0.0-1.0,
-  "scope": "global"
-}]
+Return a JSON object with two fields:
+{
+  "memories": [{
+    "content": "what to remember — be specific and self-contained",
+    "type": "preference|fact|pattern|decision|correction|topology",
+    "tags": ["relevant", "tags"],
+    "confidence": 0.0-1.0,
+    "scope": "global"
+  }],
+  "sentiment": {
+    "tone": "neutral|positive|frustrated|confused|excited|fatigued",
+    "confidence": 0.0-1.0,
+    "context": "brief reason for sentiment read"
+  }
+}
 
 Type guide:
 - "preference" = user likes/dislikes/preferences
@@ -39,7 +46,8 @@ Rules:
 - Only extract genuinely useful LONG-TERM information
 - Skip ephemeral things ("user asked about X" is NOT useful)
 - Be conservative — 90% of turns produce nothing worth storing
-- Return ONLY the JSON array, no other text`;
+- Sentiment should reflect the USER's tone, not the assistant's
+- Return ONLY the JSON object, no other text`;
 
 export function shouldExtract(
   assistantResponse: string,
@@ -55,7 +63,12 @@ export function shouldExtract(
   return true;
 }
 
-export function parseExtractionResult(raw: string): ExtractionCandidate[] {
+export interface ExtractionResult {
+  memories: ExtractionCandidate[];
+  sentiment?: LlmSentiment;
+}
+
+export function parseExtractionResult(raw: string): ExtractionResult {
   try {
     let cleaned = raw.trim();
     const codeBlockMatch = cleaned.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
@@ -64,23 +77,62 @@ export function parseExtractionResult(raw: string): ExtractionCandidate[] {
     }
 
     const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed)) return [];
 
-    return parsed.filter(
-      (item: Record<string, unknown>) =>
-        typeof item.content === "string" &&
-        item.content.length > 0 &&
-        typeof item.type === "string" &&
-        VALID_TYPES.has(item.type),
-    ) as ExtractionCandidate[];
+    // New format: { memories: [...], sentiment: {...} }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && "memories" in parsed) {
+      const memories = Array.isArray(parsed.memories)
+        ? (parsed.memories as Record<string, unknown>[]).filter(
+            (item) =>
+              typeof item.content === "string" &&
+              (item.content as string).length > 0 &&
+              typeof item.type === "string" &&
+              VALID_TYPES.has(item.type as string),
+          ) as unknown as ExtractionCandidate[]
+        : [];
+
+      let sentiment: LlmSentiment | undefined;
+      if (parsed.sentiment && typeof parsed.sentiment === "object") {
+        const s = parsed.sentiment as Record<string, unknown>;
+        if (typeof s.tone === "string" && typeof s.confidence === "number") {
+          sentiment = {
+            tone: s.tone,
+            confidence: s.confidence,
+            context: typeof s.context === "string" ? s.context : undefined,
+          };
+        }
+      }
+
+      return { memories, sentiment };
+    }
+
+    // Legacy format: plain array
+    if (Array.isArray(parsed)) {
+      const memories = parsed.filter(
+        (item: Record<string, unknown>) =>
+          typeof item.content === "string" &&
+          item.content.length > 0 &&
+          typeof item.type === "string" &&
+          VALID_TYPES.has(item.type),
+      ) as ExtractionCandidate[];
+      return { memories };
+    }
+
+    return { memories: [] };
   } catch {
-    return [];
+    return { memories: [] };
   }
+}
+
+export interface LlmSentiment {
+  tone: string;
+  confidence: number;
+  context?: string;
 }
 
 export interface ExtractorState {
   turnsSinceLastExtraction: number;
   lastExtractionCount: number;
+  lastLlmSentiment?: LlmSentiment;
 }
 
 export async function extractMemories(
@@ -106,15 +158,21 @@ export async function extractMemories(
       },
     );
 
-    const candidates = parseExtractionResult(fullText);
+    const result = parseExtractionResult(fullText);
     state.turnsSinceLastExtraction = 0;
-    state.lastExtractionCount = candidates.length;
+    state.lastExtractionCount = result.memories.length;
 
-    if (candidates.length === 0) return 0;
+    // Store LLM sentiment on state for personality system to read
+    if (result.sentiment) {
+      state.lastLlmSentiment = result.sentiment;
+      log.debug("extractor", `LLM sentiment: ${result.sentiment.tone} (${result.sentiment.confidence})`);
+    }
+
+    if (result.memories.length === 0) return 0;
 
     let stored = 0;
 
-    for (const candidate of candidates) {
+    for (const candidate of result.memories) {
       // Dedup check
       try {
         const existing = await memoryRecall(candidate.content, { limit: 1 });

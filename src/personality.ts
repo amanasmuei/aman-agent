@@ -1,4 +1,5 @@
 import type { McpManager } from "./mcp/client.js";
+import type { UserProfile } from "./user-model.js";
 import { log } from "./logger.js";
 
 export interface PersonalityState {
@@ -231,6 +232,10 @@ The user seems tired. Keep responses concise and to the point. If they mention w
   "break-long-session": `<wellbeing>
 This session has been running for over 2 hours. If there's a natural moment, a brief mention that a short break might help maintain focus is fine. Once is enough.
 </wellbeing>`,
+
+  "burnout-warning": `<wellbeing>
+Recent patterns suggest the user may be approaching burnout — rising frustration, declining satisfaction, long or late sessions. Be extra mindful: keep responses concise, celebrate small wins, gently suggest breaks or scope reduction. Don't mention burnout directly unless they bring it up.
+</wellbeing>`,
 };
 
 /**
@@ -239,6 +244,28 @@ This session has been running for over 2 hours. If there's a natural moment, a b
 export function formatWellbeingNudge(state: PersonalityState): string | null {
   if (!state.wellbeingNudge) return null;
   return WELLBEING_NUDGES[state.wellbeingNudge] || null;
+}
+
+/**
+ * Check whether a nudge should fire based on user model nudge stats.
+ * If a nudge type has been fired 5+ times with avg rating below 0.4 (on 0-1 scale),
+ * suppress it (return false). Otherwise allow (return true).
+ * If no profile provided, always allows.
+ */
+export function shouldFireNudge(nudgeType: string, profile?: UserProfile): boolean {
+  if (!profile) return true;
+
+  const stats = profile.nudgeStats[nudgeType];
+  if (!stats || stats.fired < 5) return true;
+
+  // sessionRatingAfter is avg on 0-1 scale (0=frustrating, 1=great)
+  // If avg rating after nudge is < 0.4, this nudge is hurting more than helping
+  if (stats.sessionRatingAfter < 0.4) {
+    log.debug("personality", `suppressing nudge "${nudgeType}" — low avg rating ${stats.sessionRatingAfter.toFixed(2)} after ${stats.fired} fires`);
+    return false;
+  }
+
+  return true;
 }
 
 /**

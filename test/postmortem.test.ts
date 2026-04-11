@@ -163,3 +163,58 @@ describe("readPostmortem", () => {
     expect(content).toBeNull();
   });
 });
+
+describe("crystallizationCandidates", () => {
+  const baseReport: PostmortemReport = {
+    sessionId: "test-xyz",
+    date: "2026-04-11",
+    duration: 65,
+    turnCount: 30,
+    summary: "Built a Stripe integration.",
+    goals: ["Set up webhooks"],
+    completed: ["Webhook handler"],
+    blockers: [],
+    decisions: ["AES-256"],
+    toolUsage: [],
+    fileChanges: [],
+    topicProgression: ["stripe"],
+    sentimentArc: "focused",
+    patterns: ["Verify webhook signatures early"],
+    recommendations: ["Add retries"],
+  };
+
+  it("renders crystallization section when candidates present", () => {
+    const report: PostmortemReport = {
+      ...baseReport,
+      crystallizationCandidates: [
+        {
+          name: "stripe-webhook-setup",
+          description: "Setting up Stripe webhooks with signature verification",
+          triggers: ["stripe", "webhook", "signature"],
+          approach: "Use constructEvent to verify signatures.",
+          steps: ["Verify signature", "Parse event type", "Return 200"],
+          gotchas: ["Use raw body"],
+          confidence: 0.85,
+        },
+      ],
+    };
+    const md = formatPostmortemMarkdown(report);
+    expect(md).toContain("## Crystallization Candidates");
+    expect(md).toContain("stripe-webhook-setup");
+    expect(md).toContain("0.85");
+  });
+
+  it("omits crystallization section when undefined", () => {
+    const md = formatPostmortemMarkdown(baseReport);
+    expect(md).not.toContain("Crystallization Candidates");
+  });
+
+  it("omits crystallization section when empty array", () => {
+    const report: PostmortemReport = {
+      ...baseReport,
+      crystallizationCandidates: [],
+    };
+    const md = formatPostmortemMarkdown(report);
+    expect(md).not.toContain("Crystallization Candidates");
+  });
+});

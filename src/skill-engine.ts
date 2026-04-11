@@ -1,8 +1,10 @@
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import type { McpManager } from "./mcp/client.js";
 import { log } from "./logger.js";
+import { extractSkillsWithMarkers } from "./crystallization.js";
 
 // --- Skill Keyword Map for Auto-Triggering ---
 
@@ -20,6 +22,32 @@ const SKILL_TRIGGERS: Record<string, string[]> = {
   typescript: ["typescript", "type", "interface", "generic", "infer", "utility type", "zod", "discriminated union", "type guard", "as const"],
   accessibility: ["accessibility", "a11y", "aria", "screen reader", "wcag", "semantic html", "tab order", "focus", "contrast"],
 };
+
+// --- Runtime Triggers (crystallized skills) ---
+
+/**
+ * Load runtime trigger keywords from crystallized skills in ~/.askill/skills.md.
+ * These supplement the hardcoded SKILL_TRIGGERS map without modifying it.
+ *
+ * Returns a Map<skillName, triggers[]>. Returns empty map if file is missing or
+ * unreadable — never throws.
+ */
+export async function loadRuntimeTriggers(
+  skillsMdPath: string,
+): Promise<Map<string, string[]>> {
+  try {
+    const content = await fsp.readFile(skillsMdPath, "utf-8");
+    const skills = extractSkillsWithMarkers(content);
+    const result = new Map<string, string[]>();
+    for (const [name, marker] of skills) {
+      result.set(name, marker.triggers);
+    }
+    return result;
+  } catch (err) {
+    log.debug("skill-engine", "loadRuntimeTriggers failed", err);
+    return new Map();
+  }
+}
 
 // --- Skill Level Tracking ---
 
@@ -90,23 +118,39 @@ export function getSkillLevel(skillName: string): { level: number; label: string
  * Match user input against installed skill triggers.
  * Returns skill names that should be activated for this turn.
  */
-export function matchSkills(userInput: string, installedSkillNames: string[]): string[] {
+export function matchSkills(
+  userInput: string,
+  installedSkillNames: string[],
+  runtimeTriggers: Map<string, string[]> = new Map(),
+): string[] {
   const input = userInput.toLowerCase();
-  const matched: string[] = [];
+  const matched = new Set<string>();
 
+  // Hardcoded triggers — only fire for installed skills
   for (const skillName of installedSkillNames) {
     const triggers = SKILL_TRIGGERS[skillName];
     if (!triggers) continue;
 
     for (const trigger of triggers) {
       if (input.includes(trigger)) {
-        matched.push(skillName);
+        matched.add(skillName);
         break;
       }
     }
   }
 
-  return matched;
+  // Runtime triggers — fire regardless of installedSkillNames since
+  // crystallized skills may not appear in the aman-mcp skill_list
+  for (const [skillName, triggers] of runtimeTriggers) {
+    for (const trigger of triggers) {
+      if (input.includes(trigger)) {
+        matched.add(skillName);
+        break;
+      }
+    }
+  }
+
+  return Array.from(matched);
 }
 
 /**
@@ -151,10 +195,14 @@ export async function autoTriggerSkills(
     const skills = JSON.parse(result) as Array<{ name: string; description: string; installed: boolean }>;
     const installed = skills.filter((s) => s.installed).map((s) => s.name);
 
-    if (installed.length === 0) return "";
+    // Load runtime (crystallized) triggers from ~/.askill/skills.md
+    const skillsMdPath = path.join(os.homedir(), ".askill", "skills.md");
+    const runtimeTriggers = await loadRuntimeTriggers(skillsMdPath);
+
+    if (installed.length === 0 && runtimeTriggers.size === 0) return "";
 
     // Match user input against skill triggers
-    const matched = matchSkills(userInput, installed);
+    const matched = matchSkills(userInput, installed, runtimeTriggers);
     if (matched.length === 0) return "";
 
     // Load skill content and build context blocks

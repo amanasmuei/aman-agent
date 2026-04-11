@@ -2,6 +2,7 @@ import pc from "picocolors";
 import * as p from "@clack/prompts";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import type { McpManager } from "./mcp/client.js";
 import type { LLMClient, Message } from "./llm/types.js";
 import type { HooksConfig } from "./config.js";
@@ -14,6 +15,12 @@ import {
 import { memoryRecall, memoryContext, reminderCheck, memoryLog, isMemoryInitialized, memoryStore } from "./memory.js";
 import { loadUserIdentity } from "./user-identity.js";
 import { shouldAutoPostmortem, generatePostmortemReport, savePostmortem } from "./postmortem.js";
+import {
+  validateCandidate,
+  writeSkillToFile,
+  appendCrystallizationLog,
+  appendRejection,
+} from "./crystallization.js";
 import type { ObservationSession } from "./observation.js";
 
 function getTimeContext(): string {
@@ -484,6 +491,84 @@ export async function onSessionEnd(
                 });
               } catch {
                 // Silent — don't block exit
+              }
+            }
+
+            // Crystallization prompt loop (v0.26)
+            if (
+              report.crystallizationCandidates &&
+              report.crystallizationCandidates.length > 0
+            ) {
+              const skillsMdPath = path.join(os.homedir(), ".askill", "skills.md");
+              const logPath = path.join(
+                os.homedir(),
+                ".aman-agent",
+                "crystallization-log.json",
+              );
+              const rejectionsPath = path.join(
+                os.homedir(),
+                ".aman-agent",
+                "crystallization-rejections.json",
+              );
+              const postmortemFilename = `${report.date}-${report.sessionId.slice(0, 4)}.md`;
+
+              console.log(
+                pc.dim(`\n  Crystallization candidates: ${report.crystallizationCandidates.length}`),
+              );
+
+              let skipAll = false;
+              for (const rawCandidate of report.crystallizationCandidates) {
+                if (skipAll) break;
+                const candidate = validateCandidate(rawCandidate);
+                if (!candidate) {
+                  log.debug("hooks", "candidate failed validation");
+                  continue;
+                }
+
+                const choice = await p.select({
+                  message: `Crystallize "${candidate.name}" as a reusable skill?`,
+                  options: [
+                    { value: "accept", label: "Yes — write to ~/.askill/skills.md" },
+                    { value: "reject", label: "No — skip this one" },
+                    { value: "skip-all", label: "Skip all crystallization for this session" },
+                  ],
+                  initialValue: "reject",
+                });
+
+                if (p.isCancel(choice) || choice === "skip-all") {
+                  skipAll = true;
+                  break;
+                }
+
+                if (choice === "accept") {
+                  const result = await writeSkillToFile(
+                    candidate,
+                    skillsMdPath,
+                    postmortemFilename,
+                  );
+                  if (result.written) {
+                    console.log(
+                      pc.green(`  ✓ Crystallized: ${candidate.name} → ${result.filePath}`),
+                    );
+                    console.log(pc.dim(`    Triggers: ${candidate.triggers.join(", ")}`));
+                    console.log(pc.dim(`    Will auto-activate next session.`));
+                    await appendCrystallizationLog(
+                      {
+                        name: candidate.name,
+                        createdAt: new Date().toISOString(),
+                        fromPostmortem: postmortemFilename,
+                        confidence: candidate.confidence,
+                        triggers: candidate.triggers,
+                      },
+                      logPath,
+                    );
+                  } else {
+                    console.log(pc.yellow(`  ⊘ Could not crystallize: ${result.reason}`));
+                  }
+                } else {
+                  console.log(pc.dim(`  Skipped: ${candidate.name}`));
+                  await appendRejection(candidate, postmortemFilename, rejectionsPath);
+                }
               }
             }
           }

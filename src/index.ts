@@ -15,6 +15,7 @@ import { applyPreset, PRESETS, type PresetName } from "./presets.js";
 import { initMemory, memoryConsolidate, isMemoryInitialized, setMemoryConfig } from "./memory.js";
 import { hasUserIdentity, loadUserIdentity } from "./user-identity.js";
 import { runOnboarding } from "./onboarding.js";
+import { runServe } from "./server/serve-command.js";
 
 declare const __VERSION__: string;
 
@@ -578,6 +579,21 @@ program
     console.log(`  ${pc.dim("Add tools:")}  npx @aman_asmuei/akit add github`);
     console.log(`  ${pc.dim("Browse:")}     npx @aman_asmuei/akit search <query>`);
     console.log("");
+  });
+
+program
+  .command("serve")
+  .description("Run aman-agent as a local MCP server other agents can delegate to")
+  .requiredOption("--name <name>", "Unique handle for @-mention (e.g. 'coder')")
+  .option("--profile <profile>", "Which profile to load", "default")
+  .action(async (opts) => {
+    try {
+      await runServe({ name: opts.name, profile: opts.profile });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(pc.red(`aman-agent serve failed: ${msg}`));
+      process.exit(1);
+    }
   });
 
 program.parse();

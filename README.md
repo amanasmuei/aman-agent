@@ -94,39 +94,46 @@
 
 ---
 
-## What's New in v0.30.0
+## What's New in v0.31.0
 
-> **Agent hardening — trust, durability, insight.**<br/>
-> The agent now asks before delegating, persists background tasks across crashes, and ships a real analytics dashboard in `/eval report`.
+> **Multi-agent (A2A) via MCP server mode.**<br/>
+> Multiple `aman-agent` instances on the same machine can now discover each other via a local registry and delegate tasks to each other over the MCP protocol. No new wire format, no broker, no new runtime daemon.
 
 <table>
 <tr>
 <td width="33%" valign="top">
 
-**Delegation confirmation**
+**`aman-agent serve`**
 
-The agent now prompts you before executing `delegate_task` or `team_run`. No more silent autonomous sub-agents — you stay in the loop on every hand-off.
-
-</td>
-<td width="33%" valign="top">
-
-**Persistent background tasks**
-
-Background task state is written to `~/.aman-agent/bg-tasks.json` on every transition — survives crashes, terminal closures, and reboots. Visible in `/eval report`.
+Run any profile as a local MCP server. Registers in `~/.aman-agent/registry.json` (mode `0600`), exposes `agent.info`, `agent.delegate`, and `agent.send` tools over localhost HTTP with bearer auth.
 
 </td>
 <td width="33%" valign="top">
 
-**Rich `/eval report`**
+**`/delegate @coder <task>`**
 
-Trust score, sentiment trend, energy distribution, burnout risk, frustration correlations, and background-task stats — all in one dashboard.
+From any other `aman-agent`, delegate to a running serve instance by handle. The `@`-prefix routes through `delegateRemote` which dials via `StreamableHTTPClientTransport` using the bearer from the registry.
+
+</td>
+<td width="33%" valign="top">
+
+**`/agents list|info|ping`**
+
+Discover, inspect, and latency-check every agent currently running on this machine. `/agents list` merges local registry entries with remotes (local wins on name collision).
 
 </td>
 </tr>
 </table>
 
+See the [Multi-agent (A2A)](#multi-agent-a2a) section below for the full walkthrough.
+
 <details>
 <summary><strong>Highlights from earlier releases</strong></summary>
+
+**v0.30 — Agent hardening**
+- Delegation confirmation prompts (no more silent sub-agents)
+- Persistent background task state surviving crashes
+- Rich `/eval report` with trust, sentiment, energy, burnout risk
 
 **v0.29 — Ecosystem parity**
 - Auto-relate memories after extraction (knowledge graph edges)

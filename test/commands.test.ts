@@ -900,10 +900,29 @@ describe("handleCommand", () => {
       expect(result.output).toContain("Shipped phase 1");
     });
 
-    it("shows no-report message when eval.md is missing", async () => {
+    it("shows no-log message when eval.md is missing", async () => {
       const result = await handleCommand("/eval report", {});
       expect(result.handled).toBe(true);
-      expect(result.output).toContain("No eval report");
+      expect(result.output).toContain("Eval Report");
+      expect(result.output).toContain("No eval log yet");
+    });
+
+    it("includes background task stats when task log exists", async () => {
+      // Create task log
+      const agentDir = path.join(tmpHome, ".aman-agent");
+      fs.mkdirSync(agentDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(agentDir, "bg-tasks.json"),
+        JSON.stringify([
+          { id: "bg-1", toolName: "run_tests", startedAt: Date.now() - 5000, completedAt: Date.now(), status: "completed", resultPreview: "ok" },
+          { id: "bg-2", toolName: "build", startedAt: Date.now() - 3000, completedAt: Date.now(), status: "failed", error: "timeout" },
+        ]),
+      );
+      const result = await handleCommand("/eval report", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("Background Tasks");
+      // Cleanup
+      fs.rmSync(path.join(agentDir, "bg-tasks.json"), { force: true });
     });
   });
 });

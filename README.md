@@ -47,7 +47,7 @@
 <details>
 <summary><strong>Table of Contents</strong></summary>
 
-- [What's New](#whats-new-in-v0290)
+- [What's New](#whats-new-in-v0300)
 - [The Problem](#the-problem)
 - [The Solution](#the-solution)
 - [Quick Start](#quick-start)
@@ -80,19 +80,24 @@
 
 ---
 
-## What's New in v0.29.0
+## What's New in v0.30.0
 
-> **Ecosystem parity — the knowledge graph wires up.**
+> **Agent hardening — trust, durability, and insight.**
 
-Memories now auto-relate after extraction, building a knowledge graph of connected insights across sessions. Admin tools for memory health diagnostics, repair, config, and reflection are fully wired. Stale references cleaned up.
+The agent now asks before delegating, persists background task state across crashes, and gives you a real analytics dashboard in `/eval report`.
 
 | Feature | What it does |
 |:---|:---|
-| **Auto-relate memories** | After each successful extraction, `autoRelateMemory` finds and links semantically similar memories — builds a knowledge graph automatically |
-| **Stale reference cleanup** | `aman-claude-code` → `aman-plugin` across all docs |
+| **Delegation confirmation** | Agent prompts you before executing `delegate_task` or `team_run` — no silent autonomous work |
+| **Persistent background tasks** | Background task state saved to `~/.aman-agent/bg-tasks.json` — survives crashes, visible in `/eval report` |
+| **Rich `/eval report`** | Shows trust score, sentiment trend, energy distribution, burnout risk, frustration correlations, and background task stats |
 
 <details>
 <summary><strong>Highlights from earlier releases</strong></summary>
+
+**v0.29 — Ecosystem parity**
+- Auto-relate memories after extraction (knowledge graph edges)
+- Stale reference cleanup
 
 **v0.28 — Learning loop completion**
 - Rejection feedback, cross-session reinforcement, skill merging + versioning

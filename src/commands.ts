@@ -60,7 +60,10 @@ import {
 import {
   loadUserModel,
   defaultModelPath,
+  computeProfile,
+  predictBurnout,
 } from "./user-model.js";
+import { loadTaskLog } from "./background.js";
 
 // ── aman engine layers (Phase 5: replace file IO + mcpWrite for identity/rules) ──
 import {
@@ -805,11 +808,65 @@ async function handleEvalCommand(
   }
   if (action === "report") {
     const evalFile = path.join(home, ".aeval", "eval.md");
-    if (!fs.existsSync(evalFile)) {
-      return { handled: true, output: pc.dim("No eval report found. Log milestones with /eval milestone <text>.") };
+    const lines: string[] = [pc.bold("📊 Eval Report")];
+
+    // Raw eval log
+    if (fs.existsSync(evalFile)) {
+      lines.push("", fs.readFileSync(evalFile, "utf-8").trim());
+    } else {
+      lines.push("", pc.dim("No eval log yet. Use /eval milestone <text> to start."));
     }
-    const content = fs.readFileSync(evalFile, "utf-8").trim();
-    return { handled: true, output: [pc.bold("Eval Report"), "", content].join("\n") };
+
+    // Analytics from user model
+    try {
+      const model = await loadUserModel();
+      if (model && model.sessions.length >= 3) {
+        const profile = computeProfile(model.sessions, model.profile.totalSessions);
+        const burnout = predictBurnout(model.sessions);
+        lines.push("", pc.bold("── Analytics ──"));
+        lines.push(`  Sessions tracked: ${pc.cyan(String(profile.totalSessions))}`);
+        lines.push(`  Trust score:      ${pc.cyan(profile.trustScore.toFixed(2))}`);
+        lines.push(`  Sentiment trend:  ${pc.cyan(profile.sentimentTrend)}`);
+
+        // Energy distribution
+        const topEnergy = Object.entries(profile.energyDistribution)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 2)
+          .map(([k, v]) => `${k} ${(v * 100).toFixed(0)}%`);
+        lines.push(`  Top energy:       ${pc.cyan(topEnergy.join(", "))}`);
+
+        // Burnout
+        const riskColor = burnout.risk > 0.7 ? pc.red : burnout.risk > 0.4 ? pc.yellow : pc.green;
+        lines.push(`  Burnout risk:     ${riskColor((burnout.risk * 100).toFixed(0) + "%")} ${burnout.factors.length > 0 ? pc.dim("(" + burnout.factors.join(", ") + ")") : ""}`);
+
+        // Frustration correlations
+        const cors = Object.entries(profile.frustrationCorrelations)
+          .filter(([, v]) => Math.abs(v) > 0.3)
+          .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+          .slice(0, 3);
+        if (cors.length > 0) {
+          lines.push(`  Frustration corr: ${cors.map(([k, v]) => `${k} ${v > 0 ? "↑" : "↓"}${Math.abs(v).toFixed(2)}`).join(", ")}`);
+        }
+      }
+    } catch {
+      // User model unavailable — skip analytics silently
+    }
+
+    // Background task history
+    try {
+      const taskLog = loadTaskLog();
+      if (taskLog.length > 0) {
+        const completed = taskLog.filter((t) => t.status === "completed").length;
+        const failed = taskLog.filter((t) => t.status === "failed").length;
+        const interrupted = taskLog.filter((t) => t.status === "interrupted").length;
+        lines.push("", pc.bold("── Background Tasks ──"));
+        lines.push(`  Total: ${taskLog.length}  ✅ ${completed}  ❌ ${failed}  ⚠️ ${interrupted}`);
+      }
+    } catch {
+      // Task log unavailable — skip
+    }
+
+    return { handled: true, output: lines.join("\n") };
   }
   return { handled: true, output: pc.yellow(`Unknown action: /eval ${action}. Use /eval, /eval report, or /eval milestone <text>.`) };
 }

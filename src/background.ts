@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 import pc from "picocolors";
 import type { McpManager } from "./mcp/client.js";
 import { log } from "./logger.js";
@@ -31,9 +34,69 @@ const NEVER_BACKGROUND = new Set([
   "avatar_prompt",
 ]);
 
-/**
- * Check if a tool call should run in background based on its name.
- */
+// ── Persistent task log ────────────────────────────────────────────────────────
+
+export interface TaskLogEntry {
+  id: string;
+  toolName: string;
+  startedAt: number;
+  completedAt?: number;
+  status: "running" | "completed" | "failed" | "interrupted";
+  resultPreview?: string;
+  error?: string;
+}
+
+const TASK_LOG_DIR = path.join(os.homedir(), ".aman-agent");
+const TASK_LOG_FILE = path.join(TASK_LOG_DIR, "bg-tasks.json");
+const MAX_LOG_ENTRIES = 50;
+
+export function loadTaskLog(): TaskLogEntry[] {
+  try {
+    if (!fs.existsSync(TASK_LOG_FILE)) return [];
+    const raw = fs.readFileSync(TASK_LOG_FILE, "utf-8");
+    return JSON.parse(raw) as TaskLogEntry[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveTaskLog(entries: TaskLogEntry[]): void {
+  try {
+    if (!fs.existsSync(TASK_LOG_DIR)) fs.mkdirSync(TASK_LOG_DIR, { recursive: true });
+    // Keep only recent entries
+    const trimmed = entries.slice(-MAX_LOG_ENTRIES);
+    fs.writeFileSync(TASK_LOG_FILE, JSON.stringify(trimmed, null, 2));
+  } catch (err) {
+    log.debug("background", "Failed to save task log", err);
+  }
+}
+
+function logTaskStart(task: BackgroundTask): void {
+  const entries = loadTaskLog();
+  // Mark any stale "running" entries as interrupted (from prior crash)
+  for (const e of entries) {
+    if (e.status === "running") e.status = "interrupted";
+  }
+  entries.push({
+    id: task.id,
+    toolName: task.toolName,
+    startedAt: task.startedAt,
+    status: "running",
+  });
+  saveTaskLog(entries);
+}
+
+function logTaskComplete(task: BackgroundTask): void {
+  const entries = loadTaskLog();
+  const entry = entries.find((e) => e.id === task.id);
+  if (entry) {
+    entry.completedAt = Date.now();
+    entry.status = task.error ? "failed" : "completed";
+    entry.resultPreview = (task.result || "").slice(0, 200);
+    entry.error = task.error;
+  }
+  saveTaskLog(entries);
+}
 export function shouldRunInBackground(toolName: string): boolean {
   if (NEVER_BACKGROUND.has(toolName)) return false;
   if (BACKGROUND_ELIGIBLE.has(toolName)) return true;
@@ -68,17 +131,20 @@ export class BackgroundTaskManager {
         (result) => {
           task.result = result;
           task.done = true;
+          logTaskComplete(task);
           return result;
         },
         (error) => {
           task.error = error instanceof Error ? error.message : String(error);
           task.done = true;
+          logTaskComplete(task);
           return `Error: ${task.error}`;
         },
       ),
     };
 
     this.tasks.set(id, task);
+    logTaskStart(task);
     process.stdout.write(pc.dim(`  [${toolName} running in background (${id})...]\n`));
     return task;
   }

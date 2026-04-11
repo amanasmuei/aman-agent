@@ -778,6 +778,21 @@ ${knowledgeItem.content}
             // Handle delegate_task virtual tool
             if (toolUse.name === "delegate_task" && mcpManager) {
               const input = toolUse.input as { profile: string; task: string };
+              // Confirmation: ask user before delegating
+              const confirmed = await new Promise<boolean>((resolve) => {
+                rl.question(
+                  pc.cyan(`  Delegate to ${pc.bold(input.profile)}? `) + pc.dim(`"${input.task.slice(0, 80)}${input.task.length > 80 ? "..." : ""}" (y/N) `),
+                  (answer) => resolve(answer.toLowerCase() === "y"),
+                );
+              });
+              if (!confirmed) {
+                return {
+                  type: "tool_result" as const,
+                  tool_use_id: toolUse.id,
+                  content: "User declined delegation.",
+                  is_error: true,
+                };
+              }
               process.stdout.write(pc.dim(`\n  [delegating to ${input.profile}...]\n\n`));
               const result = await delegateTask(input.task, input.profile, client, mcpManager, { tools, hooksConfig });
               const output = result.success
@@ -793,6 +808,21 @@ ${knowledgeItem.content}
             // Handle team_run virtual tool
             if (toolUse.name === "team_run" && mcpManager) {
               const input = toolUse.input as { team: string; task: string };
+              // Confirmation: ask user before launching team
+              const confirmed = await new Promise<boolean>((resolve) => {
+                rl.question(
+                  pc.cyan(`  Run team ${pc.bold(input.team)}? `) + pc.dim(`"${input.task.slice(0, 80)}${input.task.length > 80 ? "..." : ""}" (y/N) `),
+                  (answer) => resolve(answer.toLowerCase() === "y"),
+                );
+              });
+              if (!confirmed) {
+                return {
+                  type: "tool_result" as const,
+                  tool_use_id: toolUse.id,
+                  content: "User declined team execution.",
+                  is_error: true,
+                };
+              }
               const team = loadTeam(input.team);
               if (!team) {
                 return {

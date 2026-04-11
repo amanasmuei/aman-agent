@@ -162,8 +162,14 @@ export function createCopilotClient(model?: string): LLMClient {
       );
 
       return new Promise((resolve, reject) => {
+        // The GitHub Copilot CLI renamed its non-interactive flag from
+        // --print (positional prompt) to --prompt <text>. The old form
+        // was silently broken in v0.30 and earlier once Copilot shipped
+        // the rename. Surfaced by an A2A round-trip smoke test on
+        // 2026-04-11: `copilot --print` now errors with "unknown option
+        // '--print' (Did you mean --prompt?)".
         const args = [
-          "--print",
+          "--prompt", prompt,
           "--output-format", "json",
           "--silent",
           "--no-custom-instructions",
@@ -172,9 +178,6 @@ export function createCopilotClient(model?: string): LLMClient {
         if (model) {
           args.push("--model", model);
         }
-
-        // Pass prompt as the positional argument
-        args.push(prompt);
 
         const proc = spawn("copilot", args, {
           stdio: ["pipe", "pipe", "pipe"],

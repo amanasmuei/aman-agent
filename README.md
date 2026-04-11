@@ -47,7 +47,7 @@
 <details>
 <summary><strong>Table of Contents</strong></summary>
 
-- [What's New](#whats-new-in-v0240)
+- [What's New](#whats-new-in-v0260)
 - [The Problem](#the-problem)
 - [The Solution](#the-solution)
 - [Quick Start](#quick-start)
@@ -80,25 +80,29 @@
 
 ---
 
-## What's New in v0.24.0
+## What's New in v0.26.0
 
-> **Session telemetry, post-mortem analysis, and a smarter feedback loop.**
+> **Your agent learns new skills from its own sessions.**
 
-The agent now passively observes what happens during a session — tool calls, file changes, sentiment shifts, blockers, milestones — and on session end can generate a structured post-mortem with actionable patterns stored back as memories.
+When a post-mortem runs, the LLM now proposes 0–2 reusable procedures it noticed you demonstrated. You accept or reject each one via a simple prompt at session end. Accepted skills are written to `~/.askill/skills.md` with embedded trigger keywords and **auto-activate** on subsequent sessions — zero extra LLM calls.
 
 | Feature | What it does |
 |:---|:---|
-| **Observation system** | Passive event capture: tool calls, errors, file changes, sentiment, topic shifts, blockers, milestones — all written to JSONL, never blocking the user |
-| **Post-mortem reports** | LLM-generated session analysis with goals, completed work, blockers, decisions, sentiment arc, recurring patterns, and recommendations |
-| **Smart auto-trigger** | Reports generate automatically when sessions hit ≥3 tool errors, ≥2 blockers, &gt;60min, abandoned plan steps, or sustained frustration |
-| **Pattern memory loop** | Recurring patterns from post-mortems are stored as `pattern` memories — your AI learns from its own session history |
-| **`/observe` dashboard** | Live session stats: tool calls, errors, files changed, blockers, milestones, topic shifts |
-| **`/postmortem` commands** | Generate now, view last, list all, or `--since 7d` for cross-session trend analysis |
-| **Eval reliability fix** | `/eval report` now uses `fs.existsSync` instead of an ANSI-sensitive prefix check |
-| **CI dependency stability** | Switched `npm ci` → `npm install` to handle platform-specific native deps |
+| **Skill crystallization** | Post-mortems identify reusable procedures → opt-in prompt → saved as auto-triggering skills |
+| **Runtime trigger matching** | Crystallized skills merge with hardcoded skill triggers — keyword match fires both |
+| **`/skills crystallize`** | Manually crystallize skills from the most recent post-mortem JSON sidecar |
+| **`/skills list --auto`** | List all crystallized skills with dates, confidence, and trigger keywords |
+| **Post-mortem JSON sidecar** | Every post-mortem now writes a `.json` alongside the `.md` for lossless re-parsing |
+| **Extended LLM schema** | Post-mortem prompt includes crystallization rules — narrow, reusable, confidence-gated |
 
 <details>
 <summary><strong>Highlights from earlier releases</strong></summary>
+
+**v0.24 — Observation & post-mortem**
+- Passive session telemetry (tool calls, errors, file changes, sentiment, blockers)
+- LLM-generated post-mortem reports with smart auto-trigger
+- Pattern memory loop — the agent learns from its own session history
+- `/observe` dashboard, `/postmortem` commands
 
 **v0.18 — User onboarding**
 - Interactive first-run setup capturing name, role, expertise, communication style
@@ -1044,7 +1048,7 @@ On session end, if any smart trigger fires (≥3 tool errors, ≥2 blockers, &gt
 | `/rules` | View guardrails `[add\|remove\|toggle ...]` |
 | `/workflows` | View workflows `[add\|remove ...]` |
 | `/tools` | View tools `[add\|remove ...]` |
-| `/skills` | View skills `[install\|uninstall ...]` |
+| `/skills` | View skills `[install\|uninstall\|crystallize\|list --auto]` |
 | `/eval` | View evaluation `[milestone ...]` |
 | `/memory` | View memories `[search\|clear\|timeline]` |
 | `/observe` | Live session telemetry dashboard `[pause\|resume]` |

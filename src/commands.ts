@@ -51,6 +51,11 @@ import {
   analyzePostmortemRange,
   formatPostmortemMarkdown,
 } from "./postmortem.js";
+import {
+  validateCandidate,
+  writeSkillToFile,
+  appendCrystallizationLog,
+} from "./crystallization.js";
 
 // ── aman engine layers (Phase 5: replace file IO + mcpWrite for identity/rules) ──
 import {
@@ -566,13 +571,116 @@ async function handleSkillsCommand(
     }
     return { handled: true, output: [pc.bold(`Skills matching "${query}":`), ...matches].join("\n") };
   }
+  if (action === "list") {
+    const autoOnly = args.includes("--auto");
+    if (autoOnly) {
+      const logPath = path.join(os.homedir(), ".aman-agent", "crystallization-log.json");
+      try {
+        const content = fs.readFileSync(logPath, "utf-8");
+        const entries = JSON.parse(content) as Array<{
+          name: string;
+          createdAt: string;
+          fromPostmortem: string;
+          confidence: number;
+          triggers: string[];
+        }>;
+        if (entries.length === 0) {
+          return { handled: true, output: pc.dim("No crystallized skills yet.") };
+        }
+        const lines = [pc.bold(`Crystallized skills (${entries.length}):`)];
+        for (const entry of entries) {
+          const date = entry.createdAt.slice(0, 10);
+          lines.push(`  ${pc.cyan(entry.name)} (${date}, conf ${entry.confidence})`);
+          lines.push(pc.dim(`    triggers: ${entry.triggers.join(", ")}`));
+        }
+        return { handled: true, output: lines.join("\n") };
+      } catch {
+        return { handled: true, output: pc.dim("No crystallized skills yet.") };
+      }
+    }
+    const content = readEcosystemFile(path.join(home, ".askill", "skills.md"), "skills (askill)");
+    return { handled: true, output: content };
+  }
+  if (action === "crystallize") {
+    const pmDir = path.join(os.homedir(), ".acore", "postmortems");
+    try {
+      const files = fs.readdirSync(pmDir);
+      const jsonFiles = files.filter((f) => f.endsWith(".json")).sort().reverse();
+      if (jsonFiles.length === 0) {
+        return {
+          handled: true,
+          output: pc.dim("No post-mortems found. Run a session that triggers a post-mortem first."),
+        };
+      }
+      const latest = jsonFiles[0];
+      const content = fs.readFileSync(path.join(pmDir, latest), "utf-8");
+      const report = JSON.parse(content);
+      if (
+        !report.crystallizationCandidates ||
+        report.crystallizationCandidates.length === 0
+      ) {
+        return {
+          handled: true,
+          output: pc.dim(`No crystallization candidates in the most recent post-mortem (${latest}). Run a longer session or wait for the next auto-postmortem.`),
+        };
+      }
+
+      const skillsMdPath = path.join(os.homedir(), ".askill", "skills.md");
+      const logPath = path.join(os.homedir(), ".aman-agent", "crystallization-log.json");
+      const postmortemFilename = latest.replace(/\.json$/, ".md");
+
+      const lines: string[] = [
+        pc.bold(`Found ${report.crystallizationCandidates.length} candidate(s) in ${latest}:`),
+      ];
+      let written = 0;
+      for (const raw of report.crystallizationCandidates) {
+        const candidate = validateCandidate(raw);
+        if (!candidate) {
+          const rawName = (raw as { name?: string }).name ?? "unknown";
+          lines.push(pc.dim(`  ⊘ ${rawName} — failed validation`));
+          continue;
+        }
+        const result = await writeSkillToFile(candidate, skillsMdPath, postmortemFilename);
+        if (result.written) {
+          written++;
+          lines.push(pc.green(`  ✓ Crystallized: ${candidate.name}`));
+          await appendCrystallizationLog(
+            {
+              name: candidate.name,
+              createdAt: new Date().toISOString(),
+              fromPostmortem: postmortemFilename,
+              confidence: candidate.confidence,
+              triggers: candidate.triggers,
+            },
+            logPath,
+          );
+        } else {
+          lines.push(pc.yellow(`  ⊘ ${candidate.name} — ${result.reason}`));
+        }
+      }
+
+      if (written > 0) {
+        lines.push("");
+        lines.push(pc.dim(`Crystallized skills will auto-activate in your next session.`));
+      }
+
+      return { handled: true, output: lines.join("\n") };
+    } catch (err) {
+      return {
+        handled: true,
+        output: pc.red(`Failed to load post-mortems: ${err instanceof Error ? err.message : String(err)}`),
+      };
+    }
+  }
   if (action === "help") {
     return { handled: true, output: [
       pc.bold("Skills commands:"),
-      `  ${pc.cyan("/skills")}                    View installed skills`,
-      `  ${pc.cyan("/skills install")} <name>      Install a skill`,
-      `  ${pc.cyan("/skills uninstall")} <name>    Uninstall a skill`,
-      `  ${pc.cyan("/skills search")} <query>       Search skills by name/description`,
+      `  ${pc.cyan("/skills")}                      View installed skills`,
+      `  ${pc.cyan("/skills install")} <name>        Install a skill`,
+      `  ${pc.cyan("/skills uninstall")} <name>      Uninstall a skill`,
+      `  ${pc.cyan("/skills search")} <query>         Search skills by name/description`,
+      `  ${pc.cyan("/skills crystallize")}            Crystallize skills from most recent post-mortem`,
+      `  ${pc.cyan("/skills list --auto")}            List crystallized (auto-created) skills`,
     ].join("\n") };
   }
   return { handled: true, output: pc.yellow(`Unknown action: /skills ${action}. Try /skills --help`) };
@@ -1124,7 +1232,7 @@ function handleHelp(): CommandResult {
       `  ${pc.cyan("/rules")}        View rules [add|remove|toggle ...]`,
       `  ${pc.cyan("/workflows")}    View workflows [add|remove ...]`,
       `  ${pc.cyan("/akit")}         Manage tools [add|remove <tool>]`,
-      `  ${pc.cyan("/skills")}       View skills [install|uninstall ...]`,
+      `  ${pc.cyan("/skills")}       View skills [install|uninstall|crystallize|list --auto]`,
       `  ${pc.cyan("/eval")}         View evaluation [milestone ...]`,
       `  ${pc.cyan("/memory")}       View recent memories [search|fts|since|stats|export|clear|timeline]`,
       `  ${pc.cyan("/reminder")}     Manage reminders [set|check|done]`,

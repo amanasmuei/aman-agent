@@ -4,6 +4,7 @@ import os from "node:os";
 import { readObservationEvents, type ObservationSession } from "./observation.js";
 import type { LLMClient, Message } from "./llm/types.js";
 import { log } from "./logger.js";
+import type { SkillCandidate } from "./crystallization.js";
 
 // ── Types ──
 
@@ -23,6 +24,7 @@ export interface PostmortemReport {
   sentimentArc: string;
   patterns: string[];
   recommendations: string[];
+  crystallizationCandidates?: SkillCandidate[];
 }
 
 // ── Default directories ──
@@ -92,8 +94,28 @@ Return ONLY valid JSON matching this schema (no markdown, no explanation):
   "decisions": ["key choices made with rationale"],
   "sentimentArc": "how mood evolved during session",
   "patterns": ["recurring behaviors worth remembering for future sessions"],
-  "recommendations": ["actionable suggestions for next session"]
-}`;
+  "recommendations": ["actionable suggestions for next session"],
+  "crystallizationCandidates": [
+    {
+      "name": "lowercase-kebab-name",
+      "description": "1-sentence description of when this would be useful",
+      "triggers": ["3-8", "trigger", "keywords"],
+      "approach": "1-paragraph context: when and why to use this procedure",
+      "steps": ["ordered step 1", "ordered step 2"],
+      "gotchas": ["common mistake 1"],
+      "confidence": 0.0
+    }
+  ]
+}
+
+CRYSTALLIZATION RULES:
+- Only suggest 0-2 candidates per session — if nothing qualifies, return an empty array
+- Only suggest REUSABLE procedures (not one-off tasks specific to today's work)
+- The user must have demonstrated the procedure in this session
+- Confidence < 0.6 → don't suggest at all
+- Skip vague things like "use library X" — that's not procedural knowledge
+- Prefer narrow specific procedures over broad generalizations
+- Trigger keywords should be highly specific (avoid generic words like "code", "fix", "the")`;
 
 export async function generatePostmortemReport(
   sessionId: string,
@@ -191,6 +213,9 @@ ${obsSnapshot.join("\n")}`;
       sentimentArc: parsed.sentimentArc ?? "",
       patterns: parsed.patterns ?? [],
       recommendations: parsed.recommendations ?? [],
+      crystallizationCandidates: Array.isArray(parsed.crystallizationCandidates)
+        ? parsed.crystallizationCandidates
+        : undefined,
     };
   } catch (err) {
     log.debug("postmortem", "Failed to generate post-mortem", err);
@@ -275,6 +300,18 @@ export function formatPostmortemMarkdown(report: PostmortemReport): string {
     lines.push("");
   }
 
+  if (
+    report.crystallizationCandidates &&
+    report.crystallizationCandidates.length > 0
+  ) {
+    lines.push("## Crystallization Candidates");
+    report.crystallizationCandidates.forEach((c) => {
+      lines.push(`- **${c.name}** (confidence ${c.confidence})`);
+      lines.push(`  ${c.description}`);
+    });
+    lines.push("");
+  }
+
   return lines.join("\n");
 }
 
@@ -293,6 +330,14 @@ export async function savePostmortem(
 
   const markdown = formatPostmortemMarkdown(report);
   await fs.writeFile(filePath, markdown, "utf-8");
+
+  // Also write a JSON sidecar for lossless re-parsing
+  const jsonPath = filePath.replace(/\.md$/, ".json");
+  try {
+    await fs.writeFile(jsonPath, JSON.stringify(report, null, 2), "utf-8");
+  } catch (err) {
+    log.debug("postmortem", "JSON sidecar write failed", err);
+  }
 
   return filePath;
 }

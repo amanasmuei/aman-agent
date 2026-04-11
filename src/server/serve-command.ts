@@ -28,34 +28,12 @@ export interface ServeOptions {
  * NOTE: `running.stop()` does not drain in-flight `agent.delegate` calls —
  * mid-flight delegations are cut off at shutdown. Acceptable for MVP.
  */
-/**
- * Synthetic config used when AMAN_AGENT_FAKE_LLM=1 and no real config
- * exists on disk. Lets hermetic CI/integration tests run the full serve
- * pipeline without pre-seeding a user config. NEVER used in production —
- * the fake flag gates both this synthetic default AND the fake LLM client
- * in src/llm/index.ts, so a production run with the flag accidentally set
- * still produces only fake-LLM output, never real API calls.
- */
-const FAKE_LLM_SYNTHETIC_CONFIG: AgentConfig = {
-  provider: "anthropic",
-  apiKey: "",
-  model: "claude-sonnet-4-6",
-  hooks: {},
-};
-
 export async function runServe(opts: ServeOptions): Promise<void> {
-  let config: AgentConfig | null = loadConfig();
+  const config: AgentConfig | null = loadConfig();
   if (!config) {
-    // In fake-LLM mode (hermetic tests), accept a missing config by
-    // substituting a synthetic default. pickLLMClient sees the fake
-    // env var and returns the stub client regardless of config.provider.
-    if (process.env.AMAN_AGENT_FAKE_LLM === "1") {
-      config = FAKE_LLM_SYNTHETIC_CONFIG;
-    } else {
-      throw new Error(
-        "aman-agent is not configured. Run `aman-agent` once interactively to set up your provider before starting serve mode.",
-      );
-    }
+    throw new Error(
+      "aman-agent is not configured. Run `aman-agent` once interactively to set up your provider before starting serve mode.",
+    );
   }
   const model = config.model ?? "claude-sonnet-4-6";
 

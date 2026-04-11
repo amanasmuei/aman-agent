@@ -52,13 +52,29 @@ export interface AgentConfig {
   memory?: MemoryConfig;
 }
 
-const CONFIG_DIR = path.join(os.homedir(), ".aman-agent");
-const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
+/**
+ * Resolve the aman-agent config directory, honoring `AMAN_AGENT_HOME`
+ * if set. This matches the behavior of `src/server/registry.ts` so that
+ * tests and tooling can isolate state via a single environment variable.
+ *
+ * Previously this module hardcoded `os.homedir()`, which broke hermetic
+ * test isolation — child processes spawned with `AMAN_AGENT_HOME=<tmp>`
+ * would still read config from the developer's real `~/.aman-agent/`.
+ * Recorded as feedback memory `feedback_aman_agent_hermetic_tests.md`.
+ */
+function configDir(): string {
+  return process.env.AMAN_AGENT_HOME || path.join(os.homedir(), ".aman-agent");
+}
+
+function configPath(): string {
+  return path.join(configDir(), "config.json");
+}
 
 export function loadConfig(): AgentConfig | null {
-  if (!fs.existsSync(CONFIG_PATH)) return null;
+  const p = configPath();
+  if (!fs.existsSync(p)) return null;
   try {
-    const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8")) as AgentConfig;
+    const raw = JSON.parse(fs.readFileSync(p, "utf-8")) as AgentConfig;
     raw.hooks = { ...DEFAULT_HOOKS, ...raw.hooks };
     return raw;
   } catch {
@@ -67,14 +83,14 @@ export function loadConfig(): AgentConfig | null {
 }
 
 export function saveConfig(config: AgentConfig): void {
-  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  fs.mkdirSync(configDir(), { recursive: true });
   fs.writeFileSync(
-    CONFIG_PATH,
+    configPath(),
     JSON.stringify(config, null, 2) + "\n",
     "utf-8",
   );
 }
 
 export function configExists(): boolean {
-  return fs.existsSync(CONFIG_PATH);
+  return fs.existsSync(configPath());
 }

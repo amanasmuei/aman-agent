@@ -155,8 +155,12 @@ import { delegateTask } from ${JSON.stringify(DIST_DELEGATE)};
 // Local client/mgr args are not touched on the @-path, so nulls are safe.
 const r = await delegateTask("ping", "@coder", null, null);
 console.log("RESULT=" + JSON.stringify(r));
-// Force exit: the MCP streamable HTTP client transport keeps the event
-// loop alive even after .close(), so a plain 'await' script would hang.
+// KNOWN ISSUE: the @modelcontextprotocol/sdk StreamableHTTPClientTransport
+// keeps an internal resource alive after client.close() + transport.close()
+// + terminateSession(), so a plain 'await' script does not exit cleanly.
+// This is a documented follow-up (see README and docs/superpowers/plans/).
+// For the interactive REPL path it's a tiny per-call leak released on /quit.
+// For non-REPL callers, force exit is required.
 process.exit(0);
 `;
     const caller = spawn(

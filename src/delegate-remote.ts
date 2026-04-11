@@ -127,10 +127,13 @@ export async function delegateRemote(
       error: normalized,
     };
   } finally {
-    try {
-      await client.close();
-    } catch {
-      /* best effort */
-    }
+    // Tear down in order: client (releases SDK state) → transport session
+    // (tells the server to drop the session) → transport (aborts any pending
+    // fetch/SSE keepalive that would otherwise pin the event loop open).
+    // All three are best-effort: any throw here is logged and swallowed so
+    // a teardown failure never masks a real result from the caller.
+    try { await client.close(); } catch { /* best effort */ }
+    try { await transport.terminateSession(); } catch { /* best effort */ }
+    try { await transport.close(); } catch { /* best effort */ }
   }
 }

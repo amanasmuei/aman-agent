@@ -22,6 +22,22 @@ jobs:
       - run: npm run build
       - run: npm test
 
-      - run: npm publish --access public
+      # Compute the dist-tag from the package.json version. Any version
+      # with a hyphen (e.g. 0.31.0-next.0, 1.0.0-beta.1, 2.0.0-rc.3) is
+      # a pre-release and goes to the `next` dist-tag. Plain semver
+      # versions go to `latest`. This prevents `npm i <pkg>` from
+      # accidentally handing users a pre-release.
+      - name: Compute dist-tag
+        id: tag
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *-* ]]; then
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Publishing $VERSION to dist-tag ${tag:-...}"
+
+      - run: npm publish --access public --tag ${{ steps.tag.outputs.tag }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

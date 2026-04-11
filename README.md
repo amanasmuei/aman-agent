@@ -8,7 +8,8 @@
 <h1 align="center">aman-agent</h1>
 
 <p align="center">
-  <strong>The AI companion that actually remembers you.</strong>
+  <strong>The AI companion that actually remembers you.</strong><br/>
+  <sub>Learns from every conversation. Recalls what matters. Runs locally. Works with any LLM.</sub>
 </p>
 
 <p align="center">
@@ -16,30 +17,41 @@
   &nbsp;
   <a href="https://github.com/amanasmuei/aman-agent/actions"><img src="https://img.shields.io/github/actions/workflow/status/amanasmuei/aman-agent/ci.yml?style=for-the-badge&logo=github&label=CI" alt="CI status" /></a>
   &nbsp;
+  <img src="https://img.shields.io/badge/tests-429_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="429 tests passing" />
+  &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/node-%E2%89%A520-brightgreen?style=flat-square&logo=node.js&logoColor=white" alt="Node.js 20+" />
   &nbsp;
-  <img src="https://img.shields.io/badge/node-%E2%89%A520-brightgreen?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js 20+" />
+  <img src="https://img.shields.io/badge/typescript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="Strict TypeScript" />
   &nbsp;
-  <a href="https://github.com/amanasmuei/aman"><img src="https://img.shields.io/badge/part_of-aman_ecosystem-ff6b35?style=for-the-badge" alt="aman ecosystem" /></a>
+  <img src="https://img.shields.io/badge/bundle-340_KB-informational?style=flat-square" alt="Bundle size: 340 KB" />
+  &nbsp;
+  <img src="https://img.shields.io/badge/LLMs-6_providers-8a2be2?style=flat-square" alt="6 LLM providers" />
+  &nbsp;
+  <a href="https://github.com/amanasmuei/aman"><img src="https://img.shields.io/badge/part_of-aman_ecosystem-ff6b35?style=flat-square" alt="aman ecosystem" /></a>
 </p>
 
 <p align="center">
-  An AI companion that learns from every conversation, recalls relevant memories per message,<br/>
-  extracts knowledge silently, and adapts to your time of day — all running locally.
+  <img src="https://raw.githubusercontent.com/amanasmuei/aman-agent/main/docs/demo/demo.gif" alt="aman-agent demo" width="760" />
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/amanasmuei/aman-agent/main/docs/demo/demo.gif" alt="aman-agent demo" width="720" />
+  <a href="#quick-start"><kbd> Quick Start </kbd></a>
+  <a href="#architecture-at-a-glance"><kbd> Architecture </kbd></a>
+  <a href="#features"><kbd> Features </kbd></a>
+  <a href="#commands"><kbd> Commands </kbd></a>
+  <a href="#supported-llms"><kbd> LLMs </kbd></a>
+  <a href="#the-ecosystem"><kbd> Ecosystem </kbd></a>
+  <a href="#faq"><kbd> FAQ </kbd></a>
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> &bull;
-  <a href="#features">Features</a> &bull;
-  <a href="#how-it-works">How It Works</a> &bull;
-  <a href="#commands">Commands</a> &bull;
-  <a href="#supported-llms">LLMs</a> &bull;
-  <a href="#the-ecosystem">Ecosystem</a> &bull;
-  <a href="#faq">FAQ</a>
+  <sub>
+    <b>Try it in 10 seconds →</b>&nbsp;&nbsp;<code>npx @aman_asmuei/aman-agent</code>
+  </sub>
 </p>
 
 ---
@@ -50,6 +62,7 @@
 - [What's New](#whats-new-in-v0300)
 - [The Problem](#the-problem)
 - [The Solution](#the-solution)
+- [Architecture at a Glance](#architecture-at-a-glance)
 - [Quick Start](#quick-start)
 - [Usage Guide](#usage-guide)
   - [Your First Conversation](#your-first-conversation)
@@ -82,15 +95,34 @@
 
 ## What's New in v0.30.0
 
-> **Agent hardening — trust, durability, and insight.**
+> **Agent hardening — trust, durability, insight.**<br/>
+> The agent now asks before delegating, persists background tasks across crashes, and ships a real analytics dashboard in `/eval report`.
 
-The agent now asks before delegating, persists background task state across crashes, and gives you a real analytics dashboard in `/eval report`.
+<table>
+<tr>
+<td width="33%" valign="top">
 
-| Feature | What it does |
-|:---|:---|
-| **Delegation confirmation** | Agent prompts you before executing `delegate_task` or `team_run` — no silent autonomous work |
-| **Persistent background tasks** | Background task state saved to `~/.aman-agent/bg-tasks.json` — survives crashes, visible in `/eval report` |
-| **Rich `/eval report`** | Shows trust score, sentiment trend, energy distribution, burnout risk, frustration correlations, and background task stats |
+**Delegation confirmation**
+
+The agent now prompts you before executing `delegate_task` or `team_run`. No more silent autonomous sub-agents — you stay in the loop on every hand-off.
+
+</td>
+<td width="33%" valign="top">
+
+**Persistent background tasks**
+
+Background task state is written to `~/.aman-agent/bg-tasks.json` on every transition — survives crashes, terminal closures, and reboots. Visible in `/eval report`.
+
+</td>
+<td width="33%" valign="top">
+
+**Rich `/eval report`**
+
+Trust score, sentiment trend, energy distribution, burnout risk, frustration correlations, and background-task stats — all in one dashboard.
+
+</td>
+</tr>
+</table>
 
 <details>
 <summary><strong>Highlights from earlier releases</strong></summary>
@@ -159,6 +191,60 @@ npx @aman_asmuei/aman-agent
 ```
 
 > **Your AI knows who it is, what it remembers, what tools it has, what rules to follow, what time it is, and what reminders are due — before you say a word.**
+
+---
+
+## Architecture at a Glance
+
+aman-agent is the **runtime** at the center of the aman ecosystem — 38 focused TypeScript modules that stitch together 7 portable memory/identity/skill layers with any LLM you want.
+
+```mermaid
+flowchart LR
+    User([You]) <--> CLI[aman-agent CLI<br/>chat loop]
+
+    CLI --> Agent[agent.ts<br/>message orchestration]
+    Agent --> Hooks[hooks.ts<br/>lifecycle events]
+
+    Agent -->|recall &amp; extract| Memory[(amem-core<br/>SQLite + vectors)]
+    Agent -->|who &amp; prefs| Identity[(acore-core<br/>identity)]
+    Agent -->|boundaries| Rules[(arules-core<br/>guardrails)]
+    Agent -->|auto-trigger| Skills[skill-engine<br/>+ crystallization]
+    Agent -->|telemetry| Obs[observation<br/>+ postmortem]
+
+    Agent --> LLM{LLM Router}
+    LLM --> Claude[Anthropic]
+    LLM --> GPT[OpenAI]
+    LLM --> Copilot[GH Copilot]
+    LLM --> Ollama[Ollama local]
+
+    Agent <--> MCP[MCP tools<br/>aman-mcp · amem]
+
+    classDef core fill:#58a6ff22,stroke:#58a6ff,color:#e6edf3,stroke-width:2px;
+    classDef store fill:#3fb95022,stroke:#3fb950,color:#e6edf3,stroke-width:2px;
+    classDef llm fill:#d29f2222,stroke:#d29f22,color:#e6edf3,stroke-width:1px;
+    class CLI,Agent,Hooks,Skills,Obs core
+    class Memory,Identity,Rules store
+    class Claude,GPT,Copilot,Ollama,LLM llm
+```
+
+<details>
+<summary><strong>How the pieces work together</strong></summary>
+
+| Piece | What it does | Where it lives |
+|:---|:---|:---|
+| `agent.ts` | The main event loop — reads your message, recalls memories, streams the LLM response, executes tools, extracts new memories | `src/agent.ts` (40 KB) |
+| `commands.ts` | 58+ slash commands (`/memory`, `/skills`, `/plan`, `/delegate`, `/eval`, `/observe`, `/postmortem`, …) | `src/commands.ts` (98 KB) |
+| `hooks.ts` | 5 lifecycle hooks that fire at startup, before/after tools, on workflow match, on session end | `src/hooks.ts` (26 KB) |
+| `memory.ts` + `memory-extractor.ts` | Per-message recall and silent, non-blocking extraction of preferences, decisions, patterns, corrections | delegates to `@aman_asmuei/amem-core@0.5` |
+| `skill-engine.ts` + `crystallization.ts` | Auto-triggers domain skills from context; promotes post-mortem lessons into reusable, versioned skills | `src/skill-engine.ts`, `src/crystallization.ts` |
+| `user-model.ts` + `personality.ts` | Cross-session trust (EMA), sentiment baseline, burnout risk, time-of-day tone shifts, wellbeing nudges | `src/user-model.ts`, `src/personality.ts` |
+| `observation.ts` + `postmortem.ts` | Passive session telemetry + LLM-generated structured post-mortems on session end | `src/observation.ts`, `src/postmortem.ts` |
+| `llm/` | 6 pluggable providers — Anthropic, OpenAI, Ollama, GitHub Copilot, OpenAI-compatible, Claude Code CLI | `src/llm/` |
+| `mcp/` | MCP v1.27 client with stdio transport and auto-reconnect | `src/mcp/` |
+
+**Stateless by default.** All state lives in `~/.acore`, `~/.arules`, `~/.aflow`, `~/.askill`, `~/.aeval`, and `~/.amem` — portable, inspectable markdown + a local SQLite file. Nothing leaves your machine except what you send to your chosen LLM.
+
+</details>
 
 ---
 
@@ -987,58 +1073,91 @@ On session end, if any smart trigger fires (≥3 tool errors, ≥2 blockers, &gt
 
 ## How It Works
 
+### Per-message flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as You
+    participant A as aman-agent
+    participant M as amem (memory)
+    participant L as LLM
+    participant T as MCP tools
+
+    U->>A: your message
+    A->>M: semantic recall (top 5)
+    M-->>A: compact index (~50–100 tok)
+    A->>A: build prompt: identity + rules + skills + memories
+    A->>L: stream request
+    L-->>A: response + tool calls
+    par parallel execution
+        A->>T: tool call 1 (guardrail-checked)
+    and
+        A->>T: tool call 2 (guardrail-checked)
+    end
+    T-->>A: results
+    A-->>U: streamed response
+    A->>M: extract memories (non-blocking)
+    A->>A: update user model + sentiment + skills
+```
+
+<details>
+<summary><strong>ASCII version (for terminals / no-Mermaid viewers)</strong></summary>
+
 ```
 ┌───────────────────────────────────────────────────────────┐
 │                    Your Terminal                          │
-│                                                          │
-│   You > tell me about our auth decisions                 │
-│                                                          │
-│   [recalling memories...]                                │
-│   Agent > Based on your previous decisions:              │
-│   - OAuth2 with PKCE (decided 2 weeks ago)               │
-│   - JWT for API tokens...                                │
-│                                                          │
-│   [1 memory stored]                                      │
+│                                                           │
+│   You > tell me about our auth decisions                  │
+│                                                           │
+│   [recalling memories...]                                 │
+│   Agent > Based on your previous decisions:               │
+│   - OAuth2 with PKCE (decided 2 weeks ago)                │
+│   - JWT for API tokens...                                 │
+│                                                           │
+│   [1 memory stored]                                       │
 └──────────────────────┬────────────────────────────────────┘
                        │
 ┌──────────────────────▼────────────────────────────────────┐
-│              aman-agent runtime                          │
-│                                                          │
-│   On Startup                                             │
-│   ┌────────────────────────────────────────────────┐     │
-│   │ 1. Load ecosystem (identity, tools, rules...)  │     │
-│   │ 2. Connect MCP servers (aman-mcp + amem)       │     │
-│   │ 3. Consolidate memory (merge/prune/promote)    │     │
-│   │ 4. Check reminders (overdue/today/upcoming)    │     │
-│   │ 5. Inject time context (morning/evening/...)   │     │
-│   │ 6. Recall session context from memory          │     │
-│   └────────────────────────────────────────────────┘     │
-│                                                          │
-│   Per Message                                            │
-│   ┌────────────────────────────────────────────────┐     │
-│   │ 1. Semantic memory recall (top 5 relevant)     │     │
-│   │ 2. Augment system prompt with memories         │     │
-│   │ 3. Stream LLM response (with retry)            │     │
-│   │ 4. Execute tools in parallel (with guardrails) │     │
-│   │ 5. Extract memories from response              │     │
-│   │    - Auto-store: preferences, facts, patterns  │     │
-│   │    - All types auto-stored silently             │     │
-│   └────────────────────────────────────────────────┘     │
-│                                                          │
-│   Context Management                                     │
-│   ┌────────────────────────────────────────────────┐     │
-│   │ Auto-trim at 80K tokens                        │     │
-│   │ LLM-powered summarization (not truncation)     │     │
-│   │ Fallback to text preview if LLM call fails     │     │
-│   └────────────────────────────────────────────────┘     │
-│                                                          │
-│   MCP Integration                                        │
-│   ┌────────────────────────────────────────────────┐     │
-│   │ aman-mcp  →  identity, tools, workflows, eval  │     │
-│   │ amem      →  memory, knowledge graph, reminders │     │
-│   └────────────────────────────────────────────────┘     │
+│              aman-agent runtime                           │
+│                                                           │
+│   On Startup                                              │
+│   ┌────────────────────────────────────────────────┐      │
+│   │ 1. Load ecosystem (identity, tools, rules...)  │      │
+│   │ 2. Connect MCP servers (aman-mcp + amem)       │      │
+│   │ 3. Consolidate memory (merge/prune/promote)    │      │
+│   │ 4. Check reminders (overdue/today/upcoming)    │      │
+│   │ 5. Inject time context (morning/evening/...)   │      │
+│   │ 6. Recall session context from memory          │      │
+│   └────────────────────────────────────────────────┘      │
+│                                                           │
+│   Per Message                                             │
+│   ┌────────────────────────────────────────────────┐      │
+│   │ 1. Semantic memory recall (top 5 relevant)     │      │
+│   │ 2. Augment system prompt with memories         │      │
+│   │ 3. Stream LLM response (with retry)            │      │
+│   │ 4. Execute tools in parallel (with guardrails) │      │
+│   │ 5. Extract memories from response              │      │
+│   │    - Auto-store: preferences, facts, patterns  │      │
+│   │    - All types auto-stored silently            │      │
+│   └────────────────────────────────────────────────┘      │
+│                                                           │
+│   Context Management                                      │
+│   ┌────────────────────────────────────────────────┐      │
+│   │ Auto-trim at 80K tokens                        │      │
+│   │ LLM-powered summarization (not truncation)     │      │
+│   │ Fallback to text preview if LLM call fails     │      │
+│   └────────────────────────────────────────────────┘      │
+│                                                           │
+│   MCP Integration                                         │
+│   ┌────────────────────────────────────────────────┐      │
+│   │ aman-mcp  →  identity, tools, workflows, eval  │      │
+│   │ amem      →  memory, knowledge graph, reminders│      │
+│   └────────────────────────────────────────────────┘      │
 └───────────────────────────────────────────────────────────┘
 ```
+
+</details>
 
 ### Session Lifecycle
 
@@ -1339,16 +1458,47 @@ This usually means an MCP server crashed on startup. Run `npx @aman_asmuei/aman-
 ```bash
 git clone https://github.com/amanasmuei/aman-agent.git
 cd aman-agent && npm install
-npm run build   # zero errors
-npm test        # 304 tests pass
+
+npm run lint    # tsc --noEmit — strict TypeScript, zero errors
+npm run build   # tsup → 340 KB ESM bundle
+npm test        # vitest run — 429 tests across 21 files
 ```
 
 PRs welcome. See [Issues](https://github.com/amanasmuei/aman-agent/issues).
 
 **Project standards:**
-- All new modules ship with tests (TDD encouraged)
-- Type errors block merge — `npm run build` must be clean
-- Commits follow conventional format (`feat:`, `fix:`, `chore:`, `docs:`)
+
+| Standard | Enforced by |
+|:---|:---|
+| All new modules ship with tests (TDD encouraged) | code review |
+| Type errors block merge | `npm run lint` in CI |
+| Build must be clean | `npm run build` in CI |
+| Commits follow conventional format (`feat:`, `fix:`, `chore:`, `docs:`) | commit history |
+| No MCP round-trips for read paths — use `@aman_asmuei/*-core` libraries directly | Engine v1 convention |
+
+<details>
+<summary><strong>Repo layout</strong></summary>
+
+```
+aman-agent/
+├── src/
+│   ├── agent.ts                  main event loop (40 KB)
+│   ├── commands.ts               58+ slash commands (98 KB)
+│   ├── hooks.ts                  lifecycle hooks (26 KB)
+│   ├── memory.ts / memory-extractor.ts
+│   ├── skill-engine.ts / crystallization.ts
+│   ├── user-model.ts / personality.ts / postmortem.ts
+│   ├── observation.ts / onboarding.ts / background.ts
+│   ├── delegate.ts / teams.ts / plans.ts
+│   ├── llm/                      6 provider implementations
+│   ├── mcp/                      MCP client (stdio + auto-reconnect)
+│   └── layers/                   ecosystem parsers
+├── test/                         21 test files, 429 tests
+├── bin/aman-agent.js             CLI entry point
+└── dist/                         built bundle (tsup)
+```
+
+</details>
 
 ---
 

@@ -925,4 +925,126 @@ describe("handleCommand", () => {
       fs.rmSync(path.join(agentDir, "bg-tasks.json"), { force: true });
     });
   });
+
+  // --- /agents (A2A discovery + health) ---
+
+  describe("/agents", () => {
+    let agentsHome: string;
+    let prevAgentsHome: string | undefined;
+
+    beforeEach(async () => {
+      const fsp = await import("node:fs/promises");
+      agentsHome = await fsp.mkdtemp(path.join(os.tmpdir(), "agents-cmd-test-"));
+      prevAgentsHome = process.env.AMAN_AGENT_HOME;
+      process.env.AMAN_AGENT_HOME = agentsHome;
+    });
+
+    afterEach(async () => {
+      const fsp = await import("node:fs/promises");
+      if (prevAgentsHome === undefined) delete process.env.AMAN_AGENT_HOME;
+      else process.env.AMAN_AGENT_HOME = prevAgentsHome;
+      await fsp.rm(agentsHome, { recursive: true, force: true });
+    });
+
+    it("/agents list reports no agents when registry is empty", async () => {
+      const result = await handleCommand("/agents list", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("No agents running.");
+    });
+
+    it("/agents list shows registered agents with name/profile/port/pid", async () => {
+      const { registerAgent } = await import("../src/server/registry.js");
+      await registerAgent({
+        name: "coder",
+        profile: "coder-profile",
+        pid: process.pid,
+        port: 45011,
+        token: "a".repeat(64),
+        started_at: Date.now() - 5_000,
+        version: "0.1.0",
+      });
+      await registerAgent({
+        name: "reviewer",
+        profile: "reviewer-profile",
+        pid: process.pid,
+        port: 45012,
+        token: "b".repeat(64),
+        started_at: Date.now() - 2_000,
+        version: "0.1.0",
+      });
+
+      const result = await handleCommand("/agents list", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("@coder");
+      expect(result.output).toContain("@reviewer");
+      expect(result.output).toContain("45011");
+      expect(result.output).toContain("45012");
+      expect(result.output).toContain(String(process.pid));
+    });
+
+    it("/agents info <name> dials the agent and returns agent.info JSON", async () => {
+      const { startAgentServer } = await import("../src/server/index.js");
+      const { McpManager } = await import("../src/mcp/client.js");
+
+      const stubLlm = {
+        async chat() {
+          return { message: { role: "assistant", content: "stub" }, toolUses: [] };
+        },
+      } as unknown as import("../src/llm/types.js").LLMClient;
+
+      const server = await startAgentServer({
+        name: "info-target",
+        profile: "default",
+        client: stubLlm,
+        mcpManager: new McpManager(),
+      });
+
+      try {
+        const result = await handleCommand("/agents info info-target", {});
+        expect(result.handled).toBe(true);
+        expect(result.output).toContain("@info-target");
+        // The printed text is the JSON body from agent.info
+        expect(result.output).toContain('"name"');
+        expect(result.output).toContain("info-target");
+        expect(result.output).toContain('"profile"');
+        expect(result.output).toContain('"pid"');
+      } finally {
+        await server.stop();
+      }
+    }, 15_000);
+
+    it("/agents info <name> reports no-such-agent when not registered", async () => {
+      const result = await handleCommand("/agents info ghost", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("No such agent: ghost");
+    });
+
+    it("/agents ping <name> reports ok and latency for a running agent", async () => {
+      const { startAgentServer } = await import("../src/server/index.js");
+      const { McpManager } = await import("../src/mcp/client.js");
+
+      const stubLlm = {
+        async chat() {
+          return { message: { role: "assistant", content: "stub" }, toolUses: [] };
+        },
+      } as unknown as import("../src/llm/types.js").LLMClient;
+
+      const server = await startAgentServer({
+        name: "ping-target",
+        profile: "default",
+        client: stubLlm,
+        mcpManager: new McpManager(),
+      });
+
+      try {
+        const result = await handleCommand("/agents ping ping-target", {});
+        expect(result.handled).toBe(true);
+        expect(result.output).toContain("@ping-target");
+        expect(result.output).toContain("ok");
+        expect(result.output).toMatch(/\d+ms/);
+      } finally {
+        await server.stop();
+      }
+    }, 15_000);
+  });
 });

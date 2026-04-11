@@ -15,6 +15,9 @@ import { runOnboarding, editProfile } from "./onboarding.js";
 import { loadShowcaseManifest, installShowcaseTemplate } from "./showcase-bridge.js";
 import { readFile, listFiles } from "./files.js";
 import { delegateTask, delegatePipeline } from "./delegate.js";
+import { listAgents, findAgent } from "./server/registry.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   createTeam,
   loadTeam,
@@ -1681,13 +1684,15 @@ Examples:
 async function handleDelegateCommand(action: string | undefined, args: string[], ctx: CommandContext): Promise<CommandResult> {
   if (!action) {
     return { handled: true, output: `Delegate commands:
-  /delegate <profile> <task>        Delegate a task to a profile
+  /delegate <profile> <task>        Delegate a task to a local profile
+  /delegate @<name> <task>          Delegate to another running aman-agent (A2A)
   /delegate pipeline <p1> <p2> ...  Run a sequential pipeline
   /delegate help                    Show help
 
 Examples:
   /delegate writer Write a blog post about AI companions
   /delegate coder Review this code for security issues
+  /delegate @reviewer Review PR #42 for security issues
   /delegate pipeline writer,researcher Write and fact-check an article about quantum computing` };
   }
 
@@ -1698,8 +1703,11 @@ The sub-agent runs with its own identity, rules, and skills but shares
 your memory and tools. Results come back to you.
 
 Usage:
-  /delegate <profile> <task>
+  /delegate <profile> <task>             Local sub-agent with named profile
+  /delegate @<name> <task>               Remote aman-agent (A2A via MCP)
   /delegate pipeline <profile1>,<profile2> <task>
+
+Use /agents list to see which remote agents are running.
 
 The pipeline mode passes each agent's output to the next:
   writer drafts → researcher reviews → writer polishes` };
@@ -1765,6 +1773,98 @@ The pipeline mode passes each agent's output to the next:
   return {
     handled: true,
     output: `\n${pc.bold(`[${profile}]`)} ${pc.green("✓")}${meta.length > 0 ? " " + pc.dim(`(${meta.join(", ")})`) : ""}\n\n${result.response}`,
+  };
+}
+
+// --- Agents (A2A discovery + health) ---
+
+async function handleAgentsCommand(
+  action: string | undefined,
+  args: string[],
+): Promise<CommandResult> {
+  const sub = action ?? "list";
+
+  if (sub === "list") {
+    const all = await listAgents();
+    if (all.length === 0) {
+      return { handled: true, output: "No agents running." };
+    }
+    const rows = all.map((a) => {
+      const uptime = Math.round((Date.now() - a.started_at) / 1000);
+      return `  @${a.name.padEnd(12)} ${a.profile.padEnd(12)} pid=${String(a.pid).padEnd(6)} port=${a.port}  up ${uptime}s`;
+    });
+    return { handled: true, output: ["Running agents:", ...rows].join("\n") };
+  }
+
+  if (sub === "info") {
+    const name = args[0];
+    if (!name) {
+      return { handled: true, output: pc.yellow("Usage: /agents info <name>") };
+    }
+    const entry = await findAgent(name);
+    if (!entry) {
+      return { handled: true, output: `No such agent: ${name}` };
+    }
+    const url = new URL(`http://127.0.0.1:${entry.port}/mcp`);
+    const transport = new StreamableHTTPClientTransport(url, {
+      requestInit: { headers: { Authorization: `Bearer ${entry.token}` } },
+    });
+    const client = new Client({ name: "aman-agent-cli", version: "0.1.0" });
+    try {
+      await client.connect(transport);
+      const res = await client.callTool({ name: "agent.info", arguments: {} });
+      const text = Array.isArray(res.content)
+        ? (res.content as Array<{ type: string; text?: string }>)
+            .filter((c) => c.type === "text")
+            .map((c) => c.text ?? "")
+            .join("")
+        : "";
+      return { handled: true, output: `@${entry.name}:\n${text}` };
+    } catch (err) {
+      return {
+        handled: true,
+        output: pc.red(
+          `Error calling @${name}: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      };
+    } finally {
+      try {
+        await client.close();
+      } catch {
+        /* best effort */
+      }
+    }
+  }
+
+  if (sub === "ping") {
+    const name = args[0];
+    if (!name) {
+      return { handled: true, output: pc.yellow("Usage: /agents ping <name>") };
+    }
+    const entry = await findAgent(name);
+    if (!entry) {
+      return { handled: true, output: `No such agent: ${name}` };
+    }
+    const t0 = Date.now();
+    try {
+      const res = await fetch(`http://127.0.0.1:${entry.port}/health`, {
+        headers: { Authorization: `Bearer ${entry.token}` },
+      });
+      if (!res.ok) {
+        return { handled: true, output: `@${name}: HTTP ${res.status}` };
+      }
+      return { handled: true, output: `@${name}: ok (${Date.now() - t0}ms)` };
+    } catch (err) {
+      return {
+        handled: true,
+        output: `@${name}: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  return {
+    handled: true,
+    output: pc.yellow("Usage: /agents [list|info <name>|ping <name>]"),
   };
 }
 
@@ -2311,7 +2411,7 @@ const KNOWN_COMMANDS = new Set([
   "quit", "exit", "q", "help", "clear", "model", "identity", "rules",
   "workflows", "tools", "akit", "skills", "eval", "memory", "status", "doctor",
   "save", "decisions", "export", "debug", "reset", "reminder",
-  "update", "upgrade", "plan", "profile", "delegate", "team", "showcase", "file",
+  "update", "upgrade", "plan", "profile", "delegate", "team", "agents", "showcase", "file",
   "observe", "postmortem",
 ]);
 
@@ -2454,6 +2554,8 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
       return handleDelegateCommand(action, args, ctx);
     case "team":
       return handleTeamCommand(action, args, ctx);
+    case "agents":
+      return handleAgentsCommand(action, args);
     case "reminder":
       return handleReminderCommand(action, args);
     case "showcase":

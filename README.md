@@ -77,6 +77,7 @@
   - [Profiles](#your-profile-vs-agent-profiles)
   - [Delegation](#agent-delegation)
   - [Teams](#agent-teams)
+  - [Multi-agent (A2A)](#multi-agent-a2a)
   - [Daily Workflow](#daily-workflow-summary)
 - [Features](#features)
 - [How It Works](#how-it-works)
@@ -778,6 +779,62 @@ The AI auto-suggests teams when appropriate — always asks permission first.
 </details>
 
 <details>
+<summary><strong>Multi-agent (A2A)</strong> (new in v0.31)</summary>
+
+### Multi-agent (A2A)
+
+Run aman-agent as a local MCP server so other aman-agent instances — on the same machine — can delegate tasks to it via the `@name` syntax. No new protocol, no new daemon, no broker — just MCP over localhost using the existing `@modelcontextprotocol/sdk` bits.
+
+**Start a specialist agent in server mode:**
+
+```bash
+aman-agent serve --name coder --profile coder
+  ✓ Ecosystem loaded
+  ✓ registered as @coder
+  ✓ port 52341 (127.0.0.1) — token is in ~/.aman-agent/registry.json
+```
+
+Leave it running. The process binds an ephemeral localhost port and writes its `{name, pid, port, token}` into `~/.aman-agent/registry.json` (mode `0600`). On `SIGINT`/`SIGTERM` it cleans up the registry entry.
+
+**From another aman-agent instance, delegate to it:**
+
+```
+You > /agents list
+
+  Running agents:
+    @coder         coder         pid=4512   port=52341  up 34s
+
+You > /delegate @coder Refactor src/auth.ts to use async/await
+
+  [delegating to @coder...]
+  ✓ @coder completed in 12.4s
+  ...
+```
+
+**Commands:**
+
+| Command | What it does |
+|:---|:---|
+| `aman-agent serve --name X --profile Y` | Run as a local A2A server |
+| `/agents list` | Show running agents on this machine |
+| `/agents info <name>` | Call `agent.info` MCP tool on the named agent |
+| `/agents ping <name>` | Bearer-authed `/health` latency check |
+| `/delegate @<name> <task>` | Delegate via MCP to another running agent |
+
+**How it works:** Each `serve` process binds an ephemeral localhost port, mounts an MCP `StreamableHTTPServerTransport`, and writes its `{name, profile, pid, port, token}` into `~/.aman-agent/registry.json` (mode `0600`). The calling agent looks up the target in the registry, dials via `StreamableHTTPClientTransport` with the bearer token, and invokes the `agent.delegate` MCP tool. Three tools are exposed on every `serve` instance: `agent.info`, `agent.delegate`, `agent.send`.
+
+**Trust model:** Same-user, same-machine. OS file permissions on `~/.aman-agent/registry.json` are the trust boundary — if you can read the registry, you know the tokens. Cross-machine A2A is a future addition; it will need explicit auth and is out of scope for v0.31.
+
+**Known limitations (v0.31):**
+
+- **Event-loop leak on `delegateRemote`** — the MCP SDK's `StreamableHTTPClientTransport` keeps an internal resource alive after `close()` / `terminateSession()`, so a Node script that calls `delegateTask("@name", ...)` and expects clean exit must call `process.exit(0)` explicitly. The interactive REPL is unaffected (it exits via `/quit`). Follow-up investigation planned.
+- **No cross-machine A2A** — registry is a local JSON file; LAN/remote agents not supported yet.
+- **`agent.send` is in-memory only** — messages are lost if the target agent crashes before draining them.
+- **No proactive push to humans** — delivering a message to Telegram/Discord/etc. is `achannel`'s job, not aman-agent's.
+
+</details>
+
+<details>
 <summary><strong>Session Telemetry & Post-Mortems</strong> (new in v0.24)</summary>
 
 ### Session Telemetry & Post-Mortems
@@ -1179,6 +1236,7 @@ sequenceDiagram
 | `/plan` | Show active plan `[create\|done\|undo\|list\|switch\|show]` |
 | `/profile` | Your profile + agent profiles `[me\|edit\|setup\|create\|list\|show\|delete]` |
 | `/delegate` | Delegate task to a profile `[<profile> <task>\|pipeline]` |
+| `/agents` | Multi-agent A2A `[list\|info <name>\|ping <name>]` |
 | `/team` | Manage agent teams `[create\|run\|list\|show\|delete]` |
 | `/identity` | View identity `[update <section>]` `[dynamics [--json\|--reset]]` |
 | `/rules` | View guardrails `[add\|remove\|toggle ...]` |

@@ -181,6 +181,49 @@ describe("config", () => {
     });
   });
 
+  describe("orchestrator config", () => {
+    it("loads orchestrator settings from config.json", () => {
+      const config = {
+        provider: "anthropic",
+        apiKey: "sk-test-123",
+        model: "claude-sonnet-4-20250514",
+        orchestrator: {
+          maxParallelTasks: 4,
+          defaultTier: "standard",
+          requireApprovalForPhaseTransition: true,
+          taskTimeoutMs: 30000,
+          orchestrationTimeoutMs: 120000,
+        },
+      };
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config), "utf-8");
+
+      const result = loadConfig();
+      expect(result).not.toBeNull();
+      expect(result!.orchestrator).toEqual({
+        maxParallelTasks: 4,
+        defaultTier: "standard",
+        requireApprovalForPhaseTransition: true,
+        taskTimeoutMs: 30000,
+        orchestrationTimeoutMs: 120000,
+      });
+    });
+
+    it("works without orchestrator settings (backward compat)", () => {
+      const config = {
+        provider: "anthropic",
+        apiKey: "sk-test-123",
+        model: "claude-sonnet-4-20250514",
+      };
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config), "utf-8");
+
+      const result = loadConfig();
+      expect(result).not.toBeNull();
+      expect(result!.orchestrator).toBeUndefined();
+    });
+  });
+
   describe("HooksConfig observation fields", () => {
     it("accepts recordObservations and autoPostmortem flags", () => {
       const config: HooksConfig = {

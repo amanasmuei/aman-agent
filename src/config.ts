@@ -57,6 +57,12 @@ export interface AgentConfig {
     taskTimeoutMs?: number;
     orchestrationTimeoutMs?: number;
   };
+  github?: {
+    defaultRepo?: string;       // owner/repo format
+    defaultBranch?: string;     // default: "main"
+    autoCreatePR?: boolean;     // auto-create PR after orchestration
+    ciGateEnabled?: boolean;    // wait for CI before merging
+  };
 }
 
 /**

@@ -8,8 +8,8 @@
 <h1 align="center">aman-agent</h1>
 
 <p align="center">
-  <strong>The AI companion that actually remembers you.</strong><br/>
-  <sub>Learns from every conversation. Recalls what matters. Runs locally. Works with any LLM.</sub>
+  <strong>The AI companion that remembers you — and orchestrates your entire dev workflow.</strong><br/>
+  <sub>Per-message memory. Multi-agent orchestration. GitHub-native. Runs locally. Any LLM.</sub>
 </p>
 
 <p align="center">
@@ -17,7 +17,7 @@
   &nbsp;
   <a href="https://github.com/amanasmuei/aman-agent/actions"><img src="https://img.shields.io/github/actions/workflow/status/amanasmuei/aman-agent/ci.yml?style=for-the-badge&logo=github&label=CI" alt="CI status" /></a>
   &nbsp;
-  <img src="https://img.shields.io/badge/tests-865_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="865 tests passing" />
+  <img src="https://img.shields.io/badge/tests-867_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="867 tests passing" />
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
 </p>
@@ -27,7 +27,7 @@
   &nbsp;
   <img src="https://img.shields.io/badge/typescript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="Strict TypeScript" />
   &nbsp;
-  <img src="https://img.shields.io/badge/bundle-384_KB-informational?style=flat-square" alt="Bundle size: 384 KB" />
+  <img src="https://img.shields.io/badge/bundle-388_KB-informational?style=flat-square" alt="Bundle size: 388 KB" />
   &nbsp;
   <img src="https://img.shields.io/badge/LLMs-6_providers-8a2be2?style=flat-square" alt="6 LLM providers" />
   &nbsp;
@@ -78,6 +78,8 @@
   - [Customization](#customization)
   - [Showcase Templates](#showcase-templates)
   - [Profiles](#your-profile-vs-agent-profiles)
+  - [Task Orchestration](#task-orchestration)
+  - [GitHub Automation](#github-automation)
   - [Delegation](#agent-delegation)
   - [Teams](#agent-teams)
   - [Multi-agent (A2A)](#multi-agent-a2a)
@@ -99,21 +101,14 @@
 
 ## What's New in v0.39.0
 
-> **From companion to orchestrator.** All 5 phases of the Universal Master Orchestrator — shipped.
-
-### DAG-Based Task Orchestration Engine (Phase 1)
-
-aman-agent can now decompose complex requirements into parallel task graphs and execute them with multiple specialized agents:
+> **From companion to orchestrator.** Describe what you want to build — aman-agent decomposes it, delegates to specialized agents, and delivers reviewed results.
 
 ```bash
 /orchestrate Build a REST API with auth, CRUD endpoints, input validation, and tests
 ```
 
 ```
-Decomposing requirement into task DAG...
-
 ## REST API with Auth
-**Goal:** Build authenticated REST API with full test coverage
 **Tasks:** 5 | **Gates:** 1
 
 - **Design API schema** → architect [advanced] (root)
@@ -124,79 +119,32 @@ Decomposing requirement into task DAG...
 - 🔒 **Human approval before deploy** [approval]
 ```
 
-| Feature | Details |
+Five new modules shipped as the Universal Master Orchestrator:
+
+| Phase | What it adds |
 |:---|:---|
-| **DAG scheduler** | Parallel execution of independent tasks, respects dependency ordering |
-| **Multi-tier model routing** | Routes tasks to fast/standard/advanced LLM tiers by complexity |
-| **Human approval gates** | Pauses orchestration at critical points for human review |
-| **Structured audit trail** | Every state transition logged with timestamps and context |
-| **LLM decomposition** | Natural language requirements → validated task DAGs via your LLM |
-| **Immutable state machine** | Correctness-critical orchestration lifecycle with 40+ transition tests |
+| **1. Orchestrator Engine** | DAG scheduler, multi-tier LLM routing (fast/standard/advanced), approval gates, audit trails |
+| **2. GitHub-Native** | `/github plan 42` turns issues into DAGs, auto PRs, CI gate polling, safe `gh` CLI wrapper |
+| **3. Agent Factory** | 4 profiles (architect, security, tester, reviewer), 3 workflow templates, self-review loop |
+| **4. Project Manager** | Auto-classifies project type, maps module boundaries for parallel agents, orchestration monitoring |
+| **5. Enterprise** | Circuit breakers, checkpoint/resume, cost tracking with budget enforcement, 7-rule policy engine |
 
-### GitHub-Native Automation (Phase 2)
+**+334 tests** (867 total) across 25 new source files. [Full release notes →](https://github.com/amanasmuei/aman-agent/releases/tag/v0.39.0)
 
-aman-agent now speaks GitHub natively. Issues become orchestration plans, CI status gates your workflow, and PRs get created automatically:
+<details>
+<summary><strong>Phase-by-phase details</strong></summary>
 
-```bash
-/github plan 42        # Decompose issue #42 into a task DAG
-/github issues         # List open issues
-/github prs            # List open PRs
-/github ci main        # Check CI status for a branch
-```
+**Orchestrator Engine** — Decomposes requirements into a validated DAG (directed acyclic graph) via your LLM. Scheduler runs parallel branches respecting dependencies, pauses at human approval gates, routes each task to the right LLM tier. Immutable state machine prevents invalid transitions. Structured audit trail logs every event.
 
-| Feature | Details |
-|:---|:---|
-| **Issue-to-DAG pipeline** | Fetch any GitHub issue and decompose it into an orchestrator task DAG via your LLM |
-| **PR automation** | Create branches, open PRs, post review comments — all via `gh` CLI |
-| **CI gate polling** | Poll workflow run status, wait for CI to pass before proceeding |
-| **Safe CLI wrapper** | All `gh` commands use `execFile` (no shell) — immune to command injection |
-| **Repo-aware config** | Optional `github` config block for default repo, branch, and auto-PR settings |
+**GitHub-Native Automation** — `/github plan <issue#>` fetches an issue and decomposes it. `/github ci <branch>` polls workflow status. PR manager creates branches, opens PRs, and posts review comments. All commands use `execFile` (no shell injection).
 
-### Agent Factory Profiles & Templates (Phase 3)
+**Agent Factory** — Four specialized profiles: **Architect** (system design, tier: advanced), **Security** (OWASP, CVE audit), **Tester** (test generation, edge cases), **Reviewer** (confidence-scored findings). Three DAG templates: `fullFeatureTemplate` (architect → coders → review + test → finalize), `bugFixTemplate`, `securityAuditTemplate`. Self-review loop runs reviewer + tester on completed output.
 
-Specialized agent profiles power the orchestrator's multi-agent delegation. Each profile is tuned for its role:
+**Project Manager** — Classifies projects as web-frontend, api-backend, mobile, ml-data, monorepo, etc. Maps project type to recommended template and profiles. Module boundary mapper assigns non-overlapping file regions for parallel agents. Monitoring tracks phase timing, per-agent performance, and approval gates.
 
-| Profile | Tier | Role |
-|:---|:---|:---|
-| **Architect** | advanced | System design, module decomposition, interface planning |
-| **Security** | standard | OWASP review, CVE audit, secrets detection, vulnerability triage |
-| **Tester** | standard | Test generation, edge case identification, coverage analysis |
-| **Reviewer** | standard | Code review with confidence-scored findings (critical/important/suggestion) |
+**Enterprise Hardening** — Circuit breaker per agent (closed/open/half-open with auto-recovery). Checkpoint/resume serializes orchestration state to disk. Cost tracker counts tokens per tier with budget enforcement. Policy engine enforces 7 built-in rules (max tasks, requires review/testing, approval before deploy, etc.) with custom rule support.
 
-Pre-built orchestration templates for common workflows:
-
-```bash
-# Available templates:
-fullFeatureTemplate   # architect → parallel coders → review + test → finalize
-bugFixTemplate        # reproduce → fix → test → review
-securityAuditTemplate # scan → triage → [approval gate] → fix → rescan → review
-```
-
-Self-review loop: after orchestration completes, reviewer + tester agents automatically evaluate the output before marking success.
-
-### Universal Project Manager (Phase 4)
-
-aman-agent now understands your project type and structures orchestration accordingly:
-
-| Feature | Details |
-|:---|:---|
-| **Project classification** | Auto-detects project type (web-frontend, api-backend, mobile, ml-data, monorepo, etc.) from stack profile |
-| **Template mapping** | Maps project type → recommended orchestration template and agent profiles |
-| **Module boundary mapping** | Analyzes directory structure to assign non-overlapping file regions for parallel agents |
-| **Orchestration monitoring** | Structured metrics: phase timing, per-agent performance, approval gate tracking, formatted summaries |
-
-### Enterprise Hardening (Phase 5)
-
-Production-grade reliability and governance for orchestration at scale:
-
-| Feature | Details |
-|:---|:---|
-| **Circuit breaker** | Per-agent failure tracking with closed/open/half-open states. Prevents cascade failures when an agent is consistently failing. Auto-recovers after cooldown. |
-| **Checkpoint/resume** | Serialize full orchestration state to disk. Resume from crash — no lost progress on long-running orchestrations. |
-| **Cost tracker** | Token counting per LLM tier with budget enforcement. Tracks input/output tokens, estimates cost using tier-specific rates, blocks over-budget orchestrations. |
-| **Policy engine** | 7 built-in rules: max task count, requires review/testing, no orphan nodes, approval before deploy, advanced tier awareness, max depth. Custom rules supported. |
-
-**v0.39.0 totals:** 5 new modules (`src/orchestrator/`, `src/github/`, `src/profiles/`, `src/project/`), 25 new source files, 26 new test files, 334 new tests (867 total). The [Universal Master Orchestrator](docs/superpowers/plans/2026-04-12-master-orchestrator-architecture.md) vision is complete.
+</details>
 
 ---
 
@@ -212,11 +160,9 @@ Production-grade reliability and governance for orchestration at scale:
 <details>
 <summary><strong>v0.33.0 — Project Dev Mode</strong></summary>
 
-## What's New in v0.33.0
+**One command. Full context. Zero setup.**
 
-> **One command. Full context. Zero setup.**
-
-### `aman-agent dev` — Your New Way to Start Coding
+**`aman-agent dev` — Your New Way to Start Coding**
 
 ```bash
 cd ~/projects/amantrade && aman-agent dev
@@ -340,7 +286,7 @@ Other "memory" solutions are just markdown files the AI reads on startup — the
 
 ## The Solution
 
-**aman-agent** is the first open-source AI companion that genuinely learns from conversation. It doesn't just store memories — it recalls them per-message, extracts new knowledge automatically, and uses your LLM to intelligently compress context instead of truncating it.
+**aman-agent** is the first open-source AI companion that genuinely learns from conversation and orchestrates multi-agent workflows. It recalls memories per-message, extracts new knowledge automatically, decomposes complex requirements into parallel task graphs, and delegates to specialized agents — all running locally with any LLM.
 
 ```bash
 npx @aman_asmuei/aman-agent
@@ -352,41 +298,76 @@ npx @aman_asmuei/aman-agent
 
 ## Architecture at a Glance
 
-aman-agent is the **runtime** at the center of the aman ecosystem — 52 focused TypeScript modules that stitch together 7 portable memory/identity/skill layers with any LLM you want.
+aman-agent is the **runtime** at the center of the aman ecosystem — 78 TypeScript modules that stitch together memory, identity, orchestration, and any LLM into one coherent system.
 
 ```mermaid
-flowchart LR
-    User([You]) <--> CLI[aman-agent CLI<br/>chat loop]
+flowchart TB
+    User([You]) <--> CLI[aman-agent CLI]
 
-    CLI --> Agent[agent.ts<br/>message orchestration]
-    Agent --> Hooks[hooks.ts<br/>lifecycle events]
-    Agent --> Orch[orchestrator/<br/>DAG scheduler]
+    subgraph core [" Agent Core "]
+        Agent[agent.ts<br/>message loop]
+        Hooks[hooks.ts<br/>lifecycle]
+        Skills[skill-engine<br/>+ crystallization]
+        Obs[observation<br/>+ postmortem]
+        Personality[user-model<br/>+ personality]
+    end
 
+    subgraph orchestrator [" Orchestrator Engine "]
+        DAG[DAG scheduler<br/>parallel execution]
+        Decompose[LLM decompose<br/>requirement → DAG]
+        Templates[workflow templates<br/>feature · bugfix · audit]
+        ReviewLoop[self-review loop<br/>reviewer + tester]
+        Gate[approval gates<br/>+ CI gates]
+        CB[circuit breaker<br/>+ checkpoint]
+        Policy[policy engine<br/>+ cost tracker]
+    end
+
+    subgraph github [" GitHub-Native "]
+        GH[gh CLI wrapper]
+        Issues[issue → DAG<br/>planner]
+        PRs[PR manager<br/>+ CI polling]
+    end
+
+    subgraph project [" Project Manager "]
+        Detect[project classifier<br/>stack → type]
+        ModMap[module boundary<br/>mapper]
+        Monitor[orchestration<br/>monitoring]
+    end
+
+    CLI --> Agent
+    Agent --> Hooks
+    Agent --> orchestrator
     Agent -->|recall &amp; extract| Memory[(amem-core<br/>SQLite + vectors)]
-    Agent -->|who &amp; prefs| Identity[(acore-core<br/>identity)]
-    Agent -->|boundaries| Rules[(arules-core<br/>guardrails)]
-    Agent -->|auto-trigger| Skills[skill-engine<br/>+ crystallization]
-    Agent -->|telemetry| Obs[observation<br/>+ postmortem]
+    Agent -->|identity| Identity[(acore-core)]
+    Agent -->|guardrails| Rules[(arules-core)]
 
-    Orch -->|delegate tasks| Delegate[delegate.ts<br/>+ teams.ts]
-    Orch -->|tier routing| LLM
+    orchestrator --> Delegate[delegate.ts<br/>+ teams.ts]
+    orchestrator --> Profiles[agent profiles<br/>architect · security<br/>tester · reviewer]
+    orchestrator --> github
+    orchestrator --> project
 
     Agent --> LLM{LLM Router}
     LLM --> Claude[Anthropic]
     LLM --> GPT[OpenAI]
     LLM --> Copilot[GH Copilot]
-    LLM --> Ollama[Ollama local]
+    LLM --> Ollama[Ollama]
 
-    Agent <--> MCP[MCP tools<br/>aman-mcp · amem]
+    Agent <-->|MCP| MCP[aman-mcp · amem]
 
-    classDef core fill:#58a6ff22,stroke:#58a6ff,color:#e6edf3,stroke-width:2px;
-    classDef store fill:#3fb95022,stroke:#3fb950,color:#e6edf3,stroke-width:2px;
+    classDef core fill:#58a6ff15,stroke:#58a6ff,color:#e6edf3,stroke-width:2px;
+    classDef orch fill:#a371f715,stroke:#a371f7,color:#e6edf3,stroke-width:2px;
+    classDef gh fill:#3fb95015,stroke:#3fb950,color:#e6edf3,stroke-width:2px;
+    classDef proj fill:#d29f2215,stroke:#d29f22,color:#e6edf3,stroke-width:2px;
+    classDef store fill:#3fb95022,stroke:#3fb950,color:#e6edf3,stroke-width:1px;
     classDef llm fill:#d29f2222,stroke:#d29f22,color:#e6edf3,stroke-width:1px;
-    classDef orch fill:#a371f722,stroke:#a371f7,color:#e6edf3,stroke-width:2px;
-    class CLI,Agent,Hooks,Skills,Obs core
+
+    class Agent,Hooks,Skills,Obs,Personality core
+    class DAG,Decompose,Templates,ReviewLoop,Gate,CB,Policy orch
+    class GH,Issues,PRs gh
+    class Detect,ModMap,Monitor proj
     class Memory,Identity,Rules store
     class Claude,GPT,Copilot,Ollama,LLM llm
-    class Orch,Delegate orch
+    class Delegate,Profiles,MCP core
 ```
 
 <details>
@@ -958,6 +939,99 @@ Each agent profile has its own identity, rules, and skills — but shares the sa
 /profile create mybot       Create custom profile
 /profile list               Show all profiles
 ```
+
+</details>
+
+<details>
+<summary><strong>Task Orchestration</strong> (new in v0.39)</summary>
+
+### Task Orchestration
+
+Describe what you want to build — aman-agent decomposes it into a DAG of tasks, assigns each to the right specialist agent, and executes them in parallel:
+
+```
+You > /orchestrate Add user authentication with JWT, password hashing, and rate limiting
+
+  Decomposing requirement into task DAG...
+
+  ## User Authentication
+  **Goal:** JWT auth with security hardening
+  **Tasks:** 5 | **Gates:** 1
+
+  - **Design auth architecture** → architect [advanced] (root)
+  - **Implement JWT middleware** → coder [standard] (after: design)
+  - **Add rate limiting** → coder [standard] (after: design)
+  - **Write test suite** → tester [standard] (after: jwt, rate-limit)
+  - **Security review** → security [standard] (after: tests)
+  - 🔒 **Human approval** [approval]
+```
+
+**How it works:**
+1. Your LLM decomposes the requirement into a validated DAG (no cycles, valid refs)
+2. The scheduler runs independent tasks in parallel (configurable concurrency)
+3. Each task is routed to the right LLM tier — Haiku for simple, Sonnet for coding, Opus for architecture
+4. Approval gates pause execution for human review at critical points
+5. After completion, the self-review loop runs reviewer + tester agents on the output
+6. Circuit breakers prevent cascade failures; checkpoints enable crash recovery
+
+**Pre-built templates:**
+
+```
+/orchestrate --template full-feature   # architect → coders → review + test
+/orchestrate --template bug-fix        # reproduce → fix → test → review
+/orchestrate --template security-audit # scan → triage → fix → rescan
+```
+
+**Cost awareness:** The cost tracker monitors token usage per tier. Set a budget limit in config to prevent runaway costs.
+
+</details>
+
+<details>
+<summary><strong>GitHub Automation</strong> (new in v0.39)</summary>
+
+### GitHub Automation
+
+aman-agent speaks GitHub natively via the `gh` CLI:
+
+```
+You > /github
+
+  Repo: amanasmuei/aman-agent (authenticated)
+  Branch: main
+
+You > /github issues --limit 5
+
+  #42  Add user auth          feature, security    alice
+  #41  Fix login redirect     bug                  bob
+  #40  Update dependencies    chore                unassigned
+  ...
+
+You > /github plan 42
+
+  Fetching issue #42: "Add user auth"...
+  Decomposing into task DAG...
+
+  ## Add user auth
+  **Tasks:** 4 | **Gates:** 1
+  - **Design auth flow** → architect [advanced] (root)
+  - **Implement JWT** → coder [standard] (after: design)
+  - **Write tests** → tester [standard] (after: implement)
+  - **Security review** → security [standard] (after: tests)
+
+You > /github ci main
+
+  CI Status: ✓ passing (workflow: ci.yml, 2m ago)
+```
+
+**Available commands:**
+
+| Command | Description |
+|:---|:---|
+| `/github` | Show current repo info and auth status |
+| `/github issues` | List open issues |
+| `/github prs` | List open pull requests |
+| `/github plan <number>` | Decompose issue into orchestrator task DAG |
+| `/github ci <branch>` | Check CI status for a branch |
 
 </details>
 

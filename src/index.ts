@@ -612,6 +612,78 @@ program
   });
 
 program
+  .command("dev [path]")
+  .description("Set up project context and start Claude Code")
+  .option("--smart", "Use LLM to generate CLAUDE.md")
+  .option("--no-launch", "Generate CLAUDE.md only, don't start claude")
+  .option("--force", "Regenerate even if CLAUDE.md is fresh")
+  .option("--diff", "Show what would change without writing")
+  .action(async (projectPath: string | undefined, opts: Record<string, boolean>) => {
+    const { runDev } = await import("./dev/dev-command.js");
+    const { scanStack } = await import("./dev/stack-detector.js");
+
+    const targetPath = projectPath ?? process.cwd();
+    const stack = scanStack(targetPath);
+
+    // Print detection
+    const stackParts = stack.languages.map((l: string) => l.charAt(0).toUpperCase() + l.slice(1));
+    if (stack.frameworks.length > 0) {
+      stackParts.push(`(${stack.frameworks.map((f: string) => f.charAt(0).toUpperCase() + f.slice(1)).join(", ")})`);
+    }
+    if (stack.databases.length > 0) {
+      stackParts.push(...stack.databases.map((d: string) => d.charAt(0).toUpperCase() + d.slice(1)));
+    }
+    if (stack.infra.length > 0) {
+      stackParts.push(...stack.infra.map((i: string) => i.charAt(0).toUpperCase() + i.slice(1)));
+    }
+
+    if (stack.languages.length > 0) {
+      console.log(`\n  ${pc.cyan("Detected:")} ${stackParts.join(" + ")}`);
+    } else {
+      console.log(`\n  ${pc.dim("No stack detected — generating minimal CLAUDE.md")}`);
+    }
+
+    const result = await runDev(targetPath, {
+      smart: opts.smart,
+      noLaunch: opts.launch === false,
+      force: opts.force,
+      diff: opts.diff,
+    }, stack);
+
+    if (!result.success) {
+      console.error(`  ${pc.red("Error:")} ${result.error}`);
+      process.exit(1);
+    }
+
+    if (result.diff) {
+      console.log(`\n${result.diff}`);
+      return;
+    }
+
+    if (result.generated) {
+      const mode = opts.smart ? "smart" : "template";
+      const memCount = result.context?.metadata.memoriesUsed ?? 0;
+      console.log(`  ${pc.cyan("Recalled:")} ${memCount} memories`);
+      console.log(`  ${pc.green("✓")} CLAUDE.md written (${mode} mode)\n`);
+    } else if (result.skippedReason === "fresh") {
+      console.log(`  ${pc.green("✓")} CLAUDE.md is up to date\n`);
+    }
+
+    // Launch Claude Code
+    if (opts.launch !== false && !opts.diff) {
+      const { execFileSync } = await import("node:child_process");
+      try {
+        execFileSync("which", ["claude"], { stdio: "ignore" });
+      } catch {
+        console.log(`  ${pc.yellow("Claude Code not found.")} Install: npm install -g @anthropic-ai/claude-code`);
+        process.exit(1);
+      }
+      console.log(`  ${pc.cyan("Launching Claude Code...")}\n`);
+      execFileSync("claude", [], { cwd: targetPath, stdio: "inherit" });
+    }
+  });
+
+program
   .command("setup")
   .description("Run the full configuration wizard (provider, identity, presets)")
   .action(async () => {

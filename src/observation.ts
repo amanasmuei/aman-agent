@@ -13,7 +13,11 @@ export type ObservationEventType =
   | "milestone"
   | "file_change"
   | "sentiment_shift"
-  | "error";
+  | "error"
+  | "phase_start"
+  | "phase_complete"
+  | "approval_gate"
+  | "task_delegated";
 
 export interface ObservationEvent {
   timestamp: number;

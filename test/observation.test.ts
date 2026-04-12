@@ -188,3 +188,46 @@ describe("cleanupOldObservations", () => {
     expect(files).toEqual(["new-session.jsonl"]);
   });
 });
+
+describe("orchestrator observation events", () => {
+  it("records phase_start event", () => {
+    const session = createObservationSession("test-session");
+    recordEvent(session, {
+      type: "phase_start",
+      summary: "Entering implementation phase",
+      data: { phase: "implementation", taskCount: 3 },
+    });
+    expect(session.events).toHaveLength(1);
+    expect(session.events[0].type).toBe("phase_start");
+  });
+
+  it("records phase_complete event", () => {
+    const session = createObservationSession("test-session");
+    recordEvent(session, {
+      type: "phase_complete",
+      summary: "Implementation phase complete",
+      data: { phase: "implementation" },
+    });
+    expect(session.events[0].type).toBe("phase_complete");
+  });
+
+  it("records approval_gate event", () => {
+    const session = createObservationSession("test-session");
+    recordEvent(session, {
+      type: "approval_gate",
+      summary: "Waiting for human approval",
+      data: { gateId: "g1", gateName: "Deploy approval" },
+    });
+    expect(session.events[0].type).toBe("approval_gate");
+  });
+
+  it("records task_delegated event", () => {
+    const session = createObservationSession("test-session");
+    recordEvent(session, {
+      type: "task_delegated",
+      summary: "Task delegated to coder agent",
+      data: { taskId: "t1", profile: "coder", tier: "standard" },
+    });
+    expect(session.events[0].type).toBe("task_delegated");
+  });
+});

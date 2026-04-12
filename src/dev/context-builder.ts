@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { createDatabase, recall } from "@aman_asmuei/amem-core";
@@ -54,6 +55,10 @@ export async function buildContext(
   try {
     const amemDir = process.env.AMEM_DIR ?? path.join(os.homedir(), ".amem");
     const dbPath = process.env.AMEM_DB ?? path.join(amemDir, "memory.db");
+
+    // Skip if database doesn't exist — avoids loading HuggingFace models for nothing
+    if (!fs.existsSync(dbPath)) throw new Error("no db");
+
     const db = createDatabase(dbPath);
     const query = [stack.projectName, ...stack.languages, ...stack.frameworks].join(" ");
     const result = await recall(db, { query, limit: 20 });

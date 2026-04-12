@@ -17,7 +17,7 @@
   &nbsp;
   <a href="https://github.com/amanasmuei/aman-agent/actions"><img src="https://img.shields.io/github/actions/workflow/status/amanasmuei/aman-agent/ci.yml?style=for-the-badge&logo=github&label=CI" alt="CI status" /></a>
   &nbsp;
-  <img src="https://img.shields.io/badge/tests-531_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="531 tests passing" />
+  <img src="https://img.shields.io/badge/tests-659_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="659 tests passing" />
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
 </p>
@@ -39,7 +39,7 @@
 </p>
 
 <p align="center">
-  <a href="#whats-new-in-v0330"><kbd> What's New </kbd></a>
+  <a href="#whats-new-in-v0350"><kbd> What's New </kbd></a>
   <a href="#quick-start"><kbd> Quick Start </kbd></a>
   <a href="#project-dev-mode-recommended"><kbd> Dev Mode </kbd></a>
   <a href="#architecture-at-a-glance"><kbd> Architecture </kbd></a>
@@ -61,7 +61,7 @@
 <details>
 <summary><strong>Table of Contents</strong></summary>
 
-- [What's New](#whats-new-in-v0330)
+- [What's New](#whats-new-in-v0350)
 - [The Problem](#the-problem)
 - [The Solution](#the-solution)
 - [Architecture at a Glance](#architecture-at-a-glance)
@@ -97,6 +97,58 @@
 
 ---
 
+## What's New in v0.35.0
+
+> **From companion to orchestrator.**
+
+### DAG-Based Task Orchestration Engine
+
+aman-agent can now decompose complex requirements into parallel task graphs and execute them with multiple specialized agents:
+
+```bash
+/orchestrate Build a REST API with auth, CRUD endpoints, input validation, and tests
+```
+
+```
+Decomposing requirement into task DAG...
+
+## REST API with Auth
+**Goal:** Build authenticated REST API with full test coverage
+**Tasks:** 5 | **Gates:** 1
+
+- **Design API schema** → architect [advanced] (root)
+- **Implement auth middleware** → coder [standard] (after: design)
+- **Implement CRUD endpoints** → coder [standard] (after: design)
+- **Write test suite** → tester [standard] (after: auth, crud)
+- **Security review** → security [standard] (after: tests)
+- 🔒 **Human approval before deploy** [approval]
+```
+
+| Feature | Details |
+|:---|:---|
+| **DAG scheduler** | Parallel execution of independent tasks, respects dependency ordering |
+| **Multi-tier model routing** | Routes tasks to fast/standard/advanced LLM tiers by complexity |
+| **Human approval gates** | Pauses orchestration at critical points for human review |
+| **Structured audit trail** | Every state transition logged with timestamps and context |
+| **LLM decomposition** | Natural language requirements → validated task DAGs via your LLM |
+| **Immutable state machine** | Correctness-critical orchestration lifecycle with 40+ transition tests |
+
+New module: `src/orchestrator/` (8 files, 114 tests). This is Phase 1 of the [Universal Master Orchestrator](docs/superpowers/plans/2026-04-12-master-orchestrator-architecture.md) vision — GitHub-native automation, agent factory profiles, and enterprise hardening coming in subsequent phases.
+
+---
+
+<details>
+<summary><strong>v0.34.0 — Multi-editor dev mode</strong></summary>
+
+- `aman-agent dev --copilot` targets GitHub Copilot (writes `.github/copilot-instructions.md`)
+- `aman-agent dev --cursor` targets Cursor (writes `.cursorrules`)
+- Multi-project simultaneous sessions sharing the same memory database
+
+</details>
+
+<details>
+<summary><strong>v0.33.0 — Project Dev Mode</strong></summary>
+
 ## What's New in v0.33.0
 
 > **One command. Full context. Zero setup.**
@@ -131,7 +183,7 @@ $ aman-agent dev ~/projects/amantrade
 
 Works with **multiple projects** simultaneously — each terminal gets its own `aman-agent dev`, all sharing the same memory database. Decisions from one project flow into the next.
 
----
+</details>
 
 <details>
 <summary><strong>v0.32.0 — Install anywhere, zero prerequisites</strong></summary>
@@ -237,7 +289,7 @@ npx @aman_asmuei/aman-agent
 
 ## Architecture at a Glance
 
-aman-agent is the **runtime** at the center of the aman ecosystem — 38 focused TypeScript modules that stitch together 7 portable memory/identity/skill layers with any LLM you want.
+aman-agent is the **runtime** at the center of the aman ecosystem — 46 focused TypeScript modules that stitch together 7 portable memory/identity/skill layers with any LLM you want.
 
 ```mermaid
 flowchart LR
@@ -245,12 +297,16 @@ flowchart LR
 
     CLI --> Agent[agent.ts<br/>message orchestration]
     Agent --> Hooks[hooks.ts<br/>lifecycle events]
+    Agent --> Orch[orchestrator/<br/>DAG scheduler]
 
     Agent -->|recall &amp; extract| Memory[(amem-core<br/>SQLite + vectors)]
     Agent -->|who &amp; prefs| Identity[(acore-core<br/>identity)]
     Agent -->|boundaries| Rules[(arules-core<br/>guardrails)]
     Agent -->|auto-trigger| Skills[skill-engine<br/>+ crystallization]
     Agent -->|telemetry| Obs[observation<br/>+ postmortem]
+
+    Orch -->|delegate tasks| Delegate[delegate.ts<br/>+ teams.ts]
+    Orch -->|tier routing| LLM
 
     Agent --> LLM{LLM Router}
     LLM --> Claude[Anthropic]
@@ -263,9 +319,11 @@ flowchart LR
     classDef core fill:#58a6ff22,stroke:#58a6ff,color:#e6edf3,stroke-width:2px;
     classDef store fill:#3fb95022,stroke:#3fb950,color:#e6edf3,stroke-width:2px;
     classDef llm fill:#d29f2222,stroke:#d29f22,color:#e6edf3,stroke-width:1px;
+    classDef orch fill:#a371f722,stroke:#a371f7,color:#e6edf3,stroke-width:2px;
     class CLI,Agent,Hooks,Skills,Obs core
     class Memory,Identity,Rules store
     class Claude,GPT,Copilot,Ollama,LLM llm
+    class Orch,Delegate orch
 ```
 
 <details>
@@ -274,7 +332,8 @@ flowchart LR
 | Piece | What it does | Where it lives |
 |:---|:---|:---|
 | `agent.ts` | The main event loop — reads your message, recalls memories, streams the LLM response, executes tools, extracts new memories | `src/agent.ts` (40 KB) |
-| `commands.ts` | 58+ slash commands (`/memory`, `/skills`, `/plan`, `/delegate`, `/eval`, `/observe`, `/postmortem`, …) | `src/commands.ts` (98 KB) |
+| `commands.ts` | 60+ slash commands (`/memory`, `/skills`, `/plan`, `/delegate`, `/orchestrate`, `/eval`, `/observe`, `/postmortem`, …) | `src/commands.ts` (100 KB) |
+| `orchestrator/` | DAG-based task decomposition, parallel scheduling, multi-tier model routing, approval gates, audit trails | `src/orchestrator/` (8 files) |
 | `hooks.ts` | 5 lifecycle hooks that fire at startup, before/after tools, on workflow match, on session end | `src/hooks.ts` (26 KB) |
 | `memory.ts` + `memory-extractor.ts` | Per-message recall and silent, non-blocking extraction of preferences, decisions, patterns, corrections | delegates to `@aman_asmuei/amem-core@0.5` |
 | `skill-engine.ts` + `crystallization.ts` | Auto-triggers domain skills from context; promotes post-mortem lessons into reusable, versioned skills | `src/skill-engine.ts`, `src/crystallization.ts` |
@@ -1391,6 +1450,7 @@ sequenceDiagram
 | `/help` | Show available commands |
 | `/plan` | Show active plan `[create\|done\|undo\|list\|switch\|show]` |
 | `/profile` | Your profile + agent profiles `[me\|edit\|setup\|create\|list\|show\|delete]` |
+| `/orchestrate` | Decompose requirement into task DAG and execute with parallel agents `[<requirement>]` |
 | `/delegate` | Delegate task to a profile `[<profile> <task>\|pipeline]` |
 | `/agents` | Multi-agent A2A `[list\|info <name>\|ping <name>]` |
 | `/team` | Manage agent teams `[create\|run\|list\|show\|delete]` |

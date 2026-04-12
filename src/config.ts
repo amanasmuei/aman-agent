@@ -50,6 +50,13 @@ export interface AgentConfig {
   hooks?: HooksConfig;
   mcpServers?: Record<string, McpServerEntry>;
   memory?: MemoryConfig;
+  orchestrator?: {
+    maxParallelTasks?: number;
+    defaultTier?: "fast" | "standard" | "advanced";
+    requireApprovalForPhaseTransition?: boolean;
+    taskTimeoutMs?: number;
+    orchestrationTimeoutMs?: number;
+  };
 }
 
 /**

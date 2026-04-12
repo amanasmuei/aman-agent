@@ -17,7 +17,7 @@
   &nbsp;
   <a href="https://github.com/amanasmuei/aman-agent/actions"><img src="https://img.shields.io/github/actions/workflow/status/amanasmuei/aman-agent/ci.yml?style=for-the-badge&logo=github&label=CI" alt="CI status" /></a>
   &nbsp;
-  <img src="https://img.shields.io/badge/tests-723_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="723 tests passing" />
+  <img src="https://img.shields.io/badge/tests-772_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="772 tests passing" />
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
 </p>
@@ -154,7 +154,31 @@ aman-agent now speaks GitHub natively. Issues become orchestration plans, CI sta
 | **Safe CLI wrapper** | All `gh` commands use `execFile` (no shell) — immune to command injection |
 | **Repo-aware config** | Optional `github` config block for default repo, branch, and auto-PR settings |
 
-New module: `src/github/` (6 files, 64 tests). Part of the [Universal Master Orchestrator](docs/superpowers/plans/2026-04-12-master-orchestrator-architecture.md) vision.
+New module: `src/github/` (6 files, 64 tests).
+
+### Agent Factory Profiles & Templates (Phase 3)
+
+Specialized agent profiles power the orchestrator's multi-agent delegation. Each profile is tuned for its role:
+
+| Profile | Tier | Role |
+|:---|:---|:---|
+| **Architect** | advanced | System design, module decomposition, interface planning |
+| **Security** | standard | OWASP review, CVE audit, secrets detection, vulnerability triage |
+| **Tester** | standard | Test generation, edge case identification, coverage analysis |
+| **Reviewer** | standard | Code review with confidence-scored findings (critical/important/suggestion) |
+
+Pre-built orchestration templates for common workflows:
+
+```bash
+# Available templates:
+fullFeatureTemplate   # architect → parallel coders → review + test → finalize
+bugFixTemplate        # reproduce → fix → test → review
+securityAuditTemplate # scan → triage → [approval gate] → fix → rescan → review
+```
+
+Self-review loop: after orchestration completes, reviewer + tester agents automatically evaluate the output before marking success.
+
+New modules: `src/profiles/` (1 file), `src/orchestrator/templates/` (1 file), `src/orchestrator/review-loop.ts`. 49 new tests. Part of the [Universal Master Orchestrator](docs/superpowers/plans/2026-04-12-master-orchestrator-architecture.md) vision.
 
 ---
 
@@ -356,6 +380,8 @@ flowchart LR
 | `commands.ts` | 60+ slash commands (`/memory`, `/skills`, `/plan`, `/delegate`, `/orchestrate`, `/eval`, `/observe`, `/postmortem`, …) | `src/commands.ts` (100 KB) |
 | `orchestrator/` | DAG-based task decomposition, parallel scheduling, multi-tier model routing, approval gates, audit trails | `src/orchestrator/` (8 files) |
 | `github/` | GitHub-native automation — issue planning, PR management, CI gates, safe `gh` CLI wrapper | `src/github/` (6 files) |
+| `profiles/` | Specialized agent profiles for orchestrator delegation (architect, security, tester, reviewer) | `src/profiles/` |
+| `orchestrator/templates/` | Pre-built DAG templates for common workflows (full-feature, bug-fix, security-audit) | `src/orchestrator/templates/` |
 | `hooks.ts` | 5 lifecycle hooks that fire at startup, before/after tools, on workflow match, on session end | `src/hooks.ts` (26 KB) |
 | `memory.ts` + `memory-extractor.ts` | Per-message recall and silent, non-blocking extraction of preferences, decisions, patterns, corrections | delegates to `@aman_asmuei/amem-core@0.5` |
 | `skill-engine.ts` + `crystallization.ts` | Auto-triggers domain skills from context; promotes post-mortem lessons into reusable, versioned skills | `src/skill-engine.ts`, `src/crystallization.ts` |

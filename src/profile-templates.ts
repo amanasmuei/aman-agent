@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
+import { ORCHESTRATOR_PROFILES } from "./profiles/orchestrator-profiles.js";
+
 export interface ProfileTemplate {
   name: string;
   label: string;
@@ -99,6 +101,7 @@ export const BUILT_IN_PROFILES: ProfileTemplate[] = [
 - Ignore contradicting evidence
 - Oversimplify complex topics`,
   },
+  ...ORCHESTRATOR_PROFILES,
 ];
 
 /**

@@ -63,16 +63,16 @@ export async function buildContext(
       if (typeof content !== "string" || !content) continue;
       switch ((mem as any).type) {
         case "pattern":
-          conventions.push(content);
+          if (!conventions.includes(content)) conventions.push(content);
           break;
         case "decision":
-          decisions.push(content);
+          if (!decisions.includes(content)) decisions.push(content);
           break;
         case "correction":
-          corrections.push(content);
+          if (!corrections.includes(content)) corrections.push(content);
           break;
         case "preference":
-          preferences.push(content);
+          if (!preferences.includes(content)) preferences.push(content);
           break;
       }
       memoriesUsed++;
@@ -107,7 +107,9 @@ export async function buildContext(
     // arules-core returns { name: string; rules: string[] } — rules are already filtered to active-only
     for (const cat of categories) {
       for (const ruleText of cat.rules) {
-        rules.push(ruleText);
+        if (typeof ruleText === "string" && ruleText && !rules.includes(ruleText)) {
+          rules.push(ruleText);
+        }
       }
     }
   } catch {

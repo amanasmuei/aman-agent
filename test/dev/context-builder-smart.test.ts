@@ -7,8 +7,8 @@ vi.mock("@aman_asmuei/amem-core", () => ({
   createDatabase: vi.fn(() => ({ close: vi.fn() })),
   recall: vi.fn(async () => ({
     memories: [
-      { id: "1", content: "Use slog for logging", type: "pattern", confidence: 0.9 },
-      { id: "2", content: "Chose PostgreSQL", type: "decision", confidence: 0.85 },
+      { id: "1", content: "In go projects, use slog for logging", type: "pattern", confidence: 0.9 },
+      { id: "2", content: "test-app: chose PostgreSQL for go backend", type: "decision", confidence: 0.85 },
     ],
   })),
 }));

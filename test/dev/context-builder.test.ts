@@ -8,10 +8,10 @@ vi.mock("@aman_asmuei/amem-core", () => ({
   createDatabase: vi.fn(() => ({ close: vi.fn() })),
   recall: vi.fn(async () => ({
     memories: [
-      { id: "1", content: "Use fmt.Errorf for error wrapping", type: "pattern", confidence: 0.9 },
-      { id: "2", content: "Chose PostgreSQL over MySQL for SQL compatibility", type: "decision", confidence: 0.85 },
-      { id: "3", content: "Never use log.Fatal in HTTP handlers", type: "correction", confidence: 0.95 },
-      { id: "4", content: "Prefers structured logging with slog", type: "preference", confidence: 0.8 },
+      { id: "1", content: "In go fiber projects, use fmt.Errorf for error wrapping", type: "pattern", confidence: 0.9 },
+      { id: "2", content: "test-app: chose PostgreSQL over MySQL for go backend", type: "decision", confidence: 0.85 },
+      { id: "3", content: "In go handlers, never use log.Fatal", type: "correction", confidence: 0.95 },
+      { id: "4", content: "For go projects, prefers structured logging with slog", type: "preference", confidence: 0.8 },
     ],
   })),
 }));

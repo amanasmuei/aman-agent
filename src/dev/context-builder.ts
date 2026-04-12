@@ -61,13 +61,46 @@ export async function buildContext(
     if (!process.env.AMEM_DB && !fs.existsSync(dbPath)) throw new Error("no db");
 
     const db = createDatabase(dbPath);
-    const query = [stack.projectName, ...stack.languages, ...stack.frameworks].join(" ");
+
+    // Build a project-focused query
+    const queryParts = [stack.projectName, ...stack.languages, ...stack.frameworks];
+    const query = queryParts.join(" ");
+
+    // Build relevance keywords for post-recall filtering
+    // Only keep memories that mention the project name, stack languages, or frameworks
+    const relevanceKeywords = queryParts
+      .map((k) => k.toLowerCase())
+      .filter(Boolean);
+
     // rerank: false skips the cross-encoder model — much faster startup
-    const result = await recall(db, { query, limit: 20, compact: false, rerank: false });
+    // Fetch more candidates so we have enough after filtering
+    const result = await recall(db, { query, limit: 40, compact: false, rerank: false });
+
+    // Max content length per memory entry (prevents one huge memory from filling the budget)
+    const MAX_CONTENT_LENGTH = 500;
 
     for (const mem of result.memories) {
-      const content = (mem as any).content;
+      let content = (mem as any).content;
       if (typeof content !== "string" || !content) continue;
+
+      // Project relevance filter: memory must mention at least one keyword
+      // from the project name, language, or framework
+      const contentLower = content.toLowerCase();
+      const isRelevant = relevanceKeywords.length === 0 ||
+        relevanceKeywords.some((kw) => {
+          // Short keywords (e.g. "go") use word boundary match to avoid false positives
+          if (kw.length <= 3) {
+            return new RegExp(`\\b${kw}\\b`, "i").test(contentLower);
+          }
+          return contentLower.includes(kw);
+        });
+      if (!isRelevant) continue;
+
+      // Truncate very long memories to keep CLAUDE.md focused
+      if (content.length > MAX_CONTENT_LENGTH) {
+        content = content.slice(0, MAX_CONTENT_LENGTH).trimEnd() + "...";
+      }
+
       switch ((mem as any).type) {
         case "pattern":
           if (!conventions.includes(content)) conventions.push(content);

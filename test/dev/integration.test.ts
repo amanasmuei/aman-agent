@@ -9,8 +9,8 @@ vi.mock("@aman_asmuei/amem-core", () => ({
   createDatabase: vi.fn(() => ({ close: vi.fn() })),
   recall: vi.fn(async () => ({
     memories: [
-      { id: "1", content: "Always use error wrapping", type: "correction", confidence: 0.95 },
-      { id: "2", content: "Middleware order: logger then cors then auth", type: "pattern", confidence: 0.9 },
+      { id: "1", content: "In go projects, always use error wrapping", type: "correction", confidence: 0.95 },
+      { id: "2", content: "Go fiber middleware order: logger then cors then auth", type: "pattern", confidence: 0.9 },
     ],
   })),
 }));

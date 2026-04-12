@@ -119,6 +119,13 @@ export {
   type PolicyRule,
 } from "./policy.js";
 
+// Re-exports: runner (unified orchestration)
+export {
+  runOrchestrationFull,
+  type FullOrchestrationOptions,
+  type FullOrchestrationResult,
+} from "./runner.js";
+
 // Re-exports: templates
 export {
   fullFeatureTemplate,

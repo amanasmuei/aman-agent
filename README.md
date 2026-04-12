@@ -17,7 +17,7 @@
   &nbsp;
   <a href="https://github.com/amanasmuei/aman-agent/actions"><img src="https://img.shields.io/github/actions/workflow/status/amanasmuei/aman-agent/ci.yml?style=for-the-badge&logo=github&label=CI" alt="CI status" /></a>
   &nbsp;
-  <img src="https://img.shields.io/badge/tests-867_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="867 tests passing" />
+  <img src="https://img.shields.io/badge/tests-912_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="912 tests passing" />
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
 </p>

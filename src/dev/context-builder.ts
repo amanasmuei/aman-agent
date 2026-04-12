@@ -111,6 +111,65 @@ export async function buildContext(
     // arules not available
   }
 
+  // --- Smart mode: LLM synthesis ---
+  if (opts?.smart && opts.llmClient) {
+    try {
+      const client = opts.llmClient as { chat: (system: string, msgs: { role: string; content: string }[], onChunk: () => void) => Promise<{ message: { content: string | { text?: string }[] } }> };
+      const rawData = [
+        `Project: ${stack.projectName}`,
+        `Stack: ${stack.languages.join(", ")} + ${stack.frameworks.join(", ")}`,
+        `Databases: ${stack.databases.join(", ") || "none detected"}`,
+        "",
+        conventions.length > 0 ? `Conventions:\n${conventions.map((c) => `- ${c}`).join("\n")}` : "",
+        decisions.length > 0 ? `Decisions:\n${decisions.map((d) => `- ${d}`).join("\n")}` : "",
+        corrections.length > 0 ? `Corrections:\n${corrections.map((c) => `- ${c}`).join("\n")}` : "",
+        preferences.length > 0 ? `Preferences:\n${preferences.map((p) => `- ${p}`).join("\n")}` : "",
+        rules.length > 0 ? `Rules:\n${rules.map((r) => `- ${r}`).join("\n")}` : "",
+      ].filter(Boolean).join("\n\n");
+
+      const response = await client.chat(
+        "You are a developer context assembler. Given raw developer history, output a merged, deduplicated set of conventions and decisions as markdown bullet lists. Group by: Conventions, Decisions, Corrections, Preferences, Rules. Be specific, not generic. Max 3000 tokens.",
+        [{ role: "user", content: rawData }],
+        () => {},
+      );
+
+      // Parse LLM response to extract synthesized sections
+      const text = typeof response.message.content === "string"
+        ? response.message.content
+        : response.message.content.map((b: { text?: string }) => b.text ?? "").join("");
+
+      // Extract bullet points from each section the LLM generated
+      const extractSection = (sectionName: string): string[] => {
+        const regex = new RegExp(`##?\\s*${sectionName}[\\s\\S]*?(?=##|$)`, "i");
+        const match = text.match(regex);
+        if (!match) return [];
+        return match[0].split("\n").filter((l) => l.startsWith("- ")).map((l) => l.replace(/^-\s*/, "").trim());
+      };
+
+      const smartConventions = extractSection("Conventions");
+      const smartDecisions = extractSection("Decisions");
+      const smartCorrections = extractSection("Corrections");
+      const smartPreferences = extractSection("Preferences");
+      const smartRules = extractSection("Rules");
+
+      return {
+        stack,
+        conventions: trimToTokenBudget(smartConventions.length > 0 ? smartConventions : conventions, TOKEN_LIMITS.conventions),
+        decisions: trimToTokenBudget(smartDecisions.length > 0 ? smartDecisions : decisions, TOKEN_LIMITS.decisions),
+        corrections: trimToTokenBudget(smartCorrections.length > 0 ? smartCorrections : corrections, TOKEN_LIMITS.corrections),
+        preferences: trimToTokenBudget(smartPreferences.length > 0 ? smartPreferences : preferences, TOKEN_LIMITS.preferences),
+        rules: trimToTokenBudget(smartRules.length > 0 ? smartRules : rules, TOKEN_LIMITS.rules),
+        metadata: {
+          generatedAt: Date.now(),
+          mode: "smart" as const,
+          memoriesUsed,
+        },
+      };
+    } catch {
+      // LLM failed — fall through to template mode
+    }
+  }
+
   // --- Apply token budgets ---
   return {
     stack,
@@ -121,7 +180,7 @@ export async function buildContext(
     rules: trimToTokenBudget(rules, TOKEN_LIMITS.rules),
     metadata: {
       generatedAt: Date.now(),
-      mode: opts?.smart ? "smart" : "template",
+      mode: "template" as const,
       memoriesUsed,
     },
   };

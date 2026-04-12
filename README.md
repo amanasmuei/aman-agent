@@ -96,41 +96,24 @@
 
 ## What's New in v0.32.0
 
-> **Install anywhere, zero prerequisites.**<br/>
-> One curl command installs aman-agent on any Linux or macOS machine — VPS, Raspberry Pi, or your laptop. No Node.js required. Docker image included.
+> **Install anywhere, zero prerequisites.**
 
-<table>
-<tr>
-<td width="33%" valign="top">
-
-**One-liner install**
+### Install on any machine — no Node.js required
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/amanasmuei/aman-agent/main/install.sh | bash
 ```
 
-Vendors Node.js 22 LTS invisibly. Supports x64, arm64, and armv7l. No sudo needed.
+Works on **Linux** (x64, arm64, armv7l), **macOS** (x64, Apple Silicon), **Raspberry Pi**, **VPS**, and **servers**. Vendors Node.js 22 LTS invisibly. No sudo needed.
 
-</td>
-<td width="33%" valign="top">
-
-**Consolidated `~/.aman-agent/`**
-
-All config, identity, rules, workflows, skills, memory, and eval now live under one directory. Existing users are auto-migrated. One `scp` to move everything to a new machine.
-
-</td>
-<td width="33%" valign="top">
-
-**New CLI commands**
-
-- `aman-agent setup` — full config wizard
-- `aman-agent update` — self-update
-- `aman-agent uninstall` — clean removal
-- Headless mode: auto-detects LLM from env vars, clean error when no TTY
-
-</td>
-</tr>
-</table>
+| Feature | Details |
+|:---|:---|
+| **Consolidated config** | All state now lives under `~/.aman-agent/` — one directory to backup, sync, or `scp` to a new machine. Existing users are auto-migrated on first run. |
+| **Docker support** | `docker run -it -e ANTHROPIC_API_KEY=sk-... ghcr.io/amanasmuei/aman-agent` — multi-arch image (amd64 + arm64). |
+| **`aman-agent setup`** | Full configuration wizard — provider, identity, and presets. |
+| **`aman-agent update`** | Self-update, works with both vendored and npm installs. |
+| **`aman-agent uninstall`** | Clean removal of all data and config. |
+| **Headless mode** | Auto-detects LLM provider from env vars. Clean error when no TTY (systemd, Docker, CI). |
 
 <details>
 <summary><strong>Highlights from earlier releases</strong></summary>

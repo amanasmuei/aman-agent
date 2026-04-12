@@ -17,7 +17,7 @@
   &nbsp;
   <a href="https://github.com/amanasmuei/aman-agent/actions"><img src="https://img.shields.io/github/actions/workflow/status/amanasmuei/aman-agent/ci.yml?style=for-the-badge&logo=github&label=CI" alt="CI status" /></a>
   &nbsp;
-  <img src="https://img.shields.io/badge/tests-772_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="772 tests passing" />
+  <img src="https://img.shields.io/badge/tests-805_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="805 tests passing" />
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
 </p>
@@ -178,7 +178,20 @@ securityAuditTemplate # scan → triage → [approval gate] → fix → rescan �
 
 Self-review loop: after orchestration completes, reviewer + tester agents automatically evaluate the output before marking success.
 
-New modules: `src/profiles/` (1 file), `src/orchestrator/templates/` (1 file), `src/orchestrator/review-loop.ts`. 49 new tests. Part of the [Universal Master Orchestrator](docs/superpowers/plans/2026-04-12-master-orchestrator-architecture.md) vision.
+New modules: `src/profiles/` (1 file), `src/orchestrator/templates/` (1 file), `src/orchestrator/review-loop.ts`. 49 new tests.
+
+### Universal Project Manager (Phase 4)
+
+aman-agent now understands your project type and structures orchestration accordingly:
+
+| Feature | Details |
+|:---|:---|
+| **Project classification** | Auto-detects project type (web-frontend, api-backend, mobile, ml-data, monorepo, etc.) from stack profile |
+| **Template mapping** | Maps project type → recommended orchestration template and agent profiles |
+| **Module boundary mapping** | Analyzes directory structure to assign non-overlapping file regions for parallel agents |
+| **Orchestration monitoring** | Structured metrics: phase timing, per-agent performance, approval gate tracking, formatted summaries |
+
+New module: `src/project/` (4 files, 33 tests). Part of the [Universal Master Orchestrator](docs/superpowers/plans/2026-04-12-master-orchestrator-architecture.md) vision.
 
 ---
 

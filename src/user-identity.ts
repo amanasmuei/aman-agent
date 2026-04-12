@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
+import { identityDir } from "./config.js";
 
 export interface UserIdentity {
   name: string;
@@ -16,7 +16,7 @@ export interface UserIdentity {
   updatedAt: string;
 }
 
-const USER_FILE = path.join(os.homedir(), ".acore", "user.md");
+const USER_FILE = path.join(identityDir(), "user.md");
 
 /**
  * Check if user identity exists.

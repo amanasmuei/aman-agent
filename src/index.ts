@@ -1,7 +1,8 @@
 import { Command } from "commander";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { loadConfig, saveConfig } from "./config.js";
+import { loadConfig, saveConfig, identityDir, rulesDir, workflowsDir, skillsDir, memoryDir, homeDir } from "./config.js";
+import { migrateIfNeeded } from "./migrate.js";
 import { assembleSystemPrompt, getProfileAiName } from "./prompt.js";
 import { pickLLMClient } from "./llm/index.js";
 import { isClaudeCliInstalled } from "./llm/claude-code.js";
@@ -10,7 +11,6 @@ import { McpManager } from "./mcp/client.js";
 import { runAgent } from "./agent.js";
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import { applyPreset, PRESETS, type PresetName } from "./presets.js";
 import { initMemory, memoryConsolidate, isMemoryInitialized, setMemoryConfig } from "./memory.js";
 import { hasUserIdentity, loadUserIdentity } from "./user-identity.js";
@@ -27,7 +27,7 @@ interface AutoDetectedConfig {
 
 async function autoDetectConfig(): Promise<AutoDetectedConfig | null> {
   // Skip auto-detect if user just ran /reset config
-  const reconfigMarker = path.join(os.homedir(), ".aman-agent", ".reconfig");
+  const reconfigMarker = path.join(homeDir(), ".reconfig");
   if (fs.existsSync(reconfigMarker)) {
     fs.unlinkSync(reconfigMarker);
     return null; // Force interactive prompt
@@ -62,11 +62,10 @@ async function autoDetectConfig(): Promise<AutoDetectedConfig | null> {
 }
 
 function bootstrapEcosystem(): boolean {
-  const home = os.homedir();
-  const corePath = path.join(home, ".acore", "core.md");
+  const corePath = path.join(identityDir(), "core.md");
   if (fs.existsSync(corePath)) return false;
 
-  fs.mkdirSync(path.join(home, ".acore"), { recursive: true });
+  fs.mkdirSync(identityDir(), { recursive: true });
   fs.writeFileSync(corePath, [
     "# Aman",
     "",
@@ -80,10 +79,9 @@ function bootstrapEcosystem(): boolean {
     "_New companion — no prior sessions._",
   ].join("\n"), "utf-8");
 
-  const rulesDir = path.join(home, ".arules");
-  const rulesPath = path.join(rulesDir, "rules.md");
+  const rulesPath = path.join(rulesDir(), "rules.md");
   if (!fs.existsSync(rulesPath)) {
-    fs.mkdirSync(rulesDir, { recursive: true });
+    fs.mkdirSync(rulesDir(), { recursive: true });
     fs.writeFileSync(rulesPath, [
       "# Guardrails",
       "",
@@ -97,17 +95,15 @@ function bootstrapEcosystem(): boolean {
     ].join("\n"), "utf-8");
   }
 
-  const flowDir = path.join(home, ".aflow");
-  const flowPath = path.join(flowDir, "flow.md");
+  const flowPath = path.join(workflowsDir(), "flow.md");
   if (!fs.existsSync(flowPath)) {
-    fs.mkdirSync(flowDir, { recursive: true });
+    fs.mkdirSync(workflowsDir(), { recursive: true });
     fs.writeFileSync(flowPath, "# Workflows\n\n_No workflows defined yet. Use /workflows add to create one._\n", "utf-8");
   }
 
-  const skillDir = path.join(home, ".askill");
-  const skillPath = path.join(skillDir, "skills.md");
+  const skillPath = path.join(skillsDir(), "skills.md");
   if (!fs.existsSync(skillPath)) {
-    fs.mkdirSync(skillDir, { recursive: true });
+    fs.mkdirSync(skillsDir(), { recursive: true });
     fs.writeFileSync(skillPath, "# Skills\n\n_No skills installed yet. Use /skills install to add domain expertise._\n", "utf-8");
   }
 
@@ -383,6 +379,19 @@ program
     const s = p.spinner();
     s.start("Loading ecosystem");
 
+    // Migrate old scattered directories to consolidated layout
+    const migration = migrateIfNeeded();
+    if (migration.migrated.length > 0) {
+      for (const dir of migration.migrated) {
+        p.log.info(`Migrated → ~/.aman-agent/${dir}/`);
+      }
+    }
+
+    // Point ecosystem libs at consolidated layout
+    process.env.ACORE_HOME = identityDir();
+    process.env.ARULES_HOME = rulesDir();
+    process.env.AMEM_DIR = memoryDir();
+
     const isFirstRun = bootstrapEcosystem();
 
     // User onboarding — runs once on first launch
@@ -541,22 +550,21 @@ program
     if (p.isCancel(preset)) process.exit(0);
 
     const result = applyPreset(preset, name || "Aman");
-    const home = os.homedir();
 
-    fs.mkdirSync(path.join(home, ".acore"), { recursive: true });
-    fs.writeFileSync(path.join(home, ".acore", "core.md"), result.coreMd, "utf-8");
+    fs.mkdirSync(identityDir(), { recursive: true });
+    fs.writeFileSync(path.join(identityDir(), "core.md"), result.coreMd, "utf-8");
     p.log.success(`Identity created — ${PRESETS[preset].identity.personality.split(".")[0].toLowerCase()}`);
 
     if (result.rulesMd) {
-      fs.mkdirSync(path.join(home, ".arules"), { recursive: true });
-      fs.writeFileSync(path.join(home, ".arules", "rules.md"), result.rulesMd, "utf-8");
+      fs.mkdirSync(rulesDir(), { recursive: true });
+      fs.writeFileSync(path.join(rulesDir(), "rules.md"), result.rulesMd, "utf-8");
       const ruleCount = (result.rulesMd.match(/^- /gm) || []).length;
       p.log.success(`${ruleCount} rules set`);
     }
 
     if (result.flowMd) {
-      fs.mkdirSync(path.join(home, ".aflow"), { recursive: true });
-      fs.writeFileSync(path.join(home, ".aflow", "flow.md"), result.flowMd, "utf-8");
+      fs.mkdirSync(workflowsDir(), { recursive: true });
+      fs.writeFileSync(path.join(workflowsDir(), "flow.md"), result.flowMd, "utf-8");
       const wfCount = (result.flowMd.match(/^## /gm) || []).length;
       p.log.success(`${wfCount} workflow${wfCount > 1 ? "s" : ""} added`);
     }

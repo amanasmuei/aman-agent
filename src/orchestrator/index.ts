@@ -77,6 +77,16 @@ export {
   type ReviewResult,
 } from "./review-loop.js";
 
+// Re-exports: cost tracker
+export {
+  createCostTracker,
+  DEFAULT_TIER_COSTS,
+  type CostTracker,
+  type CostTrackerOptions,
+  type CostEntry,
+  type TierCost,
+} from "./cost-tracker.js";
+
 // Re-exports: templates
 export {
   fullFeatureTemplate,

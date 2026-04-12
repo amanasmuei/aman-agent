@@ -69,6 +69,24 @@ export {
   type SchedulerResult,
 } from "./scheduler.js";
 
+// Re-exports: review loop
+export {
+  buildReviewDAG,
+  runReviewLoop,
+  type ReviewLoopOptions,
+  type ReviewResult,
+} from "./review-loop.js";
+
+// Re-exports: templates
+export {
+  fullFeatureTemplate,
+  bugFixTemplate,
+  securityAuditTemplate,
+  getTemplate,
+  listTemplates,
+  type TemplateOptions,
+} from "./templates/index.js";
+
 // ── Convenience functions ───────────────────────────────────────────
 
 import type { TaskDAG, TaskNode, PhaseGate, OrchestrationState } from "./types.js";

@@ -17,7 +17,7 @@
   &nbsp;
   <a href="https://github.com/amanasmuei/aman-agent/actions"><img src="https://img.shields.io/github/actions/workflow/status/amanasmuei/aman-agent/ci.yml?style=for-the-badge&logo=github&label=CI" alt="CI status" /></a>
   &nbsp;
-  <img src="https://img.shields.io/badge/tests-490_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="490 tests passing" />
+  <img src="https://img.shields.io/badge/tests-531_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="531 tests passing" />
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
 </p>
@@ -27,7 +27,7 @@
   &nbsp;
   <img src="https://img.shields.io/badge/typescript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="Strict TypeScript" />
   &nbsp;
-  <img src="https://img.shields.io/badge/bundle-340_KB-informational?style=flat-square" alt="Bundle size: 340 KB" />
+  <img src="https://img.shields.io/badge/bundle-384_KB-informational?style=flat-square" alt="Bundle size: 384 KB" />
   &nbsp;
   <img src="https://img.shields.io/badge/LLMs-6_providers-8a2be2?style=flat-square" alt="6 LLM providers" />
   &nbsp;
@@ -39,7 +39,9 @@
 </p>
 
 <p align="center">
+  <a href="#whats-new-in-v0330"><kbd> What's New </kbd></a>
   <a href="#quick-start"><kbd> Quick Start </kbd></a>
+  <a href="#project-dev-mode-recommended"><kbd> Dev Mode </kbd></a>
   <a href="#architecture-at-a-glance"><kbd> Architecture </kbd></a>
   <a href="#features"><kbd> Features </kbd></a>
   <a href="#commands"><kbd> Commands </kbd></a>
@@ -59,12 +61,13 @@
 <details>
 <summary><strong>Table of Contents</strong></summary>
 
-- [What's New](#whats-new-in-v0320)
+- [What's New](#whats-new-in-v0330)
 - [The Problem](#the-problem)
 - [The Solution](#the-solution)
 - [Architecture at a Glance](#architecture-at-a-glance)
 - [Quick Start](#quick-start)
 - [Usage Guide](#usage-guide)
+  - [Project Dev Mode](#project-dev-mode-recommended)
   - [Your First Conversation](#your-first-conversation)
   - [How Memory Works](#how-memory-works)
   - [Files & Images](#working-with-files--images)
@@ -94,9 +97,41 @@
 
 ---
 
-## What's New in v0.32.0
+## What's New in v0.33.0
 
-> **Install anywhere, zero prerequisites.**
+> **One command. Full context. Zero setup.**
+
+### `aman-agent dev` — Your New Way to Start Coding
+
+```bash
+cd ~/projects/amantrade && aman-agent dev
+```
+
+Open any project, and aman-agent **automatically detects your stack**, **recalls your past decisions from memory**, and **generates a project-specific CLAUDE.md** — then launches Claude Code with everything loaded. No more re-explaining yourself.
+
+```
+$ aman-agent dev ~/projects/amantrade
+
+  Detected: Go (Fiber) + Postgresql + Docker + Github-actions
+  Recalled: 8 memories (4 decisions, 3 corrections, 1 convention)
+  ✓ CLAUDE.md written (template mode)
+
+  Launching Claude Code...
+```
+
+| Flag | What it does |
+|:---|:---|
+| `--smart` | Use your configured LLM to synthesize a smarter CLAUDE.md |
+| `--no-launch` | Generate CLAUDE.md only, don't start Claude Code |
+| `--diff` | Preview what would change without writing |
+| `--force` | Regenerate even if CLAUDE.md is fresh |
+
+Works with **multiple projects** simultaneously — each terminal gets its own `aman-agent dev`, all sharing the same memory database. Decisions from one project flow into the next.
+
+---
+
+<details>
+<summary><strong>v0.32.0 — Install anywhere, zero prerequisites</strong></summary>
 
 ### Install on any machine — no Node.js required
 
@@ -114,6 +149,8 @@ Works on **Linux** (x64, arm64, armv7l), **macOS** (x64, Apple Silicon), **Raspb
 | **`aman-agent update`** | Self-update, works with both vendored and npm installs. |
 | **`aman-agent uninstall`** | Clean removal of all data and config. |
 | **Headless mode** | Auto-detects LLM provider from env vars. Clean error when no TTY (systemd, Docker, CI). |
+
+</details>
 
 <details>
 <summary><strong>Highlights from earlier releases</strong></summary>
@@ -240,6 +277,7 @@ flowchart LR
 | `skill-engine.ts` + `crystallization.ts` | Auto-triggers domain skills from context; promotes post-mortem lessons into reusable, versioned skills | `src/skill-engine.ts`, `src/crystallization.ts` |
 | `user-model.ts` + `personality.ts` | Cross-session trust (EMA), sentiment baseline, burnout risk, time-of-day tone shifts, wellbeing nudges | `src/user-model.ts`, `src/personality.ts` |
 | `observation.ts` + `postmortem.ts` | Passive session telemetry + LLM-generated structured post-mortems on session end | `src/observation.ts`, `src/postmortem.ts` |
+| `dev/` | Project stack detection, context assembly, CLAUDE.md generation — powers `aman-agent dev` | `src/dev/` |
 | `llm/` | 6 pluggable providers — Anthropic, OpenAI, Ollama, GitHub Copilot, OpenAI-compatible, Claude Code CLI | `src/llm/` |
 | `mcp/` | MCP v1.27 client with stdio transport and auto-reconnect | `src/mcp/` |
 
@@ -267,7 +305,11 @@ docker run -it -e ANTHROPIC_API_KEY=sk-... ghcr.io/amanasmuei/aman-agent
 ### 2. Run
 
 ```bash
+# Start a conversation
 aman-agent
+
+# Or jump straight into a project with full context
+aman-agent dev ~/projects/my-app
 ```
 
 **Zero config if you already have an API key in your environment:**
@@ -329,6 +371,70 @@ aman-agent --budget 12000
 A step-by-step walkthrough of how to use aman-agent day-to-day. Click any section below to expand.
 
 <details open>
+<summary><strong>Project Dev Mode (recommended)</strong></summary>
+
+### Project Dev Mode
+
+The fastest way to start working on any project. One command sets up everything:
+
+```bash
+aman-agent dev
+```
+
+**What happens:**
+
+1. **Stack Detection** — Scans your project directory for `package.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`, `pubspec.yaml`, `docker-compose.yml`, `.github/workflows/`, and more
+2. **Memory Recall** — Queries your amem database for past decisions, corrections, and conventions related to this project and stack
+3. **Context Assembly** — Pulls your identity (acore), guardrails (arules), and developer preferences into a structured CLAUDE.md
+4. **Auto-Launch** — Launches Claude Code in the project directory with full context loaded
+
+```
+$ aman-agent dev ~/projects/amantrade
+
+  Detected: Go (Fiber) + Postgresql + Docker + Github-actions
+  Recalled: 8 memories (4 decisions, 3 corrections, 1 convention)
+  ✓ CLAUDE.md written (template mode)
+
+  Launching Claude Code...
+```
+
+**Smart mode** — Use your LLM to synthesize a more tailored CLAUDE.md:
+
+```bash
+aman-agent dev --smart
+```
+
+The LLM merges related corrections into single convention statements and removes redundancy. Falls back to template mode automatically if the LLM call fails.
+
+**Multi-project workflow** — Each terminal is independent:
+
+```bash
+# Terminal 1
+aman-agent dev ~/projects/amantrade
+
+# Terminal 2
+aman-agent dev ~/projects/aman-mcp
+
+# Terminal 3
+aman-agent dev ~/projects/new-api
+```
+
+All three share the same amem database. A decision you make in one project is available to the others on next run.
+
+**Staleness detection** — If you've made new decisions since the last CLAUDE.md generation, `aman-agent dev` auto-updates it and shows you what changed:
+
+```
+✓ CLAUDE.md updated (3 changes)
+  + Added: zerolog convention (from correction 2026-04-10)
+  + Added: rate limiting at gateway level (from decision 2026-04-11)
+  - Removed: slog preference (superseded by zerolog correction)
+```
+
+If the CLAUDE.md is still fresh, it skips regeneration and launches Claude Code immediately.
+
+</details>
+
+<details>
 <summary><strong>Your First Conversation</strong></summary>
 
 ### Your First Conversation
@@ -921,25 +1027,32 @@ Here's what a typical day looks like with aman-agent:
 
 ```
 Morning:
-  $ cd ~/project && aman-agent
-  → Loads project context, active plan, memories
+  $ aman-agent dev ~/projects/amantrade
+  → Detects stack: Go (Fiber) + PostgreSQL + Docker
+  → Recalls 12 memories (decisions, conventions, corrections)
+  → Generates project-specific CLAUDE.md
+  → Launches Claude Code — full context loaded, zero re-explaining
   → "Welcome back. You're on step 3 of Auth API."
-  → Work on your plan, skills auto-activate as needed
-  → /plan done after each step, commit your work
+
+  # Working on a second project in parallel?
+  $ aman-agent dev ~/projects/aman-mcp    # new terminal
+  → Same memory database, different project context
+  → Decisions from amantrade are available here too
 
 Afternoon:
+  → Work on your plan, skills auto-activate as needed
+  → /plan done after each step, commit your work
   → Personality shifts to steady pace
-  → Skills level up as you demonstrate mastery
-  → Knowledge library suggests snippets when relevant
 
 Evening:
   → /quit or Ctrl+C
   → Session auto-saved to memory
-  → Project context.md updated
   → Plan progress persisted
   → Optional quick session rating
 
 Next morning:
+  $ aman-agent dev    # in any project
+  → CLAUDE.md auto-updates if new memories exist
   → Everything picks up where you left off
 ```
 
@@ -1238,6 +1351,20 @@ sequenceDiagram
 ---
 
 ## Commands
+
+### CLI Commands
+
+| Command | Description |
+|:---|:---|
+| `aman-agent` | Start interactive chat session |
+| `aman-agent dev [path]` | Scan project, generate CLAUDE.md, launch Claude Code `[--smart\|--no-launch\|--force\|--diff]` |
+| `aman-agent init` | Set up your AI companion with a guided wizard |
+| `aman-agent serve` | Run as a local MCP server for agent delegation `[--name\|--profile]` |
+| `aman-agent setup` | Full reconfiguration wizard |
+| `aman-agent update` | Self-update to latest version |
+| `aman-agent uninstall` | Clean removal of all data and config |
+
+### Slash Commands (inside a session)
 
 | Command | Description |
 |:---|:---|

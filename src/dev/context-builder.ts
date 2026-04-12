@@ -61,7 +61,8 @@ export async function buildContext(
 
     const db = createDatabase(dbPath);
     const query = [stack.projectName, ...stack.languages, ...stack.frameworks].join(" ");
-    const result = await recall(db, { query, limit: 20 });
+    // rerank: false skips the cross-encoder model — much faster startup
+    const result = await recall(db, { query, limit: 20, compact: false, rerank: false });
 
     for (const mem of result.memories) {
       const content = (mem as any).content;

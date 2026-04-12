@@ -84,4 +84,28 @@ describe("runDev", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("not found");
   });
+
+  it("generates copilot-instructions.md with --copilot", async () => {
+    const result = await runDev(tmpDir, { noLaunch: true, editor: "copilot" });
+    expect(result.success).toBe(true);
+    expect(result.generated).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".github", "copilot-instructions.md"))).toBe(true);
+    const content = fs.readFileSync(path.join(tmpDir, ".github", "copilot-instructions.md"), "utf-8");
+    expect(content).toContain("# Project:");
+    expect(content).toContain("<!-- aman-agent:dev");
+  });
+
+  it("generates .cursorrules with --cursor", async () => {
+    const result = await runDev(tmpDir, { noLaunch: true, editor: "cursor" });
+    expect(result.success).toBe(true);
+    expect(result.generated).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".cursorrules"))).toBe(true);
+  });
+
+  it("adds copilot-instructions.md to .gitignore with --copilot", async () => {
+    fs.writeFileSync(path.join(tmpDir, ".gitignore"), "node_modules/\n");
+    await runDev(tmpDir, { noLaunch: true, editor: "copilot" });
+    const gitignore = fs.readFileSync(path.join(tmpDir, ".gitignore"), "utf-8");
+    expect(gitignore).toContain("copilot-instructions.md");
+  });
 });

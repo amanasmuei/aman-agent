@@ -613,15 +613,22 @@ program
 
 program
   .command("dev [path]")
-  .description("Set up project context and start Claude Code")
-  .option("--smart", "Use LLM to generate CLAUDE.md")
-  .option("--no-launch", "Generate CLAUDE.md only, don't start claude")
-  .option("--force", "Regenerate even if CLAUDE.md is fresh")
+  .description("Set up project context and launch your editor (Claude Code, Copilot, or Cursor)")
+  .option("--smart", "Use LLM to synthesize context file")
+  .option("--no-launch", "Generate context file only, don't launch editor")
+  .option("--force", "Regenerate even if context file is fresh")
   .option("--diff", "Show what would change without writing")
-  .option("--yolo", "Launch Claude Code with --dangerously-skip-permissions")
+  .option("--yolo", "Launch with skip-permissions (Claude Code only)")
+  .option("--copilot", "Target GitHub Copilot (writes .github/copilot-instructions.md, opens VS Code)")
+  .option("--cursor", "Target Cursor editor (writes .cursorrules, opens Cursor)")
   .action(async (projectPath: string | undefined, opts: Record<string, boolean>) => {
     const { runDev } = await import("./dev/dev-command.js");
     const { scanStack } = await import("./dev/stack-detector.js");
+    const { EDITOR_TARGETS } = await import("./dev/claude-md-writer.js");
+
+    // Determine editor target
+    const editorName = opts.copilot ? "copilot" as const : opts.cursor ? "cursor" as const : "claude" as const;
+    const target = EDITOR_TARGETS[editorName];
 
     const targetPath = projectPath ?? process.cwd();
     const stack = scanStack(targetPath);
@@ -641,7 +648,7 @@ program
     if (stack.languages.length > 0) {
       console.log(`\n  ${pc.cyan("Detected:")} ${stackParts.join(" + ")}`);
     } else {
-      console.log(`\n  ${pc.dim("No stack detected — generating minimal CLAUDE.md")}`);
+      console.log(`\n  ${pc.dim("No stack detected — generating minimal context")}`);
     }
 
     const result = await runDev(targetPath, {
@@ -649,6 +656,7 @@ program
       noLaunch: opts.launch === false,
       force: opts.force,
       diff: opts.diff,
+      editor: editorName,
     }, stack);
 
     if (!result.success) {
@@ -665,28 +673,28 @@ program
       const mode = opts.smart ? "smart" : "template";
       const memCount = result.context?.metadata.memoriesUsed ?? 0;
       console.log(`  ${pc.cyan("Recalled:")} ${memCount} memories`);
-      console.log(`  ${pc.green("✓")} CLAUDE.md written (${mode} mode)\n`);
+      console.log(`  ${pc.green("✓")} ${target.contextFile} written (${mode} mode)\n`);
     } else if (result.skippedReason === "fresh") {
-      console.log(`  ${pc.green("✓")} CLAUDE.md is up to date\n`);
+      console.log(`  ${pc.green("✓")} ${target.contextFile} is up to date\n`);
     }
 
-    // Launch Claude Code
+    // Launch editor
     if (opts.launch !== false && !opts.diff) {
       const { execFileSync } = await import("node:child_process");
       try {
-        execFileSync("which", ["claude"], { stdio: "ignore" });
+        execFileSync("which", [target.launchCmd], { stdio: "ignore" });
       } catch {
-        console.log(`  ${pc.yellow("Claude Code not found.")} Install: npm install -g @anthropic-ai/claude-code`);
+        console.log(`  ${pc.yellow(`${target.displayName} not found.`)} Ensure '${target.launchCmd}' is in your PATH.`);
         process.exit(1);
       }
-      const claudeArgs: string[] = [];
-      if (opts.yolo) {
-        claudeArgs.push("--dangerously-skip-permissions");
-        console.log(`  ${pc.cyan("Launching Claude Code")} ${pc.yellow("(--dangerously-skip-permissions)")}...\n`);
+      const launchArgs = [...target.launchArgs];
+      if (opts.yolo && target.yoloArgs) {
+        launchArgs.push(...target.yoloArgs);
+        console.log(`  ${pc.cyan(`Launching ${target.displayName}`)} ${pc.yellow("(skip-permissions)")}...\n`);
       } else {
-        console.log(`  ${pc.cyan("Launching Claude Code...")}\n`);
+        console.log(`  ${pc.cyan(`Launching ${target.displayName}...`)}\n`);
       }
-      execFileSync("claude", claudeArgs, { cwd: targetPath, stdio: "inherit" });
+      execFileSync(target.launchCmd, launchArgs, { cwd: targetPath, stdio: "inherit" });
     }
   });
 

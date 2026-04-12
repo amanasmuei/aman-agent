@@ -121,11 +121,13 @@ $ aman-agent dev ~/projects/amantrade
 
 | Flag | What it does |
 |:---|:---|
-| `--smart` | Use your configured LLM to synthesize a smarter CLAUDE.md |
-| `--yolo` | Launch Claude Code with `--dangerously-skip-permissions` (full autonomous mode) |
-| `--no-launch` | Generate CLAUDE.md only, don't start Claude Code |
+| `--smart` | Use your configured LLM to synthesize a smarter context file |
+| `--yolo` | Launch with skip-permissions (Claude Code only) |
+| `--copilot` | Target GitHub Copilot — writes `.github/copilot-instructions.md`, opens VS Code |
+| `--cursor` | Target Cursor — writes `.cursorrules`, opens Cursor |
+| `--no-launch` | Generate context file only, don't launch editor |
 | `--diff` | Preview what would change without writing |
-| `--force` | Regenerate even if CLAUDE.md is fresh |
+| `--force` | Regenerate even if context file is fresh |
 
 Works with **multiple projects** simultaneously — each terminal gets its own `aman-agent dev`, all sharing the same memory database. Decisions from one project flow into the next.
 
@@ -407,14 +409,22 @@ aman-agent dev --smart
 
 The LLM merges related corrections into single convention statements and removes redundancy. Falls back to template mode automatically if the LLM call fails.
 
-**Yolo mode** — Full autonomous, no permission prompts:
+**Multi-editor support** — Same memory, any editor:
+
+```bash
+aman-agent dev                 # Claude Code (default) → CLAUDE.md
+aman-agent dev --copilot       # VS Code + Copilot → .github/copilot-instructions.md
+aman-agent dev --cursor        # Cursor → .cursorrules
+```
+
+All three use the same pipeline: stack detection → amem recall → context assembly. Only the output file and launcher differ.
+
+**Yolo mode** — Full autonomous, no permission prompts (Claude Code only):
 
 ```bash
 aman-agent dev --yolo          # skip permissions
-aman-agent dev --yolo --smart  # skip permissions + LLM-generated CLAUDE.md
+aman-agent dev --yolo --smart  # skip permissions + LLM-generated context
 ```
-
-Launches Claude Code with `--dangerously-skip-permissions`. Use when you trust the project and want zero friction.
 
 **Multi-project workflow** — Each terminal is independent:
 
@@ -1367,7 +1377,7 @@ sequenceDiagram
 | Command | Description |
 |:---|:---|
 | `aman-agent` | Start interactive chat session |
-| `aman-agent dev [path]` | Scan project, generate CLAUDE.md, launch Claude Code `[--smart\|--yolo\|--no-launch\|--force\|--diff]` |
+| `aman-agent dev [path]` | Scan project, generate context, launch editor `[--smart\|--yolo\|--copilot\|--cursor\|--no-launch\|--force\|--diff]` |
 | `aman-agent init` | Set up your AI companion with a guided wizard |
 | `aman-agent serve` | Run as a local MCP server for agent delegation `[--name\|--profile]` |
 | `aman-agent setup` | Full reconfiguration wizard |

@@ -126,12 +126,55 @@ export function parseMarker(content: string): MarkerInfo | null {
   };
 }
 
-export function checkStaleness(projectPath: string): StalenessResult {
-  const claudeMdPath = path.join(projectPath, "CLAUDE.md");
-  if (!fs.existsSync(claudeMdPath)) {
+// --- Editor target definitions ---
+
+export type EditorName = "claude" | "copilot" | "cursor";
+
+export interface EditorTarget {
+  name: EditorName;
+  contextFile: string;       // relative path from project root
+  launchCmd: string;         // binary to launch
+  launchArgs: string[];      // default args
+  yoloArgs?: string[];       // extra args for --yolo mode
+  gitignoreEntry: string;    // what to add to .gitignore
+  displayName: string;       // for terminal output
+}
+
+export const EDITOR_TARGETS: Record<EditorName, EditorTarget> = {
+  claude: {
+    name: "claude",
+    contextFile: "CLAUDE.md",
+    launchCmd: "claude",
+    launchArgs: [],
+    yoloArgs: ["--dangerously-skip-permissions"],
+    gitignoreEntry: "CLAUDE.md",
+    displayName: "Claude Code",
+  },
+  copilot: {
+    name: "copilot",
+    contextFile: ".github/copilot-instructions.md",
+    launchCmd: "code",
+    launchArgs: ["."],
+    gitignoreEntry: ".github/copilot-instructions.md",
+    displayName: "VS Code (Copilot)",
+  },
+  cursor: {
+    name: "cursor",
+    contextFile: ".cursorrules",
+    launchCmd: "cursor",
+    launchArgs: ["."],
+    gitignoreEntry: ".cursorrules",
+    displayName: "Cursor",
+  },
+};
+
+export function checkStaleness(projectPath: string, editor: EditorName = "claude"): StalenessResult {
+  const target = EDITOR_TARGETS[editor];
+  const filePath = path.join(projectPath, target.contextFile);
+  if (!fs.existsSync(filePath)) {
     return { status: "missing" };
   }
-  const content = fs.readFileSync(claudeMdPath, "utf-8");
+  const content = fs.readFileSync(filePath, "utf-8");
   const marker = parseMarker(content);
   if (!marker) {
     return { status: "no-marker" };
@@ -139,21 +182,31 @@ export function checkStaleness(projectPath: string): StalenessResult {
   return { status: "fresh", generatedAt: marker.generatedAt };
 }
 
-export function writeClaudeMd(ctx: ProjectContext, projectPath: string): WriteResult {
-  const claudeMdPath = path.join(projectPath, "CLAUDE.md");
+export function writeContextFile(ctx: ProjectContext, projectPath: string, editor: EditorName = "claude"): WriteResult {
+  const target = EDITOR_TARGETS[editor];
+  const filePath = path.join(projectPath, target.contextFile);
   let backedUp = false;
 
-  if (fs.existsSync(claudeMdPath)) {
-    const content = fs.readFileSync(claudeMdPath, "utf-8");
+  // Ensure parent directory exists (e.g. .github/ for copilot)
+  const parentDir = path.dirname(filePath);
+  if (!fs.existsSync(parentDir)) {
+    fs.mkdirSync(parentDir, { recursive: true });
+  }
+
+  if (fs.existsSync(filePath)) {
+    const content = fs.readFileSync(filePath, "utf-8");
     const marker = parseMarker(content);
     if (!marker) {
-      fs.copyFileSync(claudeMdPath, `${claudeMdPath}.bak`);
+      fs.copyFileSync(filePath, `${filePath}.bak`);
       backedUp = true;
     }
   }
 
   const md = renderToString(ctx);
-  fs.writeFileSync(claudeMdPath, md, "utf-8");
+  fs.writeFileSync(filePath, md, "utf-8");
 
-  return { written: true, backedUp, path: claudeMdPath };
+  return { written: true, backedUp, path: filePath };
 }
+
+// Backward compat alias
+export const writeClaudeMd = writeContextFile;

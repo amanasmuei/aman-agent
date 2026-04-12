@@ -1,5 +1,5 @@
-# aman-agent — Comprehensive Demo
-# 5 scenes covering ALL features
+# aman-agent v0.39.0 — Universal Master Orchestrator Demo
+# 5 scenes: Install → Memory → Orchestrate → GitHub → Wellbeing
 #
 # Record: vhs docs/demo/demo.tape
 
@@ -28,4 +28,4 @@ Enter
 Sleep 1s
 Show
 
-Sleep 135s
+Sleep 120s

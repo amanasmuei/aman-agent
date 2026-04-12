@@ -17,7 +17,7 @@
   &nbsp;
   <a href="https://github.com/amanasmuei/aman-agent/actions"><img src="https://img.shields.io/github/actions/workflow/status/amanasmuei/aman-agent/ci.yml?style=for-the-badge&logo=github&label=CI" alt="CI status" /></a>
   &nbsp;
-  <img src="https://img.shields.io/badge/tests-805_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="805 tests passing" />
+  <img src="https://img.shields.io/badge/tests-865_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="865 tests passing" />
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
 </p>
@@ -191,7 +191,20 @@ aman-agent now understands your project type and structures orchestration accord
 | **Module boundary mapping** | Analyzes directory structure to assign non-overlapping file regions for parallel agents |
 | **Orchestration monitoring** | Structured metrics: phase timing, per-agent performance, approval gate tracking, formatted summaries |
 
-New module: `src/project/` (4 files, 33 tests). Part of the [Universal Master Orchestrator](docs/superpowers/plans/2026-04-12-master-orchestrator-architecture.md) vision.
+New module: `src/project/` (4 files, 33 tests).
+
+### Enterprise Hardening (Phase 5)
+
+Production-grade reliability and governance for orchestration at scale:
+
+| Feature | Details |
+|:---|:---|
+| **Circuit breaker** | Per-agent failure tracking with closed/open/half-open states. Prevents cascade failures when an agent is consistently failing. Auto-recovers after cooldown. |
+| **Checkpoint/resume** | Serialize full orchestration state to disk. Resume from crash — no lost progress on long-running orchestrations. |
+| **Cost tracker** | Token counting per LLM tier with budget enforcement. Tracks input/output tokens, estimates cost using tier-specific rates, blocks over-budget orchestrations. |
+| **Policy engine** | 7 built-in rules: max task count, requires review/testing, no orphan nodes, approval before deploy, advanced tier awareness, max depth. Custom rules supported. |
+
+All Phase 5 modules integrated into the orchestrator public API. 60 new tests. The [Universal Master Orchestrator](docs/superpowers/plans/2026-04-12-master-orchestrator-architecture.md) vision is now complete.
 
 ---
 

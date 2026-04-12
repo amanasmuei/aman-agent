@@ -1492,16 +1492,19 @@ function handleUpdate(): CommandResult {
     if (current === local) {
       return { handled: true, output: `${pc.green("Up to date")} — v${local}` };
     }
+    // Detect vendored install (node lives inside ~/.aman-agent/node/)
+    const isVendored = process.execPath.includes(path.join(".aman-agent", "node"));
+    const updateCmd = isVendored
+      ? "aman-agent update"
+      : "npm install -g @aman_asmuei/aman-agent@latest";
+
     return {
       handled: true,
       output: [
         `${pc.yellow("Update available:")} v${local} → v${current}`,
         "",
         `Run this in your terminal:`,
-        `  ${pc.bold("npm install -g @aman_asmuei/aman-agent@latest")}`,
-        "",
-        `Or use npx (always latest):`,
-        `  ${pc.bold("npx @aman_asmuei/aman-agent@latest")}`,
+        `  ${pc.bold(updateCmd)}`,
       ].join("\n"),
     };
   } catch {
@@ -1510,9 +1513,6 @@ function handleUpdate(): CommandResult {
       output: [
         `To update, run in your terminal:`,
         `  ${pc.bold("npm install -g @aman_asmuei/aman-agent@latest")}`,
-        "",
-        `Or use npx (always latest):`,
-        `  ${pc.bold("npx @aman_asmuei/aman-agent@latest")}`,
       ].join("\n"),
     };
   }

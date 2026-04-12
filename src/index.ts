@@ -135,6 +135,13 @@ program
         p.log.info(pc.dim("Change anytime with /reset config"));
         saveConfig(config);
       } else {
+        // Non-interactive (systemd, Docker without -it, CI) — fail clearly
+        if (!process.stdin.isTTY) {
+          console.error("Error: No LLM provider configured.");
+          console.error("Set ANTHROPIC_API_KEY or OPENAI_API_KEY, or run interactively: aman-agent");
+          process.exit(1);
+        }
+
         p.log.info("First-time setup — configure your LLM connection.");
 
         const provider = (await p.select({
@@ -602,6 +609,81 @@ program
       console.error(pc.red(`aman-agent serve failed: ${msg}`));
       process.exit(1);
     }
+  });
+
+program
+  .command("setup")
+  .description("Run the full configuration wizard (provider, identity, presets)")
+  .action(async () => {
+    p.intro(pc.bold("aman agent setup") + pc.dim(" — full configuration wizard"));
+
+    // Create .reconfig marker to force interactive provider selection on next run
+    const reconfigPath = path.join(homeDir(), ".reconfig");
+    fs.mkdirSync(homeDir(), { recursive: true });
+    fs.writeFileSync(reconfigPath, "", "utf-8");
+
+    p.log.info("Configuration reset. Restart aman-agent to complete setup.");
+  });
+
+program
+  .command("update")
+  .description("Update aman-agent to the latest version")
+  .action(async () => {
+    const { execFileSync } = await import("node:child_process");
+    const isVendored = process.execPath.includes(path.join(".aman-agent", "node"));
+
+    if (isVendored) {
+      const npmPath = path.join(homeDir(), "node", "bin", "npm");
+      console.log("Updating aman-agent...");
+      try {
+        execFileSync(npmPath, ["install", "-g", "@aman_asmuei/aman-agent@latest"], {
+          stdio: "inherit",
+          env: { ...process.env, PREFIX: homeDir() },
+        });
+        console.log("✓ Updated successfully.");
+      } catch {
+        console.error("Update failed. Try manually: npm install -g @aman_asmuei/aman-agent@latest");
+        process.exit(1);
+      }
+    } else {
+      console.log("Updating via npm...");
+      try {
+        execFileSync("npm", ["install", "-g", "@aman_asmuei/aman-agent@latest"], {
+          stdio: "inherit",
+        });
+        console.log("✓ Updated successfully.");
+      } catch {
+        console.error("Update failed. Try manually: npm install -g @aman_asmuei/aman-agent@latest");
+        process.exit(1);
+      }
+    }
+  });
+
+program
+  .command("uninstall")
+  .description("Remove aman-agent and all its data")
+  .action(async () => {
+    const home = homeDir();
+
+    if (!process.stdin.isTTY) {
+      fs.rmSync(home, { recursive: true, force: true });
+      console.log("✓ Removed " + home);
+      return;
+    }
+
+    const confirm = await p.confirm({
+      message: `This will delete ${home} and all your data (memory, identity, config). Continue?`,
+    });
+    if (!confirm || p.isCancel(confirm)) {
+      console.log("Cancelled.");
+      return;
+    }
+
+    fs.rmSync(home, { recursive: true, force: true });
+    console.log("✓ Removed " + home);
+    console.log("");
+    console.log("To complete uninstall, remove the PATH line from your shell config:");
+    console.log('  Remove: export PATH="$HOME/.aman-agent/bin:$PATH"');
   });
 
 program.parse();

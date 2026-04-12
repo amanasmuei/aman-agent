@@ -25,6 +25,7 @@ function trimToTokenBudget(items: string[], maxTokens: number): string[] {
   const result: string[] = [];
   let total = 0;
   for (const item of items) {
+    if (typeof item !== "string" || !item) continue;
     const tokens = estimateTokens(item);
     if (total + tokens > maxTokens) break;
     result.push(item);
@@ -58,18 +59,20 @@ export async function buildContext(
     const result = await recall(db, { query, limit: 20 });
 
     for (const mem of result.memories) {
+      const content = (mem as any).content;
+      if (typeof content !== "string" || !content) continue;
       switch ((mem as any).type) {
         case "pattern":
-          conventions.push((mem as any).content);
+          conventions.push(content);
           break;
         case "decision":
-          decisions.push((mem as any).content);
+          decisions.push(content);
           break;
         case "correction":
-          corrections.push((mem as any).content);
+          corrections.push(content);
           break;
         case "preference":
-          preferences.push((mem as any).content);
+          preferences.push(content);
           break;
       }
       memoriesUsed++;

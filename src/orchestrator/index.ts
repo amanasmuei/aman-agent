@@ -71,12 +71,37 @@ export {
 
 // ── Convenience functions ───────────────────────────────────────────
 
-import type { TaskDAG, OrchestrationState } from "./types.js";
+import type { TaskDAG, TaskNode, PhaseGate, OrchestrationState } from "./types.js";
 import type { ModelRouter } from "./model-router.js";
 import type { SchedulerCallbacks, SchedulerResult } from "./scheduler.js";
 import { validateDAG } from "./dag.js";
 import { createOrchestrationState } from "./state-machine.js";
 import { runScheduler } from "./scheduler.js";
+
+/**
+ * Formats a TaskDAG for human-readable CLI display.
+ */
+export function formatDAGForDisplay(dag: TaskDAG): string {
+  const lines: string[] = [];
+  lines.push(`## ${dag.name}`);
+  lines.push(`**Goal:** ${dag.goal}`);
+  lines.push(`**Tasks:** ${dag.nodes.length} | **Gates:** ${dag.gates.length}`);
+  lines.push("");
+
+  for (const node of dag.nodes) {
+    const depLabel =
+      node.dependencies.length === 0
+        ? "(root)"
+        : `(after: ${node.dependencies.join(", ")})`;
+    lines.push(`- **${node.name}** \u2192 ${node.profile} [${node.tier}] ${depLabel}`);
+  }
+
+  for (const gate of dag.gates) {
+    lines.push(`- \uD83D\uDD12 **${gate.name}** [${gate.type}]`);
+  }
+
+  return lines.join("\n");
+}
 
 /**
  * Validates DAG (throws DAGValidationError if invalid), then creates

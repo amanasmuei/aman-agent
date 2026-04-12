@@ -15,6 +15,7 @@ import { runOnboarding, editProfile } from "./onboarding.js";
 import { loadShowcaseManifest, installShowcaseTemplate } from "./showcase-bridge.js";
 import { readFile, listFiles } from "./files.js";
 import { delegateTask, delegatePipeline } from "./delegate.js";
+import { decomposeRequirement, formatDAGForDisplay } from "./orchestrator/index.js";
 import { listAgents, findAgent } from "./server/registry.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -2407,12 +2408,41 @@ async function handleFileCommand(
   return { handled: true, output: pc.yellow(`Unknown /file subcommand: ${action}. Try /file for help.`) };
 }
 
+async function handleOrchestrateCommand(
+  action: string | undefined,
+  args: string[],
+  ctx: CommandContext,
+): Promise<CommandResult> {
+  if (!action) {
+    return {
+      handled: true,
+      output: `Usage: /orchestrate <requirement>\n\nDecomposes a requirement into a task DAG and executes it with parallel agents.\n\nAlias: /orch`,
+    };
+  }
+
+  // Reconstruct full requirement from action + args
+  const requirement = [action, ...args].join(" ");
+
+  if (!ctx.llmClient) {
+    return { handled: true, output: pc.red("Orchestration requires an LLM client. Not available.") };
+  }
+
+  try {
+    const dag = await decomposeRequirement(requirement, ctx.llmClient);
+    const display = formatDAGForDisplay(dag);
+    return { handled: true, output: display };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { handled: true, output: pc.red(`Orchestration failed: ${msg}`) };
+  }
+}
+
 const KNOWN_COMMANDS = new Set([
   "quit", "exit", "q", "help", "clear", "model", "identity", "rules",
   "workflows", "tools", "akit", "skills", "eval", "memory", "status", "doctor",
   "save", "decisions", "export", "debug", "reset", "reminder",
   "update", "upgrade", "plan", "profile", "delegate", "team", "agents", "showcase", "file",
-  "observe", "postmortem",
+  "observe", "postmortem", "orchestrate", "orch",
 ]);
 
 async function handleObserveCommand(
@@ -2569,6 +2599,9 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
       return handleObserveCommand(action, ctx);
     case "postmortem":
       return handlePostmortemCommand(action, args, ctx);
+    case "orchestrate":
+    case "orch":
+      return handleOrchestrateCommand(action, args, ctx);
     default:
       return { handled: false }; // Pass to LLM if not matched
   }

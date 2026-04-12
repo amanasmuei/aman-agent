@@ -39,7 +39,7 @@
 </p>
 
 <p align="center">
-  <a href="#whats-new-in-v0390"><kbd> What's New </kbd></a>
+  <a href="#whats-new-in-v0410"><kbd> What's New </kbd></a>
   <a href="#quick-start"><kbd> Quick Start </kbd></a>
   <a href="#project-dev-mode-recommended"><kbd> Dev Mode </kbd></a>
   <a href="#architecture-at-a-glance"><kbd> Architecture </kbd></a>
@@ -61,7 +61,7 @@
 <details>
 <summary><strong>Table of Contents</strong></summary>
 
-- [What's New](#whats-new-in-v0390)
+- [What's New](#whats-new-in-v0410)
 - [The Problem](#the-problem)
 - [The Solution](#the-solution)
 - [Architecture at a Glance](#architecture-at-a-glance)
@@ -99,50 +99,59 @@
 
 ---
 
-## What's New in v0.39.0
+## What's New in v0.41.0
 
-> **From companion to orchestrator.** Describe what you want to build — aman-agent decomposes it, delegates to specialized agents, and delivers reviewed results.
+> **From companion to orchestrator — fully wired.** One command decomposes, delegates, reviews, and tracks cost.
 
 ```bash
-/orchestrate Build a REST API with auth, CRUD endpoints, input validation, and tests
+/orchestrate Build user auth with JWT, password hashing, rate limiting, and tests
 ```
 
 ```
-## REST API with Auth
+Project type: api-backend (auto-detected)
+Template: full-feature
+
+## User Authentication
 **Tasks:** 5 | **Gates:** 1
 
-- **Design API schema** → architect [advanced] (root)
-- **Implement auth middleware** → coder [standard] (after: design)
-- **Implement CRUD endpoints** → coder [standard] (after: design)
-- **Write test suite** → tester [standard] (after: auth, crud)
+- **Design auth architecture** → architect [advanced] (root)
+- **Implement JWT middleware** → coder [standard] (after: design)
+- **Add rate limiting** → coder [standard] (after: design)       ← parallel
+- **Write test suite** → tester [standard] (after: jwt, rate-limit)
 - **Security review** → security [standard] (after: tests)
-- 🔒 **Human approval before deploy** [approval]
+- 🔒 **Human approval** [approval gate]
+
+Status: completed (34.2s)
+Cost: ~$0.12 (3 standard + 1 advanced)
+Policy: passed (0 errors, 2 warnings)
 ```
 
-Five new modules shipped as the Universal Master Orchestrator:
+**What happens in that one command:**
 
-| Phase | What it adds |
-|:---|:---|
-| **1. Orchestrator Engine** | DAG scheduler, multi-tier LLM routing (fast/standard/advanced), approval gates, audit trails |
-| **2. GitHub-Native** | `/github plan 42` turns issues into DAGs, auto PRs, CI gate polling, safe `gh` CLI wrapper |
-| **3. Agent Factory** | 4 profiles (architect, security, tester, reviewer), 3 workflow templates, self-review loop |
-| **4. Project Manager** | Auto-classifies project type, maps module boundaries for parallel agents, orchestration monitoring |
-| **5. Enterprise** | Circuit breakers, checkpoint/resume, cost tracking with budget enforcement, 7-rule policy engine |
+1. Auto-detects project type from your cwd (web-frontend, api-backend, mobile, etc.)
+2. Selects the best orchestration template (or decomposes via LLM)
+3. Runs policy check (7 built-in rules — requires review, testing, approval gates)
+4. Executes DAG with parallel agent scheduling and circuit breakers
+5. Tracks LLM cost per tier with budget enforcement
+6. Self-review loop: reviewer + tester evaluate output before completion
 
-**+334 tests** (867 total) across 25 new source files. [Full release notes →](https://github.com/amanasmuei/aman-agent/releases/tag/v0.39.0)
+**Flags:** `--template bug-fix`, `--no-review`, `--no-policy`
+
+**GitHub-native:** `/github plan 42` does the same thing, starting from a GitHub issue.
 
 <details>
-<summary><strong>Phase-by-phase details</strong></summary>
+<summary><strong>The full stack (5 modules, 917 tests)</strong></summary>
 
-**Orchestrator Engine** — Decomposes requirements into a validated DAG (directed acyclic graph) via your LLM. Scheduler runs parallel branches respecting dependencies, pauses at human approval gates, routes each task to the right LLM tier. Immutable state machine prevents invalid transitions. Structured audit trail logs every event.
+| Module | What it does |
+|:---|:---|
+| **Orchestrator Engine** | DAG scheduler, multi-tier LLM routing (fast/standard/advanced), approval gates, structured audit trails, immutable state machine |
+| **GitHub-Native** | Safe `gh` CLI wrapper, issue-to-DAG planner, PR manager, CI gate polling |
+| **Agent Factory** | 4 profiles (architect, security, tester, reviewer), 3 workflow templates (full-feature, bug-fix, security-audit), self-review loop |
+| **Project Manager** | Project type classifier, module boundary mapper for parallel agents, orchestration monitoring |
+| **Enterprise** | Circuit breakers (closed/open/half-open), checkpoint/resume, cost tracking + budget enforcement, 7-rule policy engine |
+| **Integration** | Unified runner (`runOrchestrationFull`), smart orchestrate (`smartOrchestrate`), profile auto-install |
 
-**GitHub-Native Automation** — `/github plan <issue#>` fetches an issue and decomposes it. `/github ci <branch>` polls workflow status. PR manager creates branches, opens PRs, and posts review comments. All commands use `execFile` (no shell injection).
-
-**Agent Factory** — Four specialized profiles: **Architect** (system design, tier: advanced), **Security** (OWASP, CVE audit), **Tester** (test generation, edge cases), **Reviewer** (confidence-scored findings). Three DAG templates: `fullFeatureTemplate` (architect → coders → review + test → finalize), `bugFixTemplate`, `securityAuditTemplate`. Self-review loop runs reviewer + tester on completed output.
-
-**Project Manager** — Classifies projects as web-frontend, api-backend, mobile, ml-data, monorepo, etc. Maps project type to recommended template and profiles. Module boundary mapper assigns non-overlapping file regions for parallel agents. Monitoring tracks phase timing, per-agent performance, and approval gates.
-
-**Enterprise Hardening** — Circuit breaker per agent (closed/open/half-open with auto-recovery). Checkpoint/resume serializes orchestration state to disk. Cost tracker counts tokens per tier with budget enforcement. Policy engine enforces 7 built-in rules (max tasks, requires review/testing, approval before deploy, etc.) with custom rule support.
+28 new source files, 32 new test files. [Full release notes →](https://github.com/amanasmuei/aman-agent/releases/tag/v0.41.0)
 
 </details>
 

@@ -77,6 +77,48 @@ export {
   type ReviewResult,
 } from "./review-loop.js";
 
+// Re-exports: circuit breaker
+export {
+  createCircuitBreaker,
+  createCircuitBreakerRegistry,
+  type CircuitState,
+  type CircuitBreaker,
+  type CircuitBreakerOptions,
+  type CircuitBreakerRegistry,
+} from "./circuit-breaker.js";
+
+// Re-exports: checkpoint
+export {
+  createCheckpoint,
+  serializeCheckpoint,
+  deserializeCheckpoint,
+  saveCheckpoint,
+  loadCheckpoint,
+  restoreMaps,
+  type CheckpointData,
+} from "./checkpoint.js";
+
+// Re-exports: cost tracker
+export {
+  createCostTracker,
+  DEFAULT_TIER_COSTS,
+  type CostTracker,
+  type CostTrackerOptions,
+  type CostEntry,
+  type TierCost,
+} from "./cost-tracker.js";
+
+// Re-exports: policy
+export {
+  evaluatePolicy,
+  getDefaultPolicies,
+  formatPolicyResult,
+  type PolicySeverity,
+  type PolicyViolation,
+  type PolicyResult,
+  type PolicyRule,
+} from "./policy.js";
+
 // Re-exports: templates
 export {
   fullFeatureTemplate,

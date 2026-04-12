@@ -53,17 +53,27 @@ export interface AgentConfig {
 }
 
 /**
- * Resolve the aman-agent config directory, honoring `AMAN_AGENT_HOME`
- * if set. This matches the behavior of `src/server/registry.ts` so that
- * tests and tooling can isolate state via a single environment variable.
+ * Resolve the aman-agent home directory.
+ * Priority: $AMAN_HOME > $AMAN_AGENT_HOME > ~/.aman-agent
  *
- * Previously this module hardcoded `os.homedir()`, which broke hermetic
- * test isolation — child processes spawned with `AMAN_AGENT_HOME=<tmp>`
- * would still read config from the developer's real `~/.aman-agent/`.
- * Recorded as feedback memory `feedback_aman_agent_hermetic_tests.md`.
+ * Previously `configDir()` was the sole entry point and only checked
+ * `AMAN_AGENT_HOME`. Now `homeDir()` is canonical, and `configDir()`
+ * delegates to it.  Recorded as feedback memory
+ * `feedback_aman_agent_hermetic_tests.md`.
  */
+export function homeDir(): string {
+  return process.env.AMAN_HOME || process.env.AMAN_AGENT_HOME || path.join(os.homedir(), ".aman-agent");
+}
+
+export function identityDir(): string { return path.join(homeDir(), "identity"); }
+export function rulesDir(): string { return path.join(homeDir(), "rules"); }
+export function memoryDir(): string { return path.join(homeDir(), "memory"); }
+export function workflowsDir(): string { return path.join(homeDir(), "workflows"); }
+export function skillsDir(): string { return path.join(homeDir(), "skills"); }
+export function evalDir(): string { return path.join(homeDir(), "eval"); }
+
 function configDir(): string {
-  return process.env.AMAN_AGENT_HOME || path.join(os.homedir(), ".aman-agent");
+  return homeDir();
 }
 
 function configPath(): string {

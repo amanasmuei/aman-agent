@@ -12,7 +12,7 @@ vi.mock("node:os", async () => {
 });
 
 // Import after mocking
-const { loadConfig, saveConfig, configExists } = await import("../src/config.js");
+const { loadConfig, saveConfig, configExists, homeDir, identityDir, rulesDir, memoryDir, workflowsDir, skillsDir, evalDir } = await import("../src/config.js");
 import type { HooksConfig } from "../src/config.js";
 
 const CONFIG_DIR = path.join(tmpHome, ".aman-agent");
@@ -111,6 +111,73 @@ describe("config", () => {
       fs.writeFileSync(CONFIG_PATH, "{}", "utf-8");
 
       expect(configExists()).toBe(true);
+    });
+  });
+
+  describe("homeDir and subdirectory resolvers", () => {
+    it("defaults to ~/.aman-agent", () => {
+      delete process.env.AMAN_HOME;
+      delete process.env.AMAN_AGENT_HOME;
+      expect(homeDir()).toBe(path.join(tmpHome, ".aman-agent"));
+    });
+
+    it("respects AMAN_HOME env var", () => {
+      const custom = path.join(tmpHome, "custom-home");
+      process.env.AMAN_HOME = custom;
+      try {
+        expect(homeDir()).toBe(custom);
+      } finally {
+        delete process.env.AMAN_HOME;
+      }
+    });
+
+    it("AMAN_HOME takes priority over AMAN_AGENT_HOME", () => {
+      const amanHome = path.join(tmpHome, "aman-home");
+      const agentHome = path.join(tmpHome, "agent-home");
+      process.env.AMAN_HOME = amanHome;
+      process.env.AMAN_AGENT_HOME = agentHome;
+      try {
+        expect(homeDir()).toBe(amanHome);
+      } finally {
+        delete process.env.AMAN_HOME;
+        delete process.env.AMAN_AGENT_HOME;
+      }
+    });
+
+    it("identityDir returns homeDir()/identity", () => {
+      delete process.env.AMAN_HOME;
+      delete process.env.AMAN_AGENT_HOME;
+      expect(identityDir()).toBe(path.join(tmpHome, ".aman-agent", "identity"));
+    });
+
+    it("rulesDir returns homeDir()/rules", () => {
+      delete process.env.AMAN_HOME;
+      delete process.env.AMAN_AGENT_HOME;
+      expect(rulesDir()).toBe(path.join(tmpHome, ".aman-agent", "rules"));
+    });
+
+    it("memoryDir returns homeDir()/memory", () => {
+      delete process.env.AMAN_HOME;
+      delete process.env.AMAN_AGENT_HOME;
+      expect(memoryDir()).toBe(path.join(tmpHome, ".aman-agent", "memory"));
+    });
+
+    it("workflowsDir returns homeDir()/workflows", () => {
+      delete process.env.AMAN_HOME;
+      delete process.env.AMAN_AGENT_HOME;
+      expect(workflowsDir()).toBe(path.join(tmpHome, ".aman-agent", "workflows"));
+    });
+
+    it("skillsDir returns homeDir()/skills", () => {
+      delete process.env.AMAN_HOME;
+      delete process.env.AMAN_AGENT_HOME;
+      expect(skillsDir()).toBe(path.join(tmpHome, ".aman-agent", "skills"));
+    });
+
+    it("evalDir returns homeDir()/eval", () => {
+      delete process.env.AMAN_HOME;
+      delete process.env.AMAN_AGENT_HOME;
+      expect(evalDir()).toBe(path.join(tmpHome, ".aman-agent", "eval"));
     });
   });
 

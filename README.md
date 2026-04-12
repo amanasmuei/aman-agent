@@ -17,7 +17,7 @@
   &nbsp;
   <a href="https://github.com/amanasmuei/aman-agent/actions"><img src="https://img.shields.io/github/actions/workflow/status/amanasmuei/aman-agent/ci.yml?style=for-the-badge&logo=github&label=CI" alt="CI status" /></a>
   &nbsp;
-  <img src="https://img.shields.io/badge/tests-659_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="659 tests passing" />
+  <img src="https://img.shields.io/badge/tests-723_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="723 tests passing" />
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
 </p>
@@ -133,7 +133,28 @@ Decomposing requirement into task DAG...
 | **LLM decomposition** | Natural language requirements → validated task DAGs via your LLM |
 | **Immutable state machine** | Correctness-critical orchestration lifecycle with 40+ transition tests |
 
-New module: `src/orchestrator/` (8 files, 114 tests). This is Phase 1 of the [Universal Master Orchestrator](docs/superpowers/plans/2026-04-12-master-orchestrator-architecture.md) vision — GitHub-native automation, agent factory profiles, and enterprise hardening coming in subsequent phases.
+New module: `src/orchestrator/` (8 files, 114 tests).
+
+### GitHub-Native Automation (Phase 2)
+
+aman-agent now speaks GitHub natively. Issues become orchestration plans, CI status gates your workflow, and PRs get created automatically:
+
+```bash
+/github plan 42        # Decompose issue #42 into a task DAG
+/github issues         # List open issues
+/github prs            # List open PRs
+/github ci main        # Check CI status for a branch
+```
+
+| Feature | Details |
+|:---|:---|
+| **Issue-to-DAG pipeline** | Fetch any GitHub issue and decompose it into an orchestrator task DAG via your LLM |
+| **PR automation** | Create branches, open PRs, post review comments — all via `gh` CLI |
+| **CI gate polling** | Poll workflow run status, wait for CI to pass before proceeding |
+| **Safe CLI wrapper** | All `gh` commands use `execFile` (no shell) — immune to command injection |
+| **Repo-aware config** | Optional `github` config block for default repo, branch, and auto-PR settings |
+
+New module: `src/github/` (6 files, 64 tests). Part of the [Universal Master Orchestrator](docs/superpowers/plans/2026-04-12-master-orchestrator-architecture.md) vision.
 
 ---
 
@@ -289,7 +310,7 @@ npx @aman_asmuei/aman-agent
 
 ## Architecture at a Glance
 
-aman-agent is the **runtime** at the center of the aman ecosystem — 46 focused TypeScript modules that stitch together 7 portable memory/identity/skill layers with any LLM you want.
+aman-agent is the **runtime** at the center of the aman ecosystem — 52 focused TypeScript modules that stitch together 7 portable memory/identity/skill layers with any LLM you want.
 
 ```mermaid
 flowchart LR
@@ -334,6 +355,7 @@ flowchart LR
 | `agent.ts` | The main event loop — reads your message, recalls memories, streams the LLM response, executes tools, extracts new memories | `src/agent.ts` (40 KB) |
 | `commands.ts` | 60+ slash commands (`/memory`, `/skills`, `/plan`, `/delegate`, `/orchestrate`, `/eval`, `/observe`, `/postmortem`, …) | `src/commands.ts` (100 KB) |
 | `orchestrator/` | DAG-based task decomposition, parallel scheduling, multi-tier model routing, approval gates, audit trails | `src/orchestrator/` (8 files) |
+| `github/` | GitHub-native automation — issue planning, PR management, CI gates, safe `gh` CLI wrapper | `src/github/` (6 files) |
 | `hooks.ts` | 5 lifecycle hooks that fire at startup, before/after tools, on workflow match, on session end | `src/hooks.ts` (26 KB) |
 | `memory.ts` + `memory-extractor.ts` | Per-message recall and silent, non-blocking extraction of preferences, decisions, patterns, corrections | delegates to `@aman_asmuei/amem-core@0.5` |
 | `skill-engine.ts` + `crystallization.ts` | Auto-triggers domain skills from context; promotes post-mortem lessons into reusable, versioned skills | `src/skill-engine.ts`, `src/crystallization.ts` |
@@ -1451,6 +1473,7 @@ sequenceDiagram
 | `/plan` | Show active plan `[create\|done\|undo\|list\|switch\|show]` |
 | `/profile` | Your profile + agent profiles `[me\|edit\|setup\|create\|list\|show\|delete]` |
 | `/orchestrate` | Decompose requirement into task DAG and execute with parallel agents `[<requirement>]` |
+| `/github` | GitHub operations `[issues\|prs\|plan <number>\|ci <branch>]` |
 | `/delegate` | Delegate task to a profile `[<profile> <task>\|pipeline]` |
 | `/agents` | Multi-agent A2A `[list\|info <name>\|ping <name>]` |
 | `/team` | Manage agent teams `[create\|run\|list\|show\|delete]` |

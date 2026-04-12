@@ -56,6 +56,14 @@ import {
   formatPostmortemMarkdown,
 } from "./postmortem.js";
 import {
+  ghAvailable,
+  ghCurrentRepo,
+  listPRs,
+  fetchIssue,
+  formatIssueAsRequirement,
+  isCIPassing,
+} from "./github/index.js";
+import {
   validateCandidate,
   writeSkillToFile,
   appendCrystallizationLog,
@@ -2437,12 +2445,115 @@ async function handleOrchestrateCommand(
   }
 }
 
+async function handleGitHubCommand(
+  action: string | undefined,
+  args: string[],
+  ctx: CommandContext,
+): Promise<CommandResult> {
+  // No subcommand → show repo info
+  if (!action) {
+    const available = await ghAvailable();
+    if (!available) {
+      return { handled: true, output: pc.red("GitHub CLI (gh) is not available or not authenticated. Run: gh auth login") };
+    }
+    const repo = await ghCurrentRepo();
+    if (!repo) {
+      return { handled: true, output: pc.yellow("Not inside a GitHub repository.") };
+    }
+    return { handled: true, output: `GitHub repo: ${pc.bold(`${repo.owner}/${repo.name}`)}` };
+  }
+
+  switch (action) {
+    case "issues": {
+      // Quick issue list via gh CLI
+      const { gh: ghExec } = await import("./github/index.js");
+      const repoArgs = args.length > 0 ? ["--repo", args[0]] : [];
+      const result = await ghExec(["issue", "list", "--limit", "10", ...repoArgs]);
+      if (!result.success) {
+        return { handled: true, output: pc.red(`Failed to list issues: ${result.stderr}`) };
+      }
+      return { handled: true, output: result.stdout.trim() || pc.dim("No open issues.") };
+    }
+
+    case "prs": {
+      const repoArgs: { repo?: string } = args.length > 0 ? { repo: args[0] } : {};
+      try {
+        const prs = await listPRs({ state: "open", limit: 10, ...repoArgs });
+        if (prs.length === 0) {
+          return { handled: true, output: pc.dim("No open PRs.") };
+        }
+        const lines = prs.map(
+          (pr) => `#${pr.number} ${pr.title} (${pr.headRefName} → ${pr.baseRefName})${pr.isDraft ? " [draft]" : ""}`,
+        );
+        return { handled: true, output: lines.join("\n") };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { handled: true, output: pc.red(`Failed to list PRs: ${msg}`) };
+      }
+    }
+
+    case "plan": {
+      const issueNum = parseInt(args[0], 10);
+      if (!issueNum || isNaN(issueNum)) {
+        return { handled: true, output: pc.red("Usage: /github plan <issue-number>") };
+      }
+      if (!ctx.llmClient) {
+        return { handled: true, output: pc.red("Planning requires an LLM client. Not available.") };
+      }
+      try {
+        const issue = await fetchIssue(issueNum);
+        const requirement = formatIssueAsRequirement(issue);
+        const dag = await decomposeRequirement(requirement, ctx.llmClient);
+        const display = formatDAGForDisplay(dag);
+        return { handled: true, output: `${pc.bold(`Plan for #${issue.number}: ${issue.title}`)}\n\n${display}` };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { handled: true, output: pc.red(`Failed to plan issue #${issueNum}: ${msg}`) };
+      }
+    }
+
+    case "ci": {
+      const branch = args[0];
+      if (!branch) {
+        return { handled: true, output: pc.red("Usage: /github ci <branch>") };
+      }
+      try {
+        const passing = await isCIPassing(branch);
+        return {
+          handled: true,
+          output: passing
+            ? pc.green(`CI is passing on ${branch}`)
+            : pc.yellow(`CI is NOT passing on ${branch}`),
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { handled: true, output: pc.red(`Failed to check CI: ${msg}`) };
+      }
+    }
+
+    default:
+      return {
+        handled: true,
+        output: [
+          `Usage: /github [subcommand]`,
+          ``,
+          `Subcommands:`,
+          `  (none)           Show current repo info`,
+          `  issues [repo]    List open issues`,
+          `  prs [repo]       List open PRs`,
+          `  plan <number>    Plan from a GitHub issue`,
+          `  ci <branch>      Check CI status for a branch`,
+        ].join("\n"),
+      };
+  }
+}
+
 const KNOWN_COMMANDS = new Set([
   "quit", "exit", "q", "help", "clear", "model", "identity", "rules",
   "workflows", "tools", "akit", "skills", "eval", "memory", "status", "doctor",
   "save", "decisions", "export", "debug", "reset", "reminder",
   "update", "upgrade", "plan", "profile", "delegate", "team", "agents", "showcase", "file",
-  "observe", "postmortem", "orchestrate", "orch",
+  "observe", "postmortem", "orchestrate", "orch", "github",
 ]);
 
 async function handleObserveCommand(
@@ -2602,6 +2713,8 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
     case "orchestrate":
     case "orch":
       return handleOrchestrateCommand(action, args, ctx);
+    case "github":
+      return handleGitHubCommand(action, args, ctx);
     default:
       return { handled: false }; // Pass to LLM if not matched
   }

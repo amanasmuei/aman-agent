@@ -59,7 +59,7 @@
 <details>
 <summary><strong>Table of Contents</strong></summary>
 
-- [What's New](#whats-new-in-v0300)
+- [What's New](#whats-new-in-v0320)
 - [The Problem](#the-problem)
 - [The Solution](#the-solution)
 - [Architecture at a Glance](#architecture-at-a-glance)
@@ -94,41 +94,51 @@
 
 ---
 
-## What's New in v0.31.0
+## What's New in v0.32.0
 
-> **Multi-agent (A2A) via MCP server mode.**<br/>
-> Multiple `aman-agent` instances on the same machine can now discover each other via a local registry and delegate tasks to each other over the MCP protocol. No new wire format, no broker, no new runtime daemon.
+> **Install anywhere, zero prerequisites.**<br/>
+> One curl command installs aman-agent on any Linux or macOS machine — VPS, Raspberry Pi, or your laptop. No Node.js required. Docker image included.
 
 <table>
 <tr>
 <td width="33%" valign="top">
 
-**`aman-agent serve`**
+**One-liner install**
 
-Run any profile as a local MCP server. Registers in `~/.aman-agent/registry.json` (mode `0600`), exposes `agent.info`, `agent.delegate`, and `agent.send` tools over localhost HTTP with bearer auth.
+```bash
+curl -fsSL https://raw.githubusercontent.com/amanasmuei/aman-agent/main/install.sh | bash
+```
 
-</td>
-<td width="33%" valign="top">
-
-**`/delegate @coder <task>`**
-
-From any other `aman-agent`, delegate to a running serve instance by handle. The `@`-prefix routes through `delegateRemote` which dials via `StreamableHTTPClientTransport` using the bearer from the registry.
+Vendors Node.js 22 LTS invisibly. Supports x64, arm64, and armv7l. No sudo needed.
 
 </td>
 <td width="33%" valign="top">
 
-**`/agents list|info|ping`**
+**Consolidated `~/.aman-agent/`**
 
-Discover, inspect, and latency-check every agent currently running on this machine. `/agents list` merges local registry entries with remotes (local wins on name collision).
+All config, identity, rules, workflows, skills, memory, and eval now live under one directory. Existing users are auto-migrated. One `scp` to move everything to a new machine.
+
+</td>
+<td width="33%" valign="top">
+
+**New CLI commands**
+
+- `aman-agent setup` — full config wizard
+- `aman-agent update` — self-update
+- `aman-agent uninstall` — clean removal
+- Headless mode: auto-detects LLM from env vars, clean error when no TTY
 
 </td>
 </tr>
 </table>
 
-See the [Multi-agent (A2A)](#multi-agent-a2a) section below for the full walkthrough.
-
 <details>
 <summary><strong>Highlights from earlier releases</strong></summary>
+
+**v0.31 — Multi-agent (A2A) via MCP server mode**
+- `aman-agent serve` runs any profile as a local MCP server
+- `/delegate @coder <task>` for cross-agent delegation
+- `/agents list|info|ping` for discovery and health checks
 
 **v0.30 — Agent hardening**
 - Delegation confirmation prompts (no more silent sub-agents)

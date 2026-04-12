@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+
+beforeAll(() => { process.env.AMEM_DB = "/tmp/test-memory.db"; });
 
 vi.mock("@aman_asmuei/amem-core", () => ({
   createDatabase: vi.fn(() => ({ close: vi.fn() })),

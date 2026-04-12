@@ -1,5 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 import type { StackProfile } from "../../src/dev/stack-detector.js";
+
+// Set AMEM_DB so context-builder skips the fs.existsSync check and uses mocked createDatabase
+beforeAll(() => { process.env.AMEM_DB = "/tmp/test-memory.db"; });
 
 vi.mock("@aman_asmuei/amem-core", () => ({
   createDatabase: vi.fn(() => ({ close: vi.fn() })),

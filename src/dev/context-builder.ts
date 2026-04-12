@@ -57,7 +57,8 @@ export async function buildContext(
     const dbPath = process.env.AMEM_DB ?? path.join(amemDir, "memory.db");
 
     // Skip if database doesn't exist — avoids loading HuggingFace models for nothing
-    if (!fs.existsSync(dbPath)) throw new Error("no db");
+    // But allow override via AMEM_DB env var (also needed for tests with mocked createDatabase)
+    if (!process.env.AMEM_DB && !fs.existsSync(dbPath)) throw new Error("no db");
 
     const db = createDatabase(dbPath);
     const query = [stack.projectName, ...stack.languages, ...stack.frameworks].join(" ");

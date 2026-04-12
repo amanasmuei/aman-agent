@@ -17,13 +17,13 @@
   &nbsp;
   <a href="https://github.com/amanasmuei/aman-agent/actions"><img src="https://img.shields.io/github/actions/workflow/status/amanasmuei/aman-agent/ci.yml?style=for-the-badge&logo=github&label=CI" alt="CI status" /></a>
   &nbsp;
-  <img src="https://img.shields.io/badge/tests-429_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="429 tests passing" />
+  <img src="https://img.shields.io/badge/tests-490_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="490 tests passing" />
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/node-%E2%89%A520-brightgreen?style=flat-square&logo=node.js&logoColor=white" alt="Node.js 20+" />
+  <img src="https://img.shields.io/badge/node-%E2%89%A518-brightgreen?style=flat-square&logo=node.js&logoColor=white" alt="Node.js 18+" />
   &nbsp;
   <img src="https://img.shields.io/badge/typescript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="Strict TypeScript" />
   &nbsp;
@@ -50,7 +50,7 @@
 
 <p align="center">
   <sub>
-    <b>Try it in 10 seconds →</b>&nbsp;&nbsp;<code>npx @aman_asmuei/aman-agent</code>
+    <b>Install in 10 seconds →</b>&nbsp;&nbsp;<code>curl -fsSL https://raw.githubusercontent.com/amanasmuei/aman-agent/main/install.sh | bash</code>
   </sub>
 </p>
 
@@ -250,7 +250,7 @@ flowchart LR
 | `llm/` | 6 pluggable providers — Anthropic, OpenAI, Ollama, GitHub Copilot, OpenAI-compatible, Claude Code CLI | `src/llm/` |
 | `mcp/` | MCP v1.27 client with stdio transport and auto-reconnect | `src/mcp/` |
 
-**Stateless by default.** All state lives in `~/.acore`, `~/.arules`, `~/.aflow`, `~/.askill`, `~/.aeval`, and `~/.amem` — portable, inspectable markdown + a local SQLite file. Nothing leaves your machine except what you send to your chosen LLM.
+**Stateless by default.** All state lives in `~/.aman-agent/` — identity, rules, workflows, skills, eval, and memory in one portable directory. Nothing leaves your machine except what you send to your chosen LLM.
 
 </details>
 
@@ -258,14 +258,23 @@ flowchart LR
 
 ## Quick Start
 
-### 1. Run
+### 1. Install
 
 ```bash
-# Run directly (always latest)
-npx @aman_asmuei/aman-agent
+# One-liner install (no Node.js required) — Linux, macOS, Raspberry Pi
+curl -fsSL https://raw.githubusercontent.com/amanasmuei/aman-agent/main/install.sh | bash
 
-# Or install globally
+# Or via npm (if you already have Node.js 18+)
 npm install -g @aman_asmuei/aman-agent
+
+# Or via Docker
+docker run -it -e ANTHROPIC_API_KEY=sk-... ghcr.io/amanasmuei/aman-agent
+```
+
+### 2. Run
+
+```bash
+aman-agent
 ```
 
 **Zero config if you already have an API key in your environment:**

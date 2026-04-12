@@ -39,7 +39,7 @@
 </p>
 
 <p align="center">
-  <a href="#whats-new-in-v0350"><kbd> What's New </kbd></a>
+  <a href="#whats-new-in-v0390"><kbd> What's New </kbd></a>
   <a href="#quick-start"><kbd> Quick Start </kbd></a>
   <a href="#project-dev-mode-recommended"><kbd> Dev Mode </kbd></a>
   <a href="#architecture-at-a-glance"><kbd> Architecture </kbd></a>
@@ -61,7 +61,7 @@
 <details>
 <summary><strong>Table of Contents</strong></summary>
 
-- [What's New](#whats-new-in-v0350)
+- [What's New](#whats-new-in-v0390)
 - [The Problem](#the-problem)
 - [The Solution](#the-solution)
 - [Architecture at a Glance](#architecture-at-a-glance)
@@ -97,11 +97,11 @@
 
 ---
 
-## What's New in v0.35.0
+## What's New in v0.39.0
 
-> **From companion to orchestrator.**
+> **From companion to orchestrator.** All 5 phases of the Universal Master Orchestrator — shipped.
 
-### DAG-Based Task Orchestration Engine
+### DAG-Based Task Orchestration Engine (Phase 1)
 
 aman-agent can now decompose complex requirements into parallel task graphs and execute them with multiple specialized agents:
 
@@ -133,8 +133,6 @@ Decomposing requirement into task DAG...
 | **LLM decomposition** | Natural language requirements → validated task DAGs via your LLM |
 | **Immutable state machine** | Correctness-critical orchestration lifecycle with 40+ transition tests |
 
-New module: `src/orchestrator/` (8 files, 114 tests).
-
 ### GitHub-Native Automation (Phase 2)
 
 aman-agent now speaks GitHub natively. Issues become orchestration plans, CI status gates your workflow, and PRs get created automatically:
@@ -153,8 +151,6 @@ aman-agent now speaks GitHub natively. Issues become orchestration plans, CI sta
 | **CI gate polling** | Poll workflow run status, wait for CI to pass before proceeding |
 | **Safe CLI wrapper** | All `gh` commands use `execFile` (no shell) — immune to command injection |
 | **Repo-aware config** | Optional `github` config block for default repo, branch, and auto-PR settings |
-
-New module: `src/github/` (6 files, 64 tests).
 
 ### Agent Factory Profiles & Templates (Phase 3)
 
@@ -178,8 +174,6 @@ securityAuditTemplate # scan → triage → [approval gate] → fix → rescan �
 
 Self-review loop: after orchestration completes, reviewer + tester agents automatically evaluate the output before marking success.
 
-New modules: `src/profiles/` (1 file), `src/orchestrator/templates/` (1 file), `src/orchestrator/review-loop.ts`. 49 new tests.
-
 ### Universal Project Manager (Phase 4)
 
 aman-agent now understands your project type and structures orchestration accordingly:
@@ -190,8 +184,6 @@ aman-agent now understands your project type and structures orchestration accord
 | **Template mapping** | Maps project type → recommended orchestration template and agent profiles |
 | **Module boundary mapping** | Analyzes directory structure to assign non-overlapping file regions for parallel agents |
 | **Orchestration monitoring** | Structured metrics: phase timing, per-agent performance, approval gate tracking, formatted summaries |
-
-New module: `src/project/` (4 files, 33 tests).
 
 ### Enterprise Hardening (Phase 5)
 
@@ -204,7 +196,7 @@ Production-grade reliability and governance for orchestration at scale:
 | **Cost tracker** | Token counting per LLM tier with budget enforcement. Tracks input/output tokens, estimates cost using tier-specific rates, blocks over-budget orchestrations. |
 | **Policy engine** | 7 built-in rules: max task count, requires review/testing, no orphan nodes, approval before deploy, advanced tier awareness, max depth. Custom rules supported. |
 
-All Phase 5 modules integrated into the orchestrator public API. 60 new tests. The [Universal Master Orchestrator](docs/superpowers/plans/2026-04-12-master-orchestrator-architecture.md) vision is now complete.
+**v0.39.0 totals:** 5 new modules (`src/orchestrator/`, `src/github/`, `src/profiles/`, `src/project/`), 25 new source files, 26 new test files, 334 new tests (867 total). The [Universal Master Orchestrator](docs/superpowers/plans/2026-04-12-master-orchestrator-architecture.md) vision is complete.
 
 ---
 

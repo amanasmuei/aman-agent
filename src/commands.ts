@@ -15,7 +15,7 @@ import { runOnboarding, editProfile } from "./onboarding.js";
 import { loadShowcaseManifest, installShowcaseTemplate } from "./showcase-bridge.js";
 import { readFile, listFiles } from "./files.js";
 import { delegateTask, delegatePipeline } from "./delegate.js";
-import { decomposeRequirement, formatDAGForDisplay } from "./orchestrator/index.js";
+import { smartOrchestrate, createModelRouter } from "./orchestrator/index.js";
 import { listAgents, findAgent } from "./server/registry.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -2424,21 +2424,64 @@ async function handleOrchestrateCommand(
   if (!action) {
     return {
       handled: true,
-      output: `Usage: /orchestrate <requirement>\n\nDecomposes a requirement into a task DAG and executes it with parallel agents.\n\nAlias: /orch`,
+      output: [
+        "Usage: /orchestrate <requirement>",
+        "",
+        "Decomposes a requirement into a task DAG and executes it with parallel agents.",
+        "Auto-detects project type, selects template, runs policy check, and tracks cost.",
+        "",
+        "Options (pass as first arg):",
+        "  --template <name>   Force a template (full-feature, bug-fix, security-audit)",
+        "  --no-review         Skip self-review loop",
+        "  --no-policy         Skip policy check",
+        "",
+        "Alias: /orch",
+      ].join("\n"),
     };
   }
-
-  // Reconstruct full requirement from action + args
-  const requirement = [action, ...args].join(" ");
 
   if (!ctx.llmClient) {
     return { handled: true, output: pc.red("Orchestration requires an LLM client. Not available.") };
   }
 
+  // Parse flags
+  let templateName: string | undefined;
+  let enableSelfReview = true;
+  let enablePolicyCheck = true;
+  const filtered: string[] = [];
+
+  const allArgs = [action, ...args];
+  for (let i = 0; i < allArgs.length; i++) {
+    if (allArgs[i] === "--template" && allArgs[i + 1]) {
+      templateName = allArgs[++i];
+    } else if (allArgs[i] === "--no-review") {
+      enableSelfReview = false;
+    } else if (allArgs[i] === "--no-policy") {
+      enablePolicyCheck = false;
+    } else {
+      filtered.push(allArgs[i]);
+    }
+  }
+
+  const requirement = filtered.join(" ");
+  if (!requirement.trim()) {
+    return { handled: true, output: pc.red("Please provide a requirement to orchestrate.") };
+  }
+
   try {
-    const dag = await decomposeRequirement(requirement, ctx.llmClient);
-    const display = formatDAGForDisplay(dag);
-    return { handled: true, output: display };
+    const router = createModelRouter({ standard: ctx.llmClient });
+    const result = await smartOrchestrate({
+      requirement,
+      client: ctx.llmClient,
+      router,
+      projectPath: process.cwd(),
+      templateName,
+      enablePolicyCheck,
+      enableSelfReview,
+      enableCostTracking: true,
+    });
+
+    return { handled: true, output: result.summary };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { handled: true, output: pc.red(`Orchestration failed: ${msg}`) };
@@ -2503,9 +2546,20 @@ async function handleGitHubCommand(
       try {
         const issue = await fetchIssue(issueNum);
         const requirement = formatIssueAsRequirement(issue);
-        const dag = await decomposeRequirement(requirement, ctx.llmClient);
-        const display = formatDAGForDisplay(dag);
-        return { handled: true, output: `${pc.bold(`Plan for #${issue.number}: ${issue.title}`)}\n\n${display}` };
+        const router = createModelRouter({ standard: ctx.llmClient });
+        const result = await smartOrchestrate({
+          requirement,
+          client: ctx.llmClient,
+          router,
+          projectPath: process.cwd(),
+          enablePolicyCheck: true,
+          enableSelfReview: false,
+          enableCostTracking: true,
+        });
+        return {
+          handled: true,
+          output: `${pc.bold(`Plan for #${issue.number}: ${issue.title}`)}\n\n${result.summary}`,
+        };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return { handled: true, output: pc.red(`Failed to plan issue #${issueNum}: ${msg}`) };

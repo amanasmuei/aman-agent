@@ -87,6 +87,17 @@ export {
   type TierCost,
 } from "./cost-tracker.js";
 
+// Re-exports: policy
+export {
+  evaluatePolicy,
+  getDefaultPolicies,
+  formatPolicyResult,
+  type PolicySeverity,
+  type PolicyViolation,
+  type PolicyResult,
+  type PolicyRule,
+} from "./policy.js";
+
 // Re-exports: templates
 export {
   fullFeatureTemplate,

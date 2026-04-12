@@ -618,6 +618,7 @@ program
   .option("--no-launch", "Generate CLAUDE.md only, don't start claude")
   .option("--force", "Regenerate even if CLAUDE.md is fresh")
   .option("--diff", "Show what would change without writing")
+  .option("--yolo", "Launch Claude Code with --dangerously-skip-permissions")
   .action(async (projectPath: string | undefined, opts: Record<string, boolean>) => {
     const { runDev } = await import("./dev/dev-command.js");
     const { scanStack } = await import("./dev/stack-detector.js");
@@ -678,8 +679,14 @@ program
         console.log(`  ${pc.yellow("Claude Code not found.")} Install: npm install -g @anthropic-ai/claude-code`);
         process.exit(1);
       }
-      console.log(`  ${pc.cyan("Launching Claude Code...")}\n`);
-      execFileSync("claude", [], { cwd: targetPath, stdio: "inherit" });
+      const claudeArgs: string[] = [];
+      if (opts.yolo) {
+        claudeArgs.push("--dangerously-skip-permissions");
+        console.log(`  ${pc.cyan("Launching Claude Code")} ${pc.yellow("(--dangerously-skip-permissions)")}...\n`);
+      } else {
+        console.log(`  ${pc.cyan("Launching Claude Code...")}\n`);
+      }
+      execFileSync("claude", claudeArgs, { cwd: targetPath, stdio: "inherit" });
     }
   });
 

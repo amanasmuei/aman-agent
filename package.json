@@ -3,6 +3,9 @@
   "version": "0.31.0",
   "description": "Your AI companion, running locally — powered by the aman ecosystem",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "bin": {
     "aman-agent": "./bin/aman-agent.js"
   },

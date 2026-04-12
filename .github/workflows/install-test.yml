@@ -1,0 +1,33 @@
+name: Install Script Test
+
+on:
+  push:
+    paths: [install.sh]
+  pull_request:
+    paths: [install.sh]
+
+jobs:
+  test-install:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Ubuntu x64
+          - os: ubuntu-24.04-arm
+            name: Ubuntu ARM64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run install script
+        run: |
+          export AMAN_HOME="$RUNNER_TEMP/aman-test"
+          bash install.sh
+
+      - name: Verify installation
+        run: |
+          export PATH="$RUNNER_TEMP/aman-test/bin:$RUNNER_TEMP/aman-test/node/bin:$PATH"
+          aman-agent --version
+
+      - name: Cleanup
+        run: rm -rf "$RUNNER_TEMP/aman-test"

@@ -51,6 +51,12 @@ describe("runDev", () => {
     expect(result.generated).toBe(true);
   });
 
+  it("regenerates with --smart even when fresh", async () => {
+    await runDev(tmpDir, { noLaunch: true });
+    const result = await runDev(tmpDir, { noLaunch: true, smart: true });
+    expect(result.generated).toBe(true);
+  });
+
   it("returns diff without writing with --diff", async () => {
     const result = await runDev(tmpDir, { noLaunch: true, diff: true });
     expect(result.diff).toBeTruthy();

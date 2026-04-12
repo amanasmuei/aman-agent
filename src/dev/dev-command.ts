@@ -63,10 +63,21 @@ export async function runDev(
   }
 
   // Check staleness
-  if (!flags.force) {
+  // --smart always regenerates (user explicitly wants LLM synthesis)
+  if (!flags.force && !flags.smart) {
     const staleness = checkStaleness(resolved);
     if (staleness.status === "fresh") {
-      return { success: true, generated: false, skippedReason: "fresh" };
+      // Check if CLAUDE.md is older than 1 hour — if so, regenerate
+      // (memories may have been added since last generation)
+      if (staleness.generatedAt) {
+        const ageMs = Date.now() - staleness.generatedAt.getTime();
+        const ONE_HOUR = 60 * 60 * 1000;
+        if (ageMs < ONE_HOUR) {
+          return { success: true, generated: false, skippedReason: "fresh" };
+        }
+      } else {
+        return { success: true, generated: false, skippedReason: "fresh" };
+      }
     }
   }
 

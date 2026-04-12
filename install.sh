@@ -69,12 +69,15 @@ if [ ! -x "$AMAN_HOME/node/bin/node" ]; then
   echo "✓ Node.js v${NODE_VERSION} installed"
 fi
 
-# --- Install aman-agent via vendored npm ---
+# --- Install aman-agent + amem via vendored npm ---
 echo "Installing aman-agent..."
 export PATH="$AMAN_HOME/node/bin:$PATH"
 npm install -g @aman_asmuei/aman-agent@latest --prefix "$AMAN_HOME" 2>&1 | tail -1
-
 echo "✓ aman-agent installed"
+
+echo "Installing amem (memory engine)..."
+npm install -g @aman_asmuei/amem@latest --prefix "$AMAN_HOME" 2>&1 | tail -1
+echo "✓ amem installed"
 
 # --- Add to PATH ---
 PATH_LINE="export PATH=\"\$HOME/.aman-agent/bin:\$HOME/.aman-agent/node/bin:\$PATH\""
@@ -109,16 +112,18 @@ fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ✓ aman-agent installed successfully!"
+echo "  ✓ aman-agent + amem installed!"
 echo ""
 echo "  Start a new shell or run:"
 echo "    source ~/.bashrc  # or ~/.zshrc"
 echo ""
 echo "  Then:"
-echo "    aman-agent"
+echo "    aman-agent          Start chatting"
+echo "    aman-agent dev      Set up project + launch Claude Code"
 echo ""
 echo "  Commands:"
-echo "    aman-agent          Start chatting"
+echo "    aman-agent dev      Scan project, generate CLAUDE.md, launch Claude Code"
+echo "    aman-agent dev --yolo   Same but skip permissions"
 echo "    aman-agent setup    Full configuration wizard"
 echo "    aman-agent update   Update to latest version"
 echo "    aman-agent serve    Run as MCP server"

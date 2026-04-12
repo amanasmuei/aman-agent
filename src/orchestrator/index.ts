@@ -126,6 +126,14 @@ export {
   type FullOrchestrationResult,
 } from "./runner.js";
 
+// Re-exports: smart orchestrate
+export {
+  smartOrchestrate,
+  formatSmartResult,
+  type SmartOrchestrationOptions,
+  type SmartOrchestrationResult,
+} from "./smart-orchestrate.js";
+
 // Re-exports: templates
 export {
   fullFeatureTemplate,

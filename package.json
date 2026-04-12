@@ -1,6 +1,6 @@
 {
   "name": "@aman_asmuei/aman-agent",
-  "version": "0.34.0",
+  "version": "0.39.0",
   "description": "Your AI companion, running locally — powered by the aman ecosystem",
   "type": "module",
   "engines": {

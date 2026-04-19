@@ -19,6 +19,8 @@
   &nbsp;
   <img src="https://img.shields.io/badge/tests-917_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="917 tests passing" />
   &nbsp;
+  <a href="https://github.com/amanasmuei/aman-claude-code"><img src="https://img.shields.io/badge/Claude_Code-plugin-8A2BE2?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude Code plugin" /></a>
+  &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
 </p>
 
@@ -41,6 +43,7 @@
 <p align="center">
   <a href="#whats-new-in-v0410"><kbd> What's New </kbd></a>
   <a href="#quick-start"><kbd> Quick Start </kbd></a>
+  <a href="#claude-code-plugin-recommended"><kbd> Plugin </kbd></a>
   <a href="#project-dev-mode-recommended"><kbd> Dev Mode </kbd></a>
   <a href="#architecture-at-a-glance"><kbd> Architecture </kbd></a>
   <a href="#features"><kbd> Features </kbd></a>
@@ -52,7 +55,12 @@
 
 <p align="center">
   <sub>
-    <b>Install in 10 seconds →</b>&nbsp;&nbsp;<code>curl -fsSL https://raw.githubusercontent.com/amanasmuei/aman-agent/main/install.sh | bash</code>
+    <b>Drop into Claude Code →</b>&nbsp;&nbsp;<code>claude plugin marketplace add amanasmuei/aman-claude-code</code>&nbsp;•&nbsp;<code>claude plugin install aman-claude-code@aman</code>
+  </sub>
+</p>
+<p align="center">
+  <sub>
+    Prefer a standalone CLI? See <a href="#standalone-cli-install">Standalone CLI install</a> below.
   </sub>
 </p>
 
@@ -66,6 +74,7 @@
 - [The Solution](#the-solution)
 - [Architecture at a Glance](#architecture-at-a-glance)
 - [Quick Start](#quick-start)
+- [Standalone CLI install](#standalone-cli-install)
 - [Usage Guide](#usage-guide)
   - [Project Dev Mode](#project-dev-mode-recommended)
   - [Your First Conversation](#your-first-conversation)
@@ -407,20 +416,24 @@ flowchart TB
 
 ## Quick Start
 
-### 1. Install
+### Claude Code plugin (recommended)
+
+If you already use Claude Code, this is the fastest path — no new CLI to install, no Node.js, no API key to paste. Install the plugin once and your full aman ecosystem (identity, rules, memory, skills, live tools) auto-loads every session.
 
 ```bash
-# One-liner install (no Node.js required) — Linux, macOS, Raspberry Pi
-curl -fsSL https://raw.githubusercontent.com/amanasmuei/aman-agent/main/install.sh | bash
-
-# Or via npm (if you already have Node.js 18+)
-npm install -g @aman_asmuei/aman-agent
-
-# Or via Docker
-docker run -it -e ANTHROPIC_API_KEY=sk-... ghcr.io/amanasmuei/aman-agent
+claude plugin marketplace add amanasmuei/aman-claude-code
+claude plugin install aman-claude-code@aman
 ```
 
-### 2. Run
+Then reload Claude Code (`/reload-plugins` or restart). That's it — type anything and aman-agent is already remembering you.
+
+> **Also on VS Code Copilot Chat or the Copilot CLI?** The [`aman-copilot`](https://github.com/amanasmuei/aman-copilot) sibling gives you the same identity, rules, and memory on those surfaces.
+
+### Run
+
+Inside Claude Code with the plugin installed, you don't run anything — just start chatting. Skip to [First Launch](#first-launch--youll-be-asked-about-you) for the one-time setup prompt.
+
+If you went with the [standalone CLI](#standalone-cli-install) instead:
 
 ```bash
 # Start a conversation
@@ -457,7 +470,7 @@ No env var? First run prompts for your LLM provider and model:
 
 **Ollama** — local models, no account needed.
 
-### 2. First Launch — You'll Be Asked About You
+### First Launch — You'll Be Asked About You
 
 On first run, a quick interactive setup captures who you are:
 
@@ -472,15 +485,34 @@ On first run, a quick interactive setup captures who you are:
 
 Takes ~30 seconds. Update anytime with `/profile edit`.
 
-### 3. Talk
+### Talk
 
 ```bash
-# Override model per session
+# Override model per session (standalone CLI)
 aman-agent --model claude-opus-4-6
 
 # Adjust system prompt token budget
 aman-agent --budget 12000
 ```
+
+---
+
+## Standalone CLI install
+
+For automation, CI, VPS, Raspberry Pi, or anyone who prefers the CLI directly — install the `aman-agent` binary. Everything above in Quick Start still applies once it's installed.
+
+```bash
+# One-liner install (no Node.js required) — Linux, macOS, Raspberry Pi
+curl -fsSL https://raw.githubusercontent.com/amanasmuei/aman-agent/main/install.sh | bash
+
+# Or via npm (if you already have Node.js 18+)
+npm install -g @aman_asmuei/aman-agent
+
+# Or via Docker
+docker run -it -e ANTHROPIC_API_KEY=sk-... ghcr.io/amanasmuei/aman-agent
+```
+
+Works on **Linux** (x64, arm64, armv7l), **macOS** (x64, Apple Silicon), **Raspberry Pi**, **VPS**, and **servers**. The installer vendors Node.js 22 LTS invisibly — no sudo, no prerequisites.
 
 ---
 

@@ -21,6 +21,7 @@ import {
   exportForTeam,
   importFromTeam,
   syncToCopilot,
+  MirrorEngine,
   type AmemDatabase,
   type RecallResult,
   type ContextResult,
@@ -42,6 +43,7 @@ import {
   type CopilotSyncOptions,
   type CopilotSyncResult,
 } from "@aman_asmuei/amem-core";
+import { loadConfig as loadAgentConfig, homeDir, expandHome } from "./config.js";
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 import path from "node:path";
@@ -49,7 +51,19 @@ import os from "node:os";
 import fs from "node:fs";
 
 let db: AmemDatabase | null = null;
+let mirrorEngine: MirrorEngine | null = null;
 let currentProject = "global";
+
+/**
+ * Test-only hook: reset the memory module's cached singletons so a
+ * subsequent `initMemory()` call picks up a fresh DB and mirror engine.
+ * Integration tests use this to exercise different configs within one file.
+ */
+export function _resetMemoryForTesting(): void {
+  db = null;
+  mirrorEngine = null;
+  currentProject = "global";
+}
 
 export async function initMemory(project?: string): Promise<AmemDatabase> {
   if (db) return db;
@@ -84,6 +98,30 @@ export async function initMemory(project?: string): Promise<AmemDatabase> {
   }
 
   currentProject = project ?? "global";
+
+  // Construct the Markdown mirror engine (Task 2.2).
+  // Config contract:
+  //   - no config file on disk            -> mirror enabled with defaults
+  //   - config file with mirror.enabled=false -> mirror disabled (null engine)
+  //   - config file with partial mirror block -> Task 2.1's loadConfig merges defaults
+  try {
+    const agentCfg = loadAgentConfig();
+    const mirrorCfg = agentCfg?.mirror;
+    const enabled = mirrorCfg?.enabled ?? true;
+    if (enabled) {
+      const dir = expandHome(mirrorCfg?.dir ?? path.join(homeDir(), "memories"));
+      const tiers = mirrorCfg?.tiers ?? ["core", "working", "archival"];
+      mirrorEngine = new MirrorEngine(db, {
+        dir,
+        tiers,
+        includeIndex: true,
+      });
+    }
+  } catch (err) {
+    // Mirror construction must never break memory init.
+    console.warn(`[amem-mirror] construction failed: ${err instanceof Error ? err.message : String(err)}`);
+    mirrorEngine = null;
+  }
 
   preloadEmbeddings();
 
@@ -128,7 +166,16 @@ export async function memoryContext(topic: string, maxTokens?: number): Promise<
 }
 
 export async function memoryStore(opts: StoreOptions): Promise<StoreResult> {
-  return storeMemory(getDb(), opts);
+  const result = await storeMemory(getDb(), opts);
+  // Fire-and-forget mirror write. Null-safe via optional chaining; the
+  // engine's internal onError swallows all I/O failures so mirror errors
+  // cannot break a memory save. `private` action from the sanitizer means
+  // no memory was written, so skip the mirror call in that case.
+  if (result.action !== "private" && mirrorEngine) {
+    const saved = getDb().getById(result.id);
+    if (saved) void mirrorEngine.onSave(saved);
+  }
+  return result;
 }
 
 export function memoryLog(sessionId: string, role: string, content: string): string {
@@ -155,6 +202,7 @@ export async function memoryForget(opts: { id?: string; query?: string; type?: s
     db.deleteMemory(fullId);
     const vecIdx = getVectorIndex();
     if (vecIdx) vecIdx.remove(fullId);
+    void mirrorEngine?.onDelete(fullId, memory.type);
     return { deleted: 1, message: `Deleted: "${memory.content}" (${memory.type})` };
   }
   // Type-based delete: delete all memories of a given type
@@ -166,6 +214,7 @@ export async function memoryForget(opts: { id?: string; query?: string; type?: s
     for (const m of matches) {
       db.deleteMemory(m.id);
       if (vecIdx) vecIdx.remove(m.id);
+      void mirrorEngine?.onDelete(m.id, m.type);
     }
     return { deleted: matches.length, message: `Deleted ${matches.length} "${opts.type}" memories.` };
   }
@@ -177,6 +226,7 @@ export async function memoryForget(opts: { id?: string; query?: string; type?: s
     for (const m of matches) {
       db.deleteMemory(m.id);
       if (vecIdx) vecIdx.remove(m.id);
+      void mirrorEngine?.onDelete(m.id, m.type);
     }
     return { deleted: matches.length, message: `Deleted ${matches.length} memories matching "${opts.query}".` };
   }

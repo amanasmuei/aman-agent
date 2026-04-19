@@ -455,18 +455,22 @@ program
     // machine B's DB on next launch. Awaited so the REPL does not accept
     // user input before synced memories are queryable. startupAutoSync
     // swallows its own errors — any throw here is a defensive net.
+    //
+    // Wrapped in a spinner because with a fresh Dropbox mirror each file
+    // triggers generateEmbedding() (~50-200ms + 3-5s cold start). Without
+    // feedback the REPL looks frozen for 10-40s on first launch.
     if (isMemoryInitialized()) {
+      const mirrorSpinner = p.spinner();
+      mirrorSpinner.start("Checking mirror dir for updates");
       try {
         const syncResult = await startupAutoSync();
-        if (syncResult && (syncResult.imported > 0 || syncResult.updated > 0)) {
-          p.log.info(
-            pc.dim(
-              `[mirror] synced ${syncResult.imported} new, ${syncResult.updated} updated`,
-            ),
-          );
-        }
+        mirrorSpinner.stop(
+          syncResult && syncResult.imported > 0
+            ? `[mirror] synced ${syncResult.imported} new`
+            : "",
+        );
       } catch (err) {
-        p.log.warning(
+        mirrorSpinner.stop(
           pc.dim(
             `[mirror] auto-sync skipped: ${err instanceof Error ? err.message : String(err)}`,
           ),

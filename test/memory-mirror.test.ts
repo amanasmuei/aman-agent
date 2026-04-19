@@ -279,6 +279,34 @@ describe("startupAutoSync", () => {
     expect(matches.length).toBe(1);
   });
 
+  it("does not import when config has mirror.enabled=false", async () => {
+    const mirrorDir = path.join(tmpHome, "memories");
+    seedMirrorFile(mirrorDir, "fact", "seed-disabled", "seeded memory body disabled");
+
+    // Pre-seed config.json disabling the mirror entirely.
+    fs.writeFileSync(
+      path.join(tmpHome, "config.json"),
+      JSON.stringify({
+        provider: "anthropic",
+        apiKey: "sk-test",
+        model: "claude-sonnet-4",
+        mirror: { enabled: false },
+      }),
+      "utf-8",
+    );
+
+    await initMemory("test-project");
+
+    const result = await startupAutoSync();
+    expect(result).toBeNull(); // fast no-op contract
+
+    // DB should NOT contain the seeded memory.
+    const matches = Object.values(currentMemories.value).filter(
+      (m: any) => m.content === "seeded memory body disabled",
+    );
+    expect(matches.length).toBe(0);
+  });
+
   it("does not import when config has autoSyncOnStartup=false", async () => {
     const mirrorDir = path.join(tmpHome, "memories");
     seedMirrorFile(mirrorDir, "fact", "seed-beta", "seeded memory body beta");

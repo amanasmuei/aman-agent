@@ -1322,7 +1322,7 @@ async function handleMemoryCommand(
     try {
       if (sub === "status") {
         const engine = getMirrorEngine();
-        if (!engine) return { handled: true, output: pc.yellow("Mirror is disabled.") };
+        if (!engine) return { handled: true, output: pc.yellow("Mirror is disabled — enable via config.mirror.enabled in config.json.") };
         const s = engine.status();
         const last = s.lastWriteAt
           ? `${new Date(s.lastWriteAt).toISOString()} (${relativeTimeFromNow(s.lastWriteAt)})`
@@ -1338,7 +1338,7 @@ async function handleMemoryCommand(
       }
       if (sub === "rebuild") {
         const engine = getMirrorEngine();
-        if (!engine) return { handled: true, output: pc.yellow("Mirror is disabled.") };
+        if (!engine) return { handled: true, output: pc.yellow("Mirror is disabled — enable via config.mirror.enabled in config.json.") };
         const res = await engine.fullMirror();
         return {
           handled: true,

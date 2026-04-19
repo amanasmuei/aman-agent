@@ -12,7 +12,7 @@ import { runAgent } from "./agent.js";
 import fs from "node:fs";
 import path from "node:path";
 import { applyPreset, PRESETS, type PresetName } from "./presets.js";
-import { initMemory, memoryConsolidate, isMemoryInitialized, setMemoryConfig } from "./memory.js";
+import { initMemory, memoryConsolidate, isMemoryInitialized, setMemoryConfig, startupAutoSync } from "./memory.js";
 import { hasUserIdentity, loadUserIdentity } from "./user-identity.js";
 import { runOnboarding } from "./onboarding.js";
 import { runServe } from "./server/serve-command.js";
@@ -448,6 +448,34 @@ program
       await initMemory();
     } catch (err) {
       p.log.warning(`Memory initialization failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // Auto-sync mirror dir → DB (Task 2.4). Closes the multi-device loop:
+    // edits made on machine A's mirror dir (Dropbox/iCloud/git) land in
+    // machine B's DB on next launch. Awaited so the REPL does not accept
+    // user input before synced memories are queryable. startupAutoSync
+    // swallows its own errors — any throw here is a defensive net.
+    //
+    // Wrapped in a spinner because with a fresh Dropbox mirror each file
+    // triggers generateEmbedding() (~50-200ms + 3-5s cold start). Without
+    // feedback the REPL looks frozen for 10-40s on first launch.
+    if (isMemoryInitialized()) {
+      const mirrorSpinner = p.spinner();
+      mirrorSpinner.start("Checking mirror dir for updates");
+      try {
+        const syncResult = await startupAutoSync();
+        mirrorSpinner.stop(
+          syncResult && syncResult.imported > 0
+            ? `[mirror] synced ${syncResult.imported} new`
+            : "",
+        );
+      } catch (err) {
+        mirrorSpinner.stop(
+          pc.dim(
+            `[mirror] auto-sync skipped: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+      }
     }
 
     // Memory consolidation (in-process via amem-core)

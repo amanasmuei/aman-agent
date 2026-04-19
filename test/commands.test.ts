@@ -88,10 +88,16 @@ vi.mock("../src/memory.js", () => ({
   memoryExpire: vi.fn(() => ({ ok: true as const, id: "mem-001" })),
   memoryVersions: vi.fn(() => [{ versionId: "v1", memoryId: "mem-001", content: "Old content", confidence: 0.8, editedAt: 1000, reason: "patch" }]),
   memorySync: vi.fn(async () => ({ imported: 3, skipped: 0, updated: 0, details: [], projectsScanned: 1 })),
+  // Task 2.3: mirror-engine accessor + single-dir import helper.
+  // Each test resets these via vi.mocked(...).mockImplementation(...). The
+  // default here returns `null` so unconfigured tests exercise the
+  // "Mirror is disabled" branch.
+  getMirrorEngine: vi.fn(() => null),
+  syncFromMirrorDir: vi.fn(async () => ({ imported: 0, skipped: 0, updated: 0, details: [], projectsScanned: 1 })),
 }));
 
 const { handleCommand } = await import("../src/commands.js");
-import { memoryDoctor, memoryRepair, memoryConfig, memoryMultiRecall, memoryReflect, memoryConsolidate, memoryTier, memoryDetail, memoryRelate, memoryExpire, memoryVersions, memorySync } from "../src/memory.js";
+import { memoryDoctor, memoryRepair, memoryConfig, memoryMultiRecall, memoryReflect, memoryConsolidate, memoryTier, memoryDetail, memoryRelate, memoryExpire, memoryVersions, memorySync, getMirrorEngine, syncFromMirrorDir } from "../src/memory.js";
 import { readFile, listFiles } from "../src/files.js";
 
 function createMockMcpManager() {
@@ -717,6 +723,230 @@ describe("handleCommand", () => {
     it("returns usage when no action given", async () => {
       const result = await handleCommand("/memory sync", {});
       expect(result.output).toContain("Usage");
+    });
+  });
+
+  // --- /memory mirror (Task 2.3) ---
+
+  describe("/memory mirror status", () => {
+    beforeEach(() => {
+      // The mock file-level `vi.fn(() => null)` persists its
+      // `mockReturnValueOnce` queue across tests — reset so each test
+      // starts from the null-default baseline.
+      vi.mocked(getMirrorEngine).mockReset();
+      vi.mocked(getMirrorEngine).mockReturnValue(null);
+      vi.mocked(syncFromMirrorDir).mockReset();
+    });
+    it("reports mirror dir + file count when engine is available", async () => {
+      vi.mocked(getMirrorEngine).mockReturnValueOnce({
+        status: vi.fn(() => ({
+          dir: "/tmp/mirror-status",
+          fileCount: 7,
+          lastWriteAt: Date.now(),
+          healthy: true,
+        })),
+        // Unused methods still satisfy the engine shape for the type-cast.
+        fullMirror: vi.fn(),
+        exportSnapshot: vi.fn(),
+      } as unknown as NonNullable<ReturnType<typeof getMirrorEngine>>);
+      const result = await handleCommand("/memory mirror status", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toContain("/tmp/mirror-status");
+      expect(result.output).toMatch(/File count:\s+7/);
+      expect(result.output).toContain("healthy");
+    });
+
+    it("reports disabled when engine is null", async () => {
+      vi.mocked(getMirrorEngine).mockReturnValueOnce(null);
+      const result = await handleCommand("/memory mirror status", {});
+      expect(result.handled).toBe(true);
+      expect(result.output?.toLowerCase()).toContain("disabled");
+    });
+
+    it("unknown subcommand surfaces a helpful hint", async () => {
+      vi.mocked(getMirrorEngine).mockReturnValueOnce(null);
+      const result = await handleCommand("/memory mirror bogus", {});
+      expect(result.handled).toBe(true);
+      expect(result.output).toMatch(/Unknown|status|rebuild/);
+    });
+  });
+
+  describe("/memory mirror rebuild", () => {
+    beforeEach(() => {
+      vi.mocked(getMirrorEngine).mockReset();
+      vi.mocked(getMirrorEngine).mockReturnValue(null);
+    });
+    it("calls fullMirror() and reports the summary", async () => {
+      const fullMirror = vi.fn(async () => ({ written: 12, skipped: 1, errors: [] }));
+      vi.mocked(getMirrorEngine).mockReturnValueOnce({
+        status: vi.fn(),
+        fullMirror,
+        exportSnapshot: vi.fn(),
+      } as unknown as NonNullable<ReturnType<typeof getMirrorEngine>>);
+      const result = await handleCommand("/memory mirror rebuild", {});
+      expect(result.handled).toBe(true);
+      expect(fullMirror).toHaveBeenCalledTimes(1);
+      expect(result.output).toContain("12");
+      expect(result.output?.toLowerCase()).toContain("rebuilt");
+    });
+  });
+
+  describe("/memory export --to", () => {
+    beforeEach(() => {
+      vi.mocked(getMirrorEngine).mockReset();
+      vi.mocked(getMirrorEngine).mockReturnValue(null);
+    });
+    it("invokes exportSnapshot against the resolved path (space-form)", async () => {
+      const exportSnapshot = vi.fn(async (dir: string) => ({
+        written: 3,
+        skipped: 0,
+        errors: [],
+        _dir: dir,
+      }));
+      vi.mocked(getMirrorEngine).mockReturnValueOnce({
+        status: vi.fn(),
+        fullMirror: vi.fn(),
+        exportSnapshot,
+      } as unknown as NonNullable<ReturnType<typeof getMirrorEngine>>);
+      const result = await handleCommand("/memory export --to /tmp/snap-one", {});
+      expect(result.handled).toBe(true);
+      expect(exportSnapshot).toHaveBeenCalledWith("/tmp/snap-one");
+      expect(result.output).toContain("3");
+      expect(result.output).toContain("/tmp/snap-one");
+    });
+
+    it("supports the --to=<path> form", async () => {
+      const exportSnapshot = vi.fn(async () => ({ written: 1, skipped: 0, errors: [] }));
+      vi.mocked(getMirrorEngine).mockReturnValueOnce({
+        status: vi.fn(),
+        fullMirror: vi.fn(),
+        exportSnapshot,
+      } as unknown as NonNullable<ReturnType<typeof getMirrorEngine>>);
+      const result = await handleCommand("/memory export --to=/tmp/snap-two", {});
+      expect(result.handled).toBe(true);
+      expect(exportSnapshot).toHaveBeenCalledWith("/tmp/snap-two");
+    });
+
+    it("returns disabled-mirror error when engine is null", async () => {
+      vi.mocked(getMirrorEngine).mockReturnValueOnce(null);
+      const result = await handleCommand("/memory export --to /tmp/snap-three", {});
+      expect(result.handled).toBe(true);
+      expect(result.output?.toLowerCase()).toContain("disabled");
+    });
+  });
+
+  describe("/memory sync --from", () => {
+    beforeEach(() => {
+      vi.mocked(syncFromMirrorDir).mockReset();
+    });
+    it("calls syncFromMirrorDir with the resolved path", async () => {
+      vi.mocked(syncFromMirrorDir).mockResolvedValueOnce({
+        imported: 2,
+        skipped: 1,
+        updated: 0,
+        details: [],
+        projectsScanned: 1,
+      });
+      const result = await handleCommand("/memory sync --from /tmp/mirror-import", {});
+      expect(result.handled).toBe(true);
+      expect(vi.mocked(syncFromMirrorDir)).toHaveBeenCalledWith("/tmp/mirror-import");
+      expect(result.output).toContain("2");
+      expect(result.output).toContain("/tmp/mirror-import");
+    });
+
+    it("supports the --from=<path> form", async () => {
+      vi.mocked(syncFromMirrorDir).mockResolvedValueOnce({
+        imported: 1,
+        skipped: 0,
+        updated: 0,
+        details: [],
+        projectsScanned: 1,
+      });
+      const result = await handleCommand("/memory sync --from=/tmp/mirror-import-2", {});
+      expect(result.handled).toBe(true);
+      expect(vi.mocked(syncFromMirrorDir)).toHaveBeenCalledWith("/tmp/mirror-import-2");
+    });
+  });
+
+  // --- Task 2.3 integration: real syncFromMirrorDir parser round-trip ---
+  //
+  // The dispatch tests above verify wiring, not the parser. This one opens
+  // the real module via `vi.importActual` (bypassing the file-level mock),
+  // seeds a mirror-format `.md` with `amem_*` frontmatter, and verifies the
+  // fake DB receives a correctly-typed insertMemory call — exercising the
+  // lossless frontmatter path end-to-end.
+  describe("syncFromMirrorDir (integration)", () => {
+    it("imports a mirror-format file with amem_* frontmatter into the DB", async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "sync-from-mirror-"));
+      try {
+        const dir = path.join(tmp, "fact");
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(
+          path.join(dir, "mem-imported.md"),
+          [
+            "---",
+            "name: mem-imported",
+            "description: imported from mirror",
+            "type: reference",
+            "amem_id: mem-imported",
+            "amem_type: fact",
+            "amem_confidence: 0.77",
+            "amem_tier: working",
+            "amem_tags: foo, bar",
+            "amem_created: 2026-04-19T00:00:00.000Z",
+            "---",
+            "body content here",
+            "",
+          ].join("\n"),
+          "utf-8",
+        );
+
+        // Capture DB calls via a fake that stands in for amem-core's DB.
+        const inserts: Array<Record<string, unknown>> = [];
+        const fakeDb: any = {
+          insertMemory: (input: Record<string, unknown>) => {
+            inserts.push(input);
+            return "id-1";
+          },
+          findByContentHash: () => null,
+          fullTextSearch: () => [],
+          getAll: () => [],
+          getAllForProject: () => [],
+        };
+
+        // Stub embeddings and point the memory module at the fake DB.
+        vi.doMock("@aman_asmuei/amem-core", async () => {
+          const actual = await vi.importActual<typeof import("@aman_asmuei/amem-core")>(
+            "@aman_asmuei/amem-core",
+          );
+          return {
+            ...actual,
+            createDatabase: () => fakeDb,
+            generateEmbedding: async () => null,
+            preloadEmbeddings: () => {},
+            buildVectorIndex: () => {},
+          };
+        });
+        vi.resetModules();
+
+        const actual = await vi.importActual<typeof import("../src/memory.js")>(
+          "../src/memory.js",
+        );
+        await actual.initMemory("test-project");
+        const res = await actual.syncFromMirrorDir(tmp);
+
+        expect(res.imported).toBe(1);
+        expect(inserts).toHaveLength(1);
+        expect(inserts[0].content).toBe("body content here");
+        expect(inserts[0].type).toBe("fact");
+        expect(inserts[0].confidence).toBe(0.77);
+        expect(inserts[0].tags).toEqual(["foo", "bar"]);
+        expect(inserts[0].source).toBe("mirror-sync");
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+        vi.doUnmock("@aman_asmuei/amem-core");
+        vi.resetModules();
+      }
     });
   });
 

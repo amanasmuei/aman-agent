@@ -21,6 +21,8 @@ import {
   exportForTeam,
   importFromTeam,
   syncToCopilot,
+  MirrorEngine,
+  parseFrontmatter,
   type AmemDatabase,
   type RecallResult,
   type ContextResult,
@@ -42,6 +44,7 @@ import {
   type CopilotSyncOptions,
   type CopilotSyncResult,
 } from "@aman_asmuei/amem-core";
+import { loadConfig as loadAgentConfig, homeDir, expandHome } from "./config.js";
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 import path from "node:path";
@@ -49,7 +52,19 @@ import os from "node:os";
 import fs from "node:fs";
 
 let db: AmemDatabase | null = null;
+let mirrorEngine: MirrorEngine | null = null;
 let currentProject = "global";
+
+/**
+ * Test-only hook: reset the memory module's cached singletons so a
+ * subsequent `initMemory()` call picks up a fresh DB and mirror engine.
+ * Integration tests use this to exercise different configs within one file.
+ */
+export function _resetMemoryForTesting(): void {
+  db = null;
+  mirrorEngine = null;
+  currentProject = "global";
+}
 
 export async function initMemory(project?: string): Promise<AmemDatabase> {
   if (db) return db;
@@ -84,6 +99,30 @@ export async function initMemory(project?: string): Promise<AmemDatabase> {
   }
 
   currentProject = project ?? "global";
+
+  // Construct the Markdown mirror engine (Task 2.2).
+  // Config contract:
+  //   - no config file on disk            -> mirror enabled with defaults
+  //   - config file with mirror.enabled=false -> mirror disabled (null engine)
+  //   - config file with partial mirror block -> Task 2.1's loadConfig merges defaults
+  try {
+    const agentCfg = loadAgentConfig();
+    const mirrorCfg = agentCfg?.mirror;
+    const enabled = mirrorCfg?.enabled ?? true;
+    if (enabled) {
+      const dir = expandHome(mirrorCfg?.dir ?? path.join(homeDir(), "memories"));
+      const tiers = mirrorCfg?.tiers ?? ["core", "working", "archival"];
+      mirrorEngine = new MirrorEngine(db, {
+        dir,
+        tiers,
+        includeIndex: true,
+      });
+    }
+  } catch (err) {
+    // Mirror construction must never break memory init.
+    console.warn(`[amem-mirror] construction failed: ${err instanceof Error ? err.message : String(err)}`);
+    mirrorEngine = null;
+  }
 
   preloadEmbeddings();
 
@@ -128,7 +167,16 @@ export async function memoryContext(topic: string, maxTokens?: number): Promise<
 }
 
 export async function memoryStore(opts: StoreOptions): Promise<StoreResult> {
-  return storeMemory(getDb(), opts);
+  const result = await storeMemory(getDb(), opts);
+  // Fire-and-forget mirror write. Null-safe via optional chaining; the
+  // engine's internal onError swallows all I/O failures so mirror errors
+  // cannot break a memory save. `private` action from the sanitizer means
+  // no memory was written, so skip the mirror call in that case.
+  if (result.action !== "private" && mirrorEngine) {
+    const saved = getDb().getById(result.id);
+    if (saved) void mirrorEngine.onSave(saved);
+  }
+  return result;
 }
 
 export function memoryLog(sessionId: string, role: string, content: string): string {
@@ -155,6 +203,7 @@ export async function memoryForget(opts: { id?: string; query?: string; type?: s
     db.deleteMemory(fullId);
     const vecIdx = getVectorIndex();
     if (vecIdx) vecIdx.remove(fullId);
+    void mirrorEngine?.onDelete(fullId, memory.type);
     return { deleted: 1, message: `Deleted: "${memory.content}" (${memory.type})` };
   }
   // Type-based delete: delete all memories of a given type
@@ -166,6 +215,7 @@ export async function memoryForget(opts: { id?: string; query?: string; type?: s
     for (const m of matches) {
       db.deleteMemory(m.id);
       if (vecIdx) vecIdx.remove(m.id);
+      void mirrorEngine?.onDelete(m.id, m.type);
     }
     return { deleted: matches.length, message: `Deleted ${matches.length} "${opts.type}" memories.` };
   }
@@ -177,6 +227,7 @@ export async function memoryForget(opts: { id?: string; query?: string; type?: s
     for (const m of matches) {
       db.deleteMemory(m.id);
       if (vecIdx) vecIdx.remove(m.id);
+      void mirrorEngine?.onDelete(m.id, m.type);
     }
     return { deleted: matches.length, message: `Deleted ${matches.length} memories matching "${opts.query}".` };
   }
@@ -490,3 +541,222 @@ export async function memorySync(
 }
 
 export type { MemoryVersion, MemoryRelation, SyncResult, TeamImportResult, CopilotSyncResult };
+
+// ─── Mirror (Task 2.3) ───────────────────────────────────────────────────────
+
+/**
+ * Expose the process-wide MirrorEngine so slash commands can call
+ * `fullMirror()` / `exportSnapshot()` / `status()` directly. Returns
+ * `null` when the mirror is disabled in config — callers should
+ * surface that to the user instead of crashing.
+ */
+export function getMirrorEngine(): MirrorEngine | null {
+  return mirrorEngine;
+}
+
+/**
+ * Mirror-specific fields we recognise in a mirror-format markdown file's
+ * YAML frontmatter. Parsed in addition to the legacy Claude fields so the
+ * round trip (MirrorEngine.serialize → syncFromMirrorDir) is lossless for
+ * memory type, confidence, tags, and id.
+ */
+interface MirrorFrontmatter {
+  amemId?: string;
+  amemType?: string;
+  amemConfidence?: number;
+  amemTags?: string[];
+  amemCreated?: number;
+  amemTier?: string;
+}
+
+/**
+ * Extract `amem_*` fields from raw frontmatter text. amem-core's
+ * `parseFrontmatter` only surfaces Claude-vocab fields (name/description/
+ * type/body) — we need a second pass for the lossless fields that
+ * MirrorEngine.serializeMemoryFile writes. Tolerant of missing fields;
+ * absent values leave the corresponding property undefined.
+ */
+function extractAmemFields(raw: string): MirrorFrontmatter {
+  const out: MirrorFrontmatter = {};
+  const block = raw.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (!block) return out;
+  for (const line of block[1].split("\n")) {
+    const kv = line.match(/^(amem_\w+)\s*:\s*(.+)$/);
+    if (!kv) continue;
+    const key = kv[1];
+    const val = kv[2].trim();
+    switch (key) {
+      case "amem_id": out.amemId = val; break;
+      case "amem_type": out.amemType = val; break;
+      case "amem_tier": out.amemTier = val; break;
+      case "amem_confidence": {
+        const n = Number(val);
+        if (Number.isFinite(n)) out.amemConfidence = n;
+        break;
+      }
+      case "amem_tags":
+        out.amemTags = val
+          .split(",")
+          .map((t) => t.trim())
+          .filter((t) => t.length > 0);
+        break;
+      case "amem_created": {
+        const t = Date.parse(val);
+        if (!Number.isNaN(t)) out.amemCreated = t;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+// Claude-vocab → amem type map, mirrored from amem-core/sync.ts. Used as a
+// fallback when a `.md` file lacks `amem_type` (e.g. a hand-authored note
+// or a file imported from Claude's auto-memory tree). Kept inline here
+// instead of importing because amem-core does not export it.
+const CLAUDE_TO_AMEM_TYPE: Record<string, "correction" | "decision" | "preference" | "topology"> = {
+  feedback: "correction",
+  project: "decision",
+  user: "preference",
+  reference: "topology",
+};
+
+/**
+ * Auto-sync the mirror dir into the DB on agent startup (Task 2.4).
+ *
+ * Closes the multi-device loop: edits made on machine A's mirror dir
+ * (via Dropbox/iCloud/git) land in machine B's DB on next launch.
+ *
+ * Contract:
+ *   - Fast no-op when `config.mirror.enabled=false` OR `autoSyncOnStartup=false`:
+ *     no fs scan, no engine lookup; returns `null`.
+ *   - Errors are swallowed and surfaced as `null` — a failed sync MUST NOT
+ *     block startup. Callers can log/ignore.
+ *   - Returns the SyncResult on success so the caller (index.ts) can emit
+ *     a subtle log line. Keeping logging in the caller avoids pulling
+ *     picocolors into memory.ts and keeps the function pure for tests.
+ *
+ * Must be awaited by the caller so the REPL doesn't accept user input
+ * before synced memories are in the DB (otherwise /recall could miss
+ * just-synced entries).
+ */
+export async function startupAutoSync(): Promise<SyncResult | null> {
+  // Config first — a disabled auto-sync is a genuine no-op, not a
+  // cheap-scan-then-bail.
+  const cfg = loadAgentConfig();
+  const autoSync = cfg?.mirror?.autoSyncOnStartup ?? true;
+  const enabled = cfg?.mirror?.enabled ?? true;
+  if (!enabled || !autoSync) return null;
+
+  const engine = mirrorEngine;
+  if (!engine) return null; // construction failed silently earlier
+
+  const dir = engine.status().dir;
+  try {
+    return await syncFromMirrorDir(dir);
+  } catch {
+    // Swallow — mirror ops are best-effort. Caller may log.
+    return null;
+  }
+}
+
+/**
+ * Import memories from an arbitrary mirror-format directory into the DB.
+ *
+ * Unlike amem-core's `syncFromClaude` — which scans the Claude auto-memory
+ * tree under `~/.claude/projects/<escaped>/memory/` — this helper takes a
+ * single directory and walks all `.md` files beneath it (including one
+ * level of type-subdirectories, which is MirrorEngine's on-disk layout).
+ *
+ * The parser is lossless when the file carries `amem_*` frontmatter (the
+ * mirror round-trip case). When those fields are missing we fall back to
+ * the Claude-vocab type map so files authored elsewhere still import.
+ *
+ * Dedup: skipped by content hash and by name-FTS match, matching
+ * `syncFromClaude`'s behaviour. Scope defaults to `currentProject` for
+ * memories that look project-local, `global` for user/preference ones —
+ * the same policy syncFromClaude applies.
+ */
+export async function syncFromMirrorDir(dir: string): Promise<SyncResult> {
+  const db = getDb();
+  const result: SyncResult = {
+    imported: 0,
+    skipped: 0,
+    updated: 0,
+    details: [],
+    projectsScanned: 1,
+  };
+  if (!fs.existsSync(dir)) return result;
+
+  // Collect .md files one level deep (type-subdirs) plus any at the root.
+  const targets: string[] = [];
+  const walk = (d: string): void => {
+    for (const name of fs.readdirSync(d)) {
+      if (name === "INDEX.md") continue;
+      const full = path.join(d, name);
+      const stat = fs.statSync(full);
+      if (stat.isDirectory()) walk(full);
+      else if (name.endsWith(".md")) targets.push(full);
+    }
+  };
+  try { walk(dir); } catch { return result; }
+
+  for (const filePath of targets) {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const parsed = parseFrontmatter(raw, filePath);
+    if (!parsed) {
+      result.skipped++;
+      result.details.push({ action: "skipped", name: filePath, type: "unknown", reason: "invalid frontmatter" });
+      continue;
+    }
+    const amem = extractAmemFields(raw);
+
+    // Prefer amem_* fields when present; fall back to the Claude-vocab
+    // type map for hand-authored / Claude-sourced files.
+    const resolvedType = (amem.amemType as "correction" | "decision" | "pattern" | "preference" | "topology" | "fact" | undefined)
+      ?? CLAUDE_TO_AMEM_TYPE[parsed.type];
+    if (!resolvedType) {
+      result.skipped++;
+      result.details.push({ action: "skipped", name: parsed.name, type: parsed.type, reason: `Unknown type: ${parsed.type}` });
+      continue;
+    }
+
+    const content = parsed.body;
+    if (!content.trim()) {
+      result.skipped++;
+      result.details.push({ action: "skipped", name: parsed.name, type: resolvedType, reason: "empty body" });
+      continue;
+    }
+
+    // Dedup by content hash (source of truth) — cheap and deterministic.
+    const existing = db.findByContentHash(content);
+    if (existing) {
+      result.skipped++;
+      result.details.push({ action: "skipped", name: parsed.name, type: resolvedType, reason: "duplicate content" });
+      continue;
+    }
+
+    const embedding = await generateEmbedding(content);
+    const confidence = amem.amemConfidence ?? 0.8;
+    const isGlobal = resolvedType === "preference" || resolvedType === "correction";
+    const scope = isGlobal ? "global" : currentProject;
+    const tags = amem.amemTags ?? ["mirror-sync"];
+    db.insertMemory({
+      content,
+      type: resolvedType,
+      tags,
+      confidence,
+      source: "mirror-sync",
+      embedding,
+      scope,
+      ...(amem.amemTier ? { tier: amem.amemTier } : {}),
+      // Preserve original creation time when the mirror file carries it,
+      // so round-tripped memories keep their chronology for recency decay.
+      ...(amem.amemCreated ? { validFrom: amem.amemCreated } : {}),
+    });
+    result.imported++;
+    result.details.push({ action: "imported", name: parsed.name, type: resolvedType });
+  }
+
+  return result;
+}

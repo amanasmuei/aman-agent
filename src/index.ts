@@ -12,7 +12,7 @@ import { runAgent } from "./agent.js";
 import fs from "node:fs";
 import path from "node:path";
 import { applyPreset, PRESETS, type PresetName } from "./presets.js";
-import { initMemory, memoryConsolidate, isMemoryInitialized, setMemoryConfig } from "./memory.js";
+import { initMemory, memoryConsolidate, isMemoryInitialized, setMemoryConfig, startupAutoSync } from "./memory.js";
 import { hasUserIdentity, loadUserIdentity } from "./user-identity.js";
 import { runOnboarding } from "./onboarding.js";
 import { runServe } from "./server/serve-command.js";
@@ -448,6 +448,30 @@ program
       await initMemory();
     } catch (err) {
       p.log.warning(`Memory initialization failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // Auto-sync mirror dir → DB (Task 2.4). Closes the multi-device loop:
+    // edits made on machine A's mirror dir (Dropbox/iCloud/git) land in
+    // machine B's DB on next launch. Awaited so the REPL does not accept
+    // user input before synced memories are queryable. startupAutoSync
+    // swallows its own errors — any throw here is a defensive net.
+    if (isMemoryInitialized()) {
+      try {
+        const syncResult = await startupAutoSync();
+        if (syncResult && (syncResult.imported > 0 || syncResult.updated > 0)) {
+          p.log.info(
+            pc.dim(
+              `[mirror] synced ${syncResult.imported} new, ${syncResult.updated} updated`,
+            ),
+          );
+        }
+      } catch (err) {
+        p.log.warning(
+          pc.dim(
+            `[mirror] auto-sync skipped: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+      }
     }
 
     // Memory consolidation (in-process via amem-core)

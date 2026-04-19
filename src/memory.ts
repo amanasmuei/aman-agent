@@ -622,6 +622,45 @@ const CLAUDE_TO_AMEM_TYPE: Record<string, "correction" | "decision" | "preferenc
 };
 
 /**
+ * Auto-sync the mirror dir into the DB on agent startup (Task 2.4).
+ *
+ * Closes the multi-device loop: edits made on machine A's mirror dir
+ * (via Dropbox/iCloud/git) land in machine B's DB on next launch.
+ *
+ * Contract:
+ *   - Fast no-op when `config.mirror.enabled=false` OR `autoSyncOnStartup=false`:
+ *     no fs scan, no engine lookup; returns `null`.
+ *   - Errors are swallowed and surfaced as `null` — a failed sync MUST NOT
+ *     block startup. Callers can log/ignore.
+ *   - Returns the SyncResult on success so the caller (index.ts) can emit
+ *     a subtle log line. Keeping logging in the caller avoids pulling
+ *     picocolors into memory.ts and keeps the function pure for tests.
+ *
+ * Must be awaited by the caller so the REPL doesn't accept user input
+ * before synced memories are in the DB (otherwise /recall could miss
+ * just-synced entries).
+ */
+export async function startupAutoSync(): Promise<SyncResult | null> {
+  // Config first — a disabled auto-sync is a genuine no-op, not a
+  // cheap-scan-then-bail.
+  const cfg = loadAgentConfig();
+  const autoSync = cfg?.mirror?.autoSyncOnStartup ?? true;
+  const enabled = cfg?.mirror?.enabled ?? true;
+  if (!enabled || !autoSync) return null;
+
+  const engine = mirrorEngine;
+  if (!engine) return null; // construction failed silently earlier
+
+  const dir = engine.status().dir;
+  try {
+    return await syncFromMirrorDir(dir);
+  } catch {
+    // Swallow — mirror ops are best-effort. Caller may log.
+    return null;
+  }
+}
+
+/**
  * Import memories from an arbitrary mirror-format directory into the DB.
  *
  * Unlike amem-core's `syncFromClaude` — which scans the Claude auto-memory

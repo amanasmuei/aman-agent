@@ -18,6 +18,7 @@ const { mockDb, currentMemories, currentStoreResult } = vi.hoisted(() => {
   const currentStoreResult: { value: any } = {
     value: { action: "stored", id: "mem-001", type: "fact", confidence: 0.9, tags: [], total: 1, reinforced: 0 },
   };
+  let insertCounter = 0;
   const mockDb: any = {
     __mock: true,
     getById: vi.fn((id: string) => currentMemories.value[id] ?? null),
@@ -30,6 +31,17 @@ const { mockDb, currentMemories, currentStoreResult } = vi.hoisted(() => {
     addRelation: vi.fn(),
     expireMemory: vi.fn(),
     getVersionHistory: vi.fn().mockReturnValue([]),
+    // Used by syncFromMirrorDir: dedup lookup + insert.
+    findByContentHash: vi.fn((content: string) => {
+      return Object.values(currentMemories.value).find(
+        (m: any) => m.content === content,
+      ) ?? null;
+    }),
+    insertMemory: vi.fn((m: any) => {
+      const id = m.id ?? `seeded-${++insertCounter}`;
+      currentMemories.value[id] = { ...m, id };
+      return id;
+    }),
   };
   return { mockDb, currentMemories, currentStoreResult };
 });
@@ -57,7 +69,7 @@ let tmpHome: string;
 
 // Import the memory module once — initMemory is called per-test after a
 // reset, so singletons re-initialize against the current env+config.
-import { initMemory, memoryStore, memoryForget, _resetMemoryForTesting } from "../src/memory.js";
+import { initMemory, memoryStore, memoryForget, startupAutoSync, _resetMemoryForTesting } from "../src/memory.js";
 
 function makeMemory(id: string, overrides: Partial<any> = {}): any {
   const now = Date.now();
@@ -214,5 +226,105 @@ describe("MirrorEngine wire-up", () => {
     expect(currentMemories.value["mem-004"]).toBeDefined();
 
     warnSpy.mockRestore();
+  });
+});
+
+describe("startupAutoSync", () => {
+  // Helper: write a minimal mirror-format .md file that parseFrontmatter
+  // + extractAmemFields will both accept. The shape mirrors what
+  // MirrorEngine.serializeMemoryFile emits (see Task 2.2 test above).
+  function seedMirrorFile(
+    dir: string,
+    type: string,
+    id: string,
+    body: string,
+    extraFrontmatter: Record<string, string> = {},
+  ): string {
+    const full = path.join(dir, type, `${id}.md`);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    const lines = [
+      "---",
+      `name: ${id}`,
+      `type: ${type}`,
+      `description: seed for ${id}`,
+      `amem_id: ${id}`,
+      `amem_type: ${type}`,
+      "amem_confidence: 0.85",
+      "amem_tags: seed,test",
+      ...Object.entries(extraFrontmatter).map(([k, v]) => `${k}: ${v}`),
+      "---",
+      "",
+      body,
+      "",
+    ];
+    fs.writeFileSync(full, lines.join("\n"), "utf-8");
+    return full;
+  }
+
+  it("imports pre-seeded mirror files on startup when autoSyncOnStartup=true (default)", async () => {
+    // Seed the mirror dir BEFORE initMemory. Default dir is <AMAN_HOME>/memories.
+    const mirrorDir = path.join(tmpHome, "memories");
+    seedMirrorFile(mirrorDir, "fact", "seed-alpha", "seeded memory body alpha");
+
+    await initMemory("test-project");
+
+    const result = await startupAutoSync();
+    expect(result).not.toBeNull();
+    expect(result!.imported).toBe(1);
+
+    // DB now contains the seeded memory.
+    const matches = Object.values(currentMemories.value).filter(
+      (m: any) => m.content === "seeded memory body alpha",
+    );
+    expect(matches.length).toBe(1);
+  });
+
+  it("does not import when config has autoSyncOnStartup=false", async () => {
+    const mirrorDir = path.join(tmpHome, "memories");
+    seedMirrorFile(mirrorDir, "fact", "seed-beta", "seeded memory body beta");
+
+    // Pre-seed config.json disabling auto-sync (mirror still enabled).
+    fs.writeFileSync(
+      path.join(tmpHome, "config.json"),
+      JSON.stringify({
+        provider: "anthropic",
+        apiKey: "sk-test",
+        model: "claude-sonnet-4",
+        mirror: { enabled: true, autoSyncOnStartup: false },
+      }),
+      "utf-8",
+    );
+
+    await initMemory("test-project");
+
+    const result = await startupAutoSync();
+    expect(result).toBeNull(); // fast no-op contract
+
+    // DB should NOT contain the seeded memory.
+    const matches = Object.values(currentMemories.value).filter(
+      (m: any) => m.content === "seeded memory body beta",
+    );
+    expect(matches.length).toBe(0);
+  });
+
+  it("continues past a malformed mirror file and imports the valid ones", async () => {
+    const mirrorDir = path.join(tmpHome, "memories");
+    // One valid file.
+    seedMirrorFile(mirrorDir, "fact", "seed-good", "good memory body");
+    // One malformed file (no closing frontmatter delimiter).
+    const badPath = path.join(mirrorDir, "fact", "seed-bad.md");
+    fs.writeFileSync(badPath, "---\nname: seed-bad\ntype: fact\n\nNever closes.\n", "utf-8");
+
+    await initMemory("test-project");
+
+    // Must not throw.
+    const result = await startupAutoSync();
+    expect(result).not.toBeNull();
+    // At least the good one imports; the bad one is skipped.
+    expect(result!.imported).toBeGreaterThanOrEqual(1);
+    const good = Object.values(currentMemories.value).filter(
+      (m: any) => m.content === "good memory body",
+    );
+    expect(good.length).toBe(1);
   });
 });

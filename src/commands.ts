@@ -7,7 +7,8 @@ import { execFileSync } from "node:child_process";
 import pc from "picocolors";
 import type { McpManager } from "./mcp/client.js";
 import { getEcosystemStatus } from "./layers/parsers.js";
-import { memoryContext, memoryRecall, memoryMultiRecall, memoryForget, memoryStats, memoryExport, memorySince, memorySearch, isMemoryInitialized, reminderSet, reminderList, reminderCheck, reminderComplete, memoryDoctor, memoryRepair, memoryConfig, memoryReflect, memoryConsolidate, memoryTier, memoryDetail, memoryRelate, memoryExpire, memoryVersions, memorySync } from "./memory.js";
+import { memoryContext, memoryRecall, memoryMultiRecall, memoryForget, memoryStats, memoryExport, memorySince, memorySearch, isMemoryInitialized, reminderSet, reminderList, reminderCheck, reminderComplete, memoryDoctor, memoryRepair, memoryConfig, memoryReflect, memoryConsolidate, memoryTier, memoryDetail, memoryRelate, memoryExpire, memoryVersions, memorySync, getMirrorEngine, syncFromMirrorDir } from "./memory.js";
+import { expandHome } from "./config.js";
 import { listProfiles } from "./prompt.js";
 import { BUILT_IN_PROFILES, installProfileTemplate } from "./profile-templates.js";
 import { loadUserIdentity, hasUserIdentity } from "./user-identity.js";
@@ -901,7 +902,7 @@ async function handleMemoryCommand(
     }
   }
   // /memory <topic> — shortcut for context on a specific topic
-  if (action && !["search", "clear", "timeline", "stats", "export", "since", "fts", "help", "doctor", "repair", "config", "reflect", "consolidate", "tier", "detail", "relate", "expire", "versions", "sync"].includes(action)) {
+  if (action && !["search", "clear", "timeline", "stats", "export", "since", "fts", "help", "doctor", "repair", "config", "reflect", "consolidate", "tier", "detail", "relate", "expire", "versions", "sync", "mirror"].includes(action)) {
     try {
       const topic = [action, ...args].join(" ");
       const result = await memoryContext(topic);
@@ -1021,6 +1022,27 @@ async function handleMemoryCommand(
   }
   if (action === "export") {
     try {
+      // `--to <dir>` / `--to=<dir>` → one-shot snapshot via MirrorEngine.
+      // Left of any legacy stdout-dump behaviour unchanged so existing
+      // callers of `/memory export [json]` keep working.
+      const toDir = parseFlagValue(args, "--to");
+      if (toDir !== undefined) {
+        const engine = getMirrorEngine();
+        if (!engine) {
+          return { handled: true, output: pc.yellow("Mirror is disabled — enable via config.mirror.enabled in config.json.") };
+        }
+        const resolved = expandHome(toDir);
+        const res = await engine.exportSnapshot(resolved);
+        const lines = [
+          `Wrote ${res.written} files to ${resolved} (${res.skipped} skipped, ${res.errors.length} errors).`,
+        ];
+        if (res.errors.length > 0) {
+          lines.push("");
+          for (const e of res.errors.slice(0, 5)) lines.push(`  - ${e}`);
+          if (res.errors.length > 5) lines.push(`  ...and ${res.errors.length - 5} more`);
+        }
+        return { handled: true, output: lines.join("\n") };
+      }
       const format = args[0] === "json" ? "json" : "markdown";
       const memories = memoryExport();
       if (memories.length === 0) {
@@ -1101,12 +1123,16 @@ async function handleMemoryCommand(
       `  ${pc.cyan("/memory since")} <Nh|Nd|Nw>    Memories from time window`,
       `  ${pc.cyan("/memory stats")}               Show memory statistics`,
       `  ${pc.cyan("/memory export")} [json]        Export all memories`,
+      `  ${pc.cyan("/memory export --to")} <dir>    Snapshot mirror-format files to <dir>`,
       `  ${pc.cyan("/memory timeline")}            View memory timeline`,
       `  ${pc.cyan("/memory clear")} <query>        Delete matching memories`,
       `  ${pc.cyan("/memory clear --type")} <type>  Delete all of a type`,
       `  ${pc.cyan("/memory doctor")}              Run memory diagnostics`,
       `  ${pc.cyan("/memory repair")}              Dry-run repair (safe)`,
       `  ${pc.cyan("/memory config")} [key=value]  View or update config (e.g. consolidation.maxStaleDays=60)`,
+      `  ${pc.cyan("/memory mirror status")}        Show mirror dir, file count, health`,
+      `  ${pc.cyan("/memory mirror rebuild")}       Rebuild the mirror from the DB`,
+      `  ${pc.cyan("/memory sync --from")} <dir>    Import edits from a mirror-format dir`,
     ].join("\n") };
   }
   if (action === "doctor") {
@@ -1291,7 +1317,56 @@ async function handleMemoryCommand(
     }
     return { handled: true, output: lines.join("\n") };
   }
+  if (action === "mirror") {
+    const sub = args[0];
+    try {
+      if (sub === "status") {
+        const engine = getMirrorEngine();
+        if (!engine) return { handled: true, output: pc.yellow("Mirror is disabled.") };
+        const s = engine.status();
+        const last = s.lastWriteAt
+          ? `${new Date(s.lastWriteAt).toISOString()} (${relativeTimeFromNow(s.lastWriteAt)})`
+          : "never";
+        const lines = [
+          pc.bold("Mirror:"),
+          `  Dir:          ${s.dir}`,
+          `  File count:   ${s.fileCount}`,
+          `  Last write:   ${last}`,
+          `  Health:       ${s.healthy ? "healthy" : "drifted"}`,
+        ];
+        return { handled: true, output: lines.join("\n") };
+      }
+      if (sub === "rebuild") {
+        const engine = getMirrorEngine();
+        if (!engine) return { handled: true, output: pc.yellow("Mirror is disabled.") };
+        const res = await engine.fullMirror();
+        return {
+          handled: true,
+          output: `Rebuilt mirror: ${res.written} files written, ${res.skipped} skipped, ${res.errors.length} errors.`,
+        };
+      }
+      return { handled: true, output: pc.yellow("Unknown mirror subcommand; try 'status' or 'rebuild'.") };
+    } catch (err) {
+      return { handled: true, output: pc.red(`Mirror error: ${err instanceof Error ? err.message : String(err)}`) };
+    }
+  }
   if (action === "sync") {
+    // `--from <dir>` / `--from=<dir>` → import mirror-format files into the DB.
+    // This is the recovery path for the multi-device sync loop: a machine
+    // that lost its DB but kept the markdown mirror can reconstruct state.
+    const fromDir = parseFlagValue(args, "--from");
+    if (fromDir !== undefined) {
+      try {
+        const resolved = expandHome(fromDir);
+        const res = await syncFromMirrorDir(resolved);
+        return {
+          handled: true,
+          output: `Synced ${res.imported} memories from ${resolved} (${res.skipped} skipped, ${res.updated} updated).`,
+        };
+      } catch (err) {
+        return { handled: true, output: pc.red(`Sync error: ${err instanceof Error ? err.message : String(err)}`) };
+      }
+    }
     const syncAction = args[0] as "import-claude" | "export-team" | "import-team" | "sync-copilot" | undefined;
     if (!syncAction) {
       return { handled: true, output: pc.yellow("Usage: /memory sync <import-claude|export-team|import-team|sync-copilot>") };
@@ -1311,6 +1386,37 @@ async function handleMemoryCommand(
     }
   }
   return { handled: true, output: pc.yellow(`Unknown action: /memory ${action}. Try /memory --help`) };
+}
+
+/**
+ * Parse `--flag <value>` and `--flag=<value>` forms from an argv-like list.
+ * Returns `undefined` when the flag isn't present so callers can distinguish
+ * "flag absent" from "flag with empty value". Shared by `/memory export --to`
+ * and `/memory sync --from` to keep their arg-parsing consistent.
+ */
+function parseFlagValue(args: string[], flag: string): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === flag) {
+      return args[i + 1];
+    }
+    if (a.startsWith(`${flag}=`)) {
+      return a.slice(flag.length + 1);
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Tiny relative-time formatter for mirror status. Stays local to commands.ts
+ * because mirror status is its only caller — no need to add a helper module.
+ */
+function relativeTimeFromNow(ts: number): string {
+  const delta = Date.now() - ts;
+  if (delta < 60_000) return "just now";
+  if (delta < 3_600_000) return `${Math.round(delta / 60_000)}m ago`;
+  if (delta < 86_400_000) return `${Math.round(delta / 3_600_000)}h ago`;
+  return `${Math.round(delta / 86_400_000)}d ago`;
 }
 
 function handleStatusCommand(ctx: CommandContext): CommandResult {

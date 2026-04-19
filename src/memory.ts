@@ -22,6 +22,7 @@ import {
   importFromTeam,
   syncToCopilot,
   MirrorEngine,
+  parseFrontmatter,
   type AmemDatabase,
   type RecallResult,
   type ContextResult,
@@ -540,3 +541,183 @@ export async function memorySync(
 }
 
 export type { MemoryVersion, MemoryRelation, SyncResult, TeamImportResult, CopilotSyncResult };
+
+// ─── Mirror (Task 2.3) ───────────────────────────────────────────────────────
+
+/**
+ * Expose the process-wide MirrorEngine so slash commands can call
+ * `fullMirror()` / `exportSnapshot()` / `status()` directly. Returns
+ * `null` when the mirror is disabled in config — callers should
+ * surface that to the user instead of crashing.
+ */
+export function getMirrorEngine(): MirrorEngine | null {
+  return mirrorEngine;
+}
+
+/**
+ * Mirror-specific fields we recognise in a mirror-format markdown file's
+ * YAML frontmatter. Parsed in addition to the legacy Claude fields so the
+ * round trip (MirrorEngine.serialize → syncFromMirrorDir) is lossless for
+ * memory type, confidence, tags, and id.
+ */
+interface MirrorFrontmatter {
+  amemId?: string;
+  amemType?: string;
+  amemConfidence?: number;
+  amemTags?: string[];
+  amemCreated?: number;
+  amemTier?: string;
+}
+
+/**
+ * Extract `amem_*` fields from raw frontmatter text. amem-core's
+ * `parseFrontmatter` only surfaces Claude-vocab fields (name/description/
+ * type/body) — we need a second pass for the lossless fields that
+ * MirrorEngine.serializeMemoryFile writes. Tolerant of missing fields;
+ * absent values leave the corresponding property undefined.
+ */
+function extractAmemFields(raw: string): MirrorFrontmatter {
+  const out: MirrorFrontmatter = {};
+  const block = raw.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (!block) return out;
+  for (const line of block[1].split("\n")) {
+    const kv = line.match(/^(amem_\w+)\s*:\s*(.+)$/);
+    if (!kv) continue;
+    const key = kv[1];
+    const val = kv[2].trim();
+    switch (key) {
+      case "amem_id": out.amemId = val; break;
+      case "amem_type": out.amemType = val; break;
+      case "amem_tier": out.amemTier = val; break;
+      case "amem_confidence": {
+        const n = Number(val);
+        if (Number.isFinite(n)) out.amemConfidence = n;
+        break;
+      }
+      case "amem_tags":
+        out.amemTags = val
+          .split(",")
+          .map((t) => t.trim())
+          .filter((t) => t.length > 0);
+        break;
+      case "amem_created": {
+        const t = Date.parse(val);
+        if (!Number.isNaN(t)) out.amemCreated = t;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+// Claude-vocab → amem type map, mirrored from amem-core/sync.ts. Used as a
+// fallback when a `.md` file lacks `amem_type` (e.g. a hand-authored note
+// or a file imported from Claude's auto-memory tree). Kept inline here
+// instead of importing because amem-core does not export it.
+const CLAUDE_TO_AMEM_TYPE: Record<string, "correction" | "decision" | "preference" | "topology"> = {
+  feedback: "correction",
+  project: "decision",
+  user: "preference",
+  reference: "topology",
+};
+
+/**
+ * Import memories from an arbitrary mirror-format directory into the DB.
+ *
+ * Unlike amem-core's `syncFromClaude` — which scans the Claude auto-memory
+ * tree under `~/.claude/projects/<escaped>/memory/` — this helper takes a
+ * single directory and walks all `.md` files beneath it (including one
+ * level of type-subdirectories, which is MirrorEngine's on-disk layout).
+ *
+ * The parser is lossless when the file carries `amem_*` frontmatter (the
+ * mirror round-trip case). When those fields are missing we fall back to
+ * the Claude-vocab type map so files authored elsewhere still import.
+ *
+ * Dedup: skipped by content hash and by name-FTS match, matching
+ * `syncFromClaude`'s behaviour. Scope defaults to `currentProject` for
+ * memories that look project-local, `global` for user/preference ones —
+ * the same policy syncFromClaude applies.
+ */
+export async function syncFromMirrorDir(dir: string): Promise<SyncResult> {
+  const db = getDb();
+  const result: SyncResult = {
+    imported: 0,
+    skipped: 0,
+    updated: 0,
+    details: [],
+    projectsScanned: 1,
+  };
+  if (!fs.existsSync(dir)) return result;
+
+  // Collect .md files one level deep (type-subdirs) plus any at the root.
+  const targets: string[] = [];
+  const walk = (d: string): void => {
+    for (const name of fs.readdirSync(d)) {
+      if (name === "INDEX.md") continue;
+      const full = path.join(d, name);
+      const stat = fs.statSync(full);
+      if (stat.isDirectory()) walk(full);
+      else if (name.endsWith(".md")) targets.push(full);
+    }
+  };
+  try { walk(dir); } catch { return result; }
+
+  for (const filePath of targets) {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const parsed = parseFrontmatter(raw, filePath);
+    if (!parsed) {
+      result.skipped++;
+      result.details.push({ action: "skipped", name: filePath, type: "unknown", reason: "invalid frontmatter" });
+      continue;
+    }
+    const amem = extractAmemFields(raw);
+
+    // Prefer amem_* fields when present; fall back to the Claude-vocab
+    // type map for hand-authored / Claude-sourced files.
+    const resolvedType = (amem.amemType as "correction" | "decision" | "pattern" | "preference" | "topology" | "fact" | undefined)
+      ?? CLAUDE_TO_AMEM_TYPE[parsed.type];
+    if (!resolvedType) {
+      result.skipped++;
+      result.details.push({ action: "skipped", name: parsed.name, type: parsed.type, reason: `Unknown type: ${parsed.type}` });
+      continue;
+    }
+
+    const content = parsed.body;
+    if (!content.trim()) {
+      result.skipped++;
+      result.details.push({ action: "skipped", name: parsed.name, type: resolvedType, reason: "empty body" });
+      continue;
+    }
+
+    // Dedup by content hash (source of truth) — cheap and deterministic.
+    const existing = db.findByContentHash(content);
+    if (existing) {
+      result.skipped++;
+      result.details.push({ action: "skipped", name: parsed.name, type: resolvedType, reason: "duplicate content" });
+      continue;
+    }
+
+    const embedding = await generateEmbedding(content);
+    const confidence = amem.amemConfidence ?? 0.8;
+    const isGlobal = resolvedType === "preference" || resolvedType === "correction";
+    const scope = isGlobal ? "global" : currentProject;
+    const tags = amem.amemTags ?? ["mirror-sync"];
+    db.insertMemory({
+      content,
+      type: resolvedType,
+      tags,
+      confidence,
+      source: "mirror-sync",
+      embedding,
+      scope,
+      ...(amem.amemTier ? { tier: amem.amemTier } : {}),
+      // Preserve original creation time when the mirror file carries it,
+      // so round-tripped memories keep their chronology for recency decay.
+      ...(amem.amemCreated ? { validFrom: amem.amemCreated } : {}),
+    });
+    result.imported++;
+    result.details.push({ action: "imported", name: parsed.name, type: resolvedType });
+  }
+
+  return result;
+}

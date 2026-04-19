@@ -33,6 +33,8 @@ describe("config", () => {
     });
 
     it("returns parsed config from a valid JSON file", () => {
+      delete process.env.AMAN_HOME;
+      delete process.env.AMAN_AGENT_HOME;
       const config = {
         provider: "anthropic",
         apiKey: "sk-test-123",
@@ -54,6 +56,12 @@ describe("config", () => {
           extractMemories: true,
           featureHints: true,
           personalityAdapt: true,
+        },
+        mirror: {
+          enabled: true,
+          dir: path.join(tmpHome, ".aman-agent", "memories"),
+          tiers: ["core", "working", "archival"],
+          autoSyncOnStartup: true,
         },
       });
     });
@@ -221,6 +229,83 @@ describe("config", () => {
       const result = loadConfig();
       expect(result).not.toBeNull();
       expect(result!.orchestrator).toBeUndefined();
+    });
+  });
+
+  describe("mirror config", () => {
+    it("returns default mirror config when user supplied none", () => {
+      delete process.env.AMAN_HOME;
+      delete process.env.AMAN_AGENT_HOME;
+      const config = {
+        provider: "anthropic",
+        apiKey: "sk-test-123",
+        model: "claude-sonnet-4-20250514",
+      };
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config), "utf-8");
+
+      const result = loadConfig();
+      expect(result).not.toBeNull();
+      expect(result!.mirror).toEqual({
+        enabled: true,
+        dir: path.join(tmpHome, ".aman-agent", "memories"),
+        tiers: ["core", "working", "archival"],
+        autoSyncOnStartup: true,
+      });
+    });
+
+    it("preserves user overrides and back-fills missing keys", () => {
+      delete process.env.AMAN_HOME;
+      delete process.env.AMAN_AGENT_HOME;
+      const config = {
+        provider: "anthropic",
+        apiKey: "sk-test-123",
+        model: "claude-sonnet-4-20250514",
+        mirror: { enabled: false },
+      };
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config), "utf-8");
+
+      const result = loadConfig();
+      expect(result).not.toBeNull();
+      expect(result!.mirror!.enabled).toBe(false);
+      expect(result!.mirror!.tiers).toEqual(["core", "working", "archival"]);
+      expect(result!.mirror!.autoSyncOnStartup).toBe(true);
+      expect(result!.mirror!.dir).toBe(path.join(tmpHome, ".aman-agent", "memories"));
+    });
+
+    it("expands ~ in user-supplied dir", () => {
+      delete process.env.AMAN_HOME;
+      delete process.env.AMAN_AGENT_HOME;
+      const config = {
+        provider: "anthropic",
+        apiKey: "sk-test-123",
+        model: "claude-sonnet-4-20250514",
+        mirror: { dir: "~/custom" },
+      };
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config), "utf-8");
+
+      const result = loadConfig();
+      expect(result).not.toBeNull();
+      expect(result!.mirror!.dir).toBe(path.join(tmpHome, "custom"));
+    });
+
+    it("uses an absolute user-supplied dir verbatim", () => {
+      delete process.env.AMAN_HOME;
+      delete process.env.AMAN_AGENT_HOME;
+      const config = {
+        provider: "anthropic",
+        apiKey: "sk-test-123",
+        model: "claude-sonnet-4-20250514",
+        mirror: { dir: "/absolute/path" },
+      };
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config), "utf-8");
+
+      const result = loadConfig();
+      expect(result).not.toBeNull();
+      expect(result!.mirror!.dir).toBe("/absolute/path");
     });
   });
 

@@ -28,6 +28,31 @@ const DEFAULT_HOOKS: HooksConfig = {
   personalityAdapt: true,
 };
 
+export interface MirrorConfig {
+  enabled?: boolean;
+  dir?: string;
+  tiers?: Array<"core" | "working" | "archival">;
+  autoSyncOnStartup?: boolean;
+}
+
+const DEFAULT_MIRROR: Required<MirrorConfig> = {
+  enabled: true,
+  dir: "",  // populated in loadConfig via homeDir() — empty string is a sentinel
+  tiers: ["core", "working", "archival"],
+  autoSyncOnStartup: true,
+};
+
+/**
+ * Expand a leading `~/` or bare `~` in a path to the user's home directory.
+ * Narrow contract: only expands `~` or `~/...`; `~alice/...` is returned as-is.
+ */
+export function expandHome(p: string): string {
+  if (p.startsWith("~/") || p === "~") {
+    return path.join(os.homedir(), p.slice(1));
+  }
+  return p;
+}
+
 export interface McpServerEntry {
   command: string;
   args: string[];
@@ -50,6 +75,7 @@ export interface AgentConfig {
   hooks?: HooksConfig;
   mcpServers?: Record<string, McpServerEntry>;
   memory?: MemoryConfig;
+  mirror?: MirrorConfig;
   orchestrator?: {
     maxParallelTasks?: number;
     defaultTier?: "fast" | "standard" | "advanced";
@@ -99,6 +125,12 @@ export function loadConfig(): AgentConfig | null {
   try {
     const raw = JSON.parse(fs.readFileSync(p, "utf-8")) as AgentConfig;
     raw.hooks = { ...DEFAULT_HOOKS, ...raw.hooks };
+    raw.mirror = {
+      ...DEFAULT_MIRROR,
+      dir: path.join(homeDir(), "memories"),
+      ...(raw.mirror ?? {}),
+    };
+    raw.mirror.dir = expandHome(raw.mirror.dir as string);
     return raw;
   } catch {
     return null;

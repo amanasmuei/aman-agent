@@ -108,6 +108,35 @@
 
 ---
 
+## What's New in v0.42.0
+
+> **Your memory, as plain Markdown.** Every memory is now mirrored to `~/.aman-agent/memories/` as a `.md` file you can read, edit, git-commit, or sync via Dropbox/iCloud.
+
+```bash
+# snapshot your memory to any dir
+aman-agent  # then: /memory export --to ~/backups/amem
+
+# see mirror status
+/memory mirror status
+
+# rebuild if you lose the DB but have the files
+/memory mirror rebuild
+
+# pull edits from a synced folder (multi-device)
+/memory sync --from ~/Dropbox/aman-memories
+```
+
+**What you get:**
+
+- Round-trip contract — files round-trip cleanly through amem-core's existing sync parser.
+- Multi-device sync — on every `aman-agent` startup, edits in the mirror dir are imported back into the DB (disable via `config.mirror.autoSyncOnStartup = false`).
+- No lock-in — plain YAML-frontmatter Markdown. If you ever stop using aman-agent, the memories stay useful anywhere.
+- Opt-out with one flag: `config.mirror.enabled = false` disables all mirror I/O.
+
+Requires `@aman_asmuei/amem-core@0.6.0` (shipped simultaneously).
+
+---
+
 ## What's New in v0.41.0
 
 > **From companion to orchestrator — fully wired.** One command decomposes, delegates, reviews, and tracks cost.

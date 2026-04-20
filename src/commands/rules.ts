@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import pc from "picocolors";
 import {
   listRuleCategories as arulesListCategories,
@@ -266,4 +267,21 @@ export function acceptSuggestion(
   return source.slice(0, entry.rawBlockStart) +
     newLines.join("\n") +
     source.slice(entry.rawBlockEnd);
+}
+
+export function rejectSuggestion(
+  source: string,
+  entry: SuggestionEntry,
+  now: Date = new Date(),
+): string {
+  const block = source.slice(entry.rawBlockStart, entry.rawBlockEnd);
+  const ts = formatTs(now);
+  const replaced = block.replace(/^- Status: pending/m, `- Status: rejected (${ts})`);
+  return source.slice(0, entry.rawBlockStart) +
+    replaced +
+    source.slice(entry.rawBlockEnd);
+}
+
+export function phraseHash(phrase: string): string {
+  return crypto.createHash("sha256").update(phrase.toLowerCase()).digest("hex");
 }

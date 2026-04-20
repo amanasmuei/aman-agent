@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSuggestions, acceptSuggestion } from "../src/commands/rules.js";
+import { parseSuggestions, acceptSuggestion, rejectSuggestion, phraseHash } from "../src/commands/rules.js";
 
 describe("parseSuggestions", () => {
   it("parses a well-formed block", () => {
@@ -91,5 +91,26 @@ describe("acceptSuggestion", () => {
     expect(updated).toContain("- Phrase: edited phrase");
     expect(updated).toContain("- Category (used): release");
     expect(updated).toContain("- Status: accepted (");
+  });
+});
+
+describe("rejectSuggestion", () => {
+  it("mutates Status: to rejected with timestamp", () => {
+    const source = `## h\n- Phrase: p\n- Status: pending\n`;
+    const entry = parseSuggestions(source)[0];
+    const updated = rejectSuggestion(source, entry, new Date("2026-04-20T13:50:00Z"));
+    expect(updated).toContain("- Status: rejected (2026-04-20");
+  });
+});
+
+describe("phraseHash", () => {
+  it("is stable and 64 hex chars for a phrase", () => {
+    const h = phraseHash("don't you love this?");
+    expect(h).toMatch(/^[a-f0-9]{64}$/);
+    expect(phraseHash("don't you love this?")).toBe(h);
+  });
+
+  it("normalizes case before hashing", () => {
+    expect(phraseHash("DON'T")).toBe(phraseHash("don't"));
   });
 });

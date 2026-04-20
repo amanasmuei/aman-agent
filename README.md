@@ -445,6 +445,50 @@ flowchart TB
 
 ---
 
+## Install tiers — pick what you need
+
+The aman ecosystem is ~10 packages. You don't need them all. Pick a tier:
+
+### Minimal (2 packages, 2 minutes)
+
+Just `aman-agent` + persistent memory. Standalone CLI, works with any LLM provider. Best for "does this feel useful?" evaluation.
+
+```bash
+npm install -g @aman_asmuei/aman-agent @aman_asmuei/amem-core
+# or, once you have Node 18+:
+curl -fsSL https://raw.githubusercontent.com/amanasmuei/aman-agent/main/bin/aman-setup.sh | bash
+```
+
+What you get: `aman-agent` CLI, per-message memory recall, memory extraction, `/memory` commands.
+
+### Productive (5 packages, 10 minutes)
+
+Minimal + identity + guardrails + Claude Code integration. Adds your AI's personality, rules the LLM must respect, and first-class Claude Code plugin support.
+
+```bash
+npm install -g @aman_asmuei/aman-agent @aman_asmuei/amem-core \
+  @aman_asmuei/acore-core @aman_asmuei/arules-core @aman_asmuei/aman-mcp
+# + install the Claude Code plugin:
+# see aman-claude-code repo README
+```
+
+What you get (on top of Minimal): named companion ("Aman" by default), rule enforcement via `/rules`, auto-loaded ecosystem context at session start, MCP tools for memory/identity/rules from inside Claude Code.
+
+### Complete (all packages, 30 minutes)
+
+Everything: orchestration, multi-agent delegation, showcase personalities, tool installer, skill manager, VS Code Copilot integration.
+
+```bash
+# After Productive, add:
+npm install -g @aman_asmuei/aman-copilot @aman_asmuei/akit @aman_asmuei/askill @aman_asmuei/aman-showcase
+```
+
+What you get (on top of Productive): `/orchestrate` DAG task decomposition, `/delegate` + `/team` multi-agent workflows, `/showcase` 13 personality templates, `/akit` CLI tool manager, `/askill` skill library. VS Code Copilot users also get `aman-copilot` for inline Copilot Chat memory.
+
+**Not sure which tier?** Start with Minimal. You can layer Productive or Complete on top whenever you want — nothing gets overwritten, just extended.
+
+---
+
 ## Quick Start
 
 ### Claude Code plugin (recommended)

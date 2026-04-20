@@ -1,0 +1,29 @@
+name: Nightly provider smoke
+
+on:
+  schedule:
+    # Daily at 06:00 UTC (catches drift within 24h of CLI updates)
+    - cron: "0 6 * * *"
+  workflow_dispatch:  # manual trigger from Actions tab
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install GitHub Copilot CLI
+        run: npm install -g @github/copilot || echo "copilot install failed — SKIP will fire"
+        continue-on-error: true
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code || echo "claude install failed — SKIP will fire"
+        continue-on-error: true
+
+      - name: Run provider flag-contract smoke
+        run: bash scripts/smoke-test-providers.sh

@@ -343,6 +343,8 @@ npx @aman_asmuei/aman-agent
 
 ---
 
+> **New to the ecosystem?** See [docs/ecosystem.md](docs/ecosystem.md) for "which package do I install, and when" + the full package relationship diagram.
+
 ## Architecture at a Glance
 
 aman-agent is the **runtime** at the center of the aman ecosystem — 78 TypeScript modules that stitch together memory, identity, orchestration, and any LLM into one coherent system.

@@ -12,7 +12,6 @@ import type {
   ContentBlock,
   ToolDefinition,
   ToolResultBlock,
-  ImageBlock,
   StreamChunk,
 } from "./llm/types.js";
 import { handleCommand } from "./commands.js";
@@ -36,7 +35,11 @@ import { trimConversation } from "./context-manager.js";
 import { log } from "./logger.js";
 import { withRetry } from "./retry.js";
 import { extractMemories as runExtraction, type ExtractorState } from "./memory-extractor.js";
-import { memoryRecall, memoryLog, getMaxRecallTokens } from "./memory.js";
+import { memoryLog } from "./memory.js";
+import { recallForMessage } from "./agent/recall.js";
+import { generateSessionId } from "./agent/session-id.js";
+import { saveConversationToMemory } from "./agent/save-conversation.js";
+import { parseAttachments } from "./agent/attachments.js";
 import { autoTriggerSkills, matchKnowledge } from "./skill-engine.js";
 import { BackgroundTaskManager, shouldRunInBackground } from "./background.js";
 import { getActivePlan, formatPlanForPrompt } from "./plans.js";
@@ -59,44 +62,6 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 marked.use(markedTerminal() as any);
 
-interface AgentRecallResult {
-  text: string;
-  tokenEstimate: number;
-}
-
-async function recallForMessage(
-  input: string,
-): Promise<AgentRecallResult | null> {
-  try {
-    const result = await memoryRecall(input, { limit: 5, compact: true });
-    if (result.total === 0) {
-      return null;
-    }
-    const tokenEstimate = result.tokenEstimate ?? Math.round(result.text.split(/\s+/).filter(Boolean).length * 1.3);
-    const MAX_MEMORY_TOKENS = getMaxRecallTokens();
-    let memoryText = result.text;
-    if (tokenEstimate > MAX_MEMORY_TOKENS) {
-      // Truncate to fit within the token ceiling (rough char estimate: 1 token ≈ 4 chars)
-      const maxChars = MAX_MEMORY_TOKENS * 4;
-      memoryText = memoryText.slice(0, maxChars) + "\n[... memory truncated to fit token budget]";
-      log.debug("agent", `memory recall truncated from ~${tokenEstimate} to ~${MAX_MEMORY_TOKENS} tokens`);
-    }
-    return {
-      text: `\n\n<relevant-memories>\n${memoryText}\n</relevant-memories>`,
-      tokenEstimate: Math.min(tokenEstimate, MAX_MEMORY_TOKENS),
-    };
-  } catch (err) {
-    log.debug("agent", "memory recall failed", err);
-    return null;
-  }
-}
-
-// Generate a session ID for conversation logging
-function generateSessionId(): string {
-  const now = new Date();
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `session-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
-}
 
 export async function runAgent(
   client: LLMClient,
@@ -445,121 +410,8 @@ ${knowledgeItem.content}
     // Auto-trim conversation if approaching token limits
     await trimConversation(messages, client);
 
-    // Detect and process file paths + image URLs in user input
-    const textExts = new Set([
-      ".txt", ".md", ".json", ".js", ".ts", ".jsx", ".tsx", ".py",
-      ".html", ".css", ".yml", ".yaml", ".toml", ".xml", ".csv",
-      ".sh", ".bash", ".zsh", ".env", ".cfg", ".ini", ".log",
-      ".sql", ".graphql", ".rs", ".go", ".java", ".rb", ".php",
-      ".c", ".cpp", ".h", ".swift", ".kt", ".r", ".lua",
-    ]);
-    const imageExts = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]);
-    const docExts = new Set([".docx", ".doc", ".pdf", ".pptx", ".ppt", ".xlsx", ".xls", ".odt", ".rtf", ".epub"]);
-    const mimeMap: Record<string, ImageBlock["source"]["media_type"]> = {
-      ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-      ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/png",
-    };
-    const maxImageBytes = 20 * 1024 * 1024; // 20MB
-
-    let textContent = input;
-    const imageBlocks: ImageBlock[] = [];
-
-    // Detect all local file paths
-    const filePathMatches = [...input.matchAll(/(\/[\w./-]+|~\/[\w./-]+)/g)];
-    for (const match of filePathMatches) {
-      let filePath = match[1];
-      if (filePath.startsWith("~/")) {
-        filePath = path.join(os.homedir(), filePath.slice(2));
-      }
-      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) continue;
-
-      const ext = path.extname(filePath).toLowerCase();
-
-      if (imageExts.has(ext)) {
-        // Image file — base64 encode
-        try {
-          const stat = fs.statSync(filePath);
-          if (stat.size > maxImageBytes) {
-            process.stdout.write(pc.yellow(`  [skipped: ${path.basename(filePath)} — exceeds 20MB limit]\n`));
-            continue;
-          }
-          const data = fs.readFileSync(filePath).toString("base64");
-          const mediaType = mimeMap[ext] || "image/png";
-          imageBlocks.push({
-            type: "image",
-            source: { type: "base64", media_type: mediaType, data },
-          });
-          process.stdout.write(pc.dim(`  [attached image: ${path.basename(filePath)} (${(stat.size / 1024).toFixed(1)}KB)]\n`));
-        } catch {
-          process.stdout.write(pc.dim(`  [could not read image: ${filePath}]\n`));
-        }
-      } else if (textExts.has(ext) || ext === "") {
-        // Text file — inline as XML
-        try {
-          const content = fs.readFileSync(filePath, "utf-8");
-          const maxChars = 50000;
-          const trimmed = content.length > maxChars
-            ? content.slice(0, maxChars) + `\n\n[... truncated, ${content.length - maxChars} chars remaining]`
-            : content;
-          textContent += `\n\n<file path="${filePath}" size="${content.length} chars">\n${trimmed}\n</file>`;
-          process.stdout.write(pc.dim(`  [attached: ${path.basename(filePath)} (${(content.length / 1024).toFixed(1)}KB)]\n`));
-        } catch {
-          process.stdout.write(pc.dim(`  [could not read: ${filePath}]\n`));
-        }
-      } else if (docExts.has(ext)) {
-        // Binary document — convert via MCP
-        if (mcpManager) {
-          try {
-            process.stdout.write(pc.dim(`  [converting: ${path.basename(filePath)}...]\n`));
-            const converted = await mcpManager.callTool("doc_convert", { path: filePath });
-            if (converted && !converted.startsWith("Error") && !converted.includes("Could not convert")) {
-              textContent += `\n\n<file path="${filePath}" format="${ext}">\n${converted.slice(0, 50000)}\n</file>`;
-              process.stdout.write(pc.dim(`  [attached: ${path.basename(filePath)} (converted from ${ext})]\n`));
-            } else {
-              textContent += `\n\n<file-error path="${filePath}">\n${converted}\n</file-error>`;
-              process.stdout.write(pc.yellow(`  [conversion note: ${converted.split("\n")[0]}]\n`));
-            }
-          } catch {
-            process.stdout.write(pc.dim(`  [could not convert: ${path.basename(filePath)}]\n`));
-          }
-        } else {
-          process.stdout.write(pc.yellow(`  Binary file (${ext}) — install Docling for document support: pip install docling\n`));
-        }
-      }
-    }
-
-    // Detect image URLs in user input
-    const urlImageMatches = [...input.matchAll(/https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp)(?:\?\S*)?/gi)];
-    for (const match of urlImageMatches) {
-      const url = match[0];
-      try {
-        process.stdout.write(pc.dim(`  [fetching image: ${url.slice(0, 60)}...]\n`));
-        const response = await fetch(url);
-        if (!response.ok) {
-          process.stdout.write(pc.yellow(`  [could not fetch: HTTP ${response.status}]\n`));
-          continue;
-        }
-        const buffer = Buffer.from(await response.arrayBuffer());
-        if (buffer.length > maxImageBytes) {
-          process.stdout.write(pc.yellow(`  [skipped: image URL exceeds 20MB limit]\n`));
-          continue;
-        }
-        const contentType = response.headers.get("content-type") || "";
-        let mediaType: ImageBlock["source"]["media_type"] = "image/png";
-        if (contentType.includes("jpeg") || contentType.includes("jpg")) mediaType = "image/jpeg";
-        else if (contentType.includes("gif")) mediaType = "image/gif";
-        else if (contentType.includes("webp")) mediaType = "image/webp";
-        else if (contentType.includes("png")) mediaType = "image/png";
-
-        imageBlocks.push({
-          type: "image",
-          source: { type: "base64", media_type: mediaType, data: buffer.toString("base64") },
-        });
-        process.stdout.write(pc.dim(`  [attached image URL: (${(buffer.length / 1024).toFixed(1)}KB)]\n`));
-      } catch {
-        process.stdout.write(pc.dim(`  [could not fetch image: ${url}]\n`));
-      }
-    }
+    // Parse attachments (local files + image URLs) from user input.
+    const { textContent, imageBlocks } = await parseAttachments(input, mcpManager);
 
     // Build user message: structured ContentBlock[] if images present, string otherwise
     if (imageBlocks.length > 0) {
@@ -1002,20 +854,3 @@ ${knowledgeItem.content}
   }
 }
 
-// Save conversation messages to memory log
-async function saveConversationToMemory(
-  messages: Message[],
-  sessionId: string,
-): Promise<void> {
-  // Save last 50 messages
-  const recentMessages = messages.slice(-50);
-
-  for (const msg of recentMessages) {
-    if (typeof msg.content !== "string") continue;
-    try {
-      memoryLog(sessionId, msg.role, msg.content.slice(0, 5000));
-    } catch (err) {
-      log.debug("agent", "memory_log write failed", err);
-    }
-  }
-}

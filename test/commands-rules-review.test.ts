@@ -1,5 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { parseSuggestions, acceptSuggestion, rejectSuggestion, phraseHash } from "../src/commands/rules.js";
+import { handleCommand } from "../src/commands.js";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 
 describe("parseSuggestions", () => {
   it("parses a well-formed block", () => {
@@ -112,5 +116,67 @@ describe("phraseHash", () => {
 
   it("normalizes case before hashing", () => {
     expect(phraseHash("DON'T")).toBe(phraseHash("don't"));
+  });
+});
+
+describe("/rules review integration", () => {
+  let tempHome: string;
+  let originalHome: string | undefined;
+  let scopeDir: string;
+  let suggPath: string;
+  let rejectedPath: string;
+
+  beforeEach(() => {
+    // Isolate HOME so tests don't touch real ~/.arules
+    tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "aman-rules-test-"));
+    originalHome = process.env.HOME;
+    process.env.HOME = tempHome;
+
+    scopeDir = path.join(tempHome, ".arules", "dev", "agent");
+    fs.mkdirSync(scopeDir, { recursive: true });
+    suggPath = path.join(scopeDir, "suggestions.md");
+    rejectedPath = path.join(scopeDir, ".rejected-hashes");
+    fs.writeFileSync(suggPath, "");
+    fs.writeFileSync(rejectedPath, "");
+  });
+
+  afterEach(() => {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+    fs.rmSync(tempHome, { recursive: true, force: true });
+  });
+
+  it("reports 'no pending suggestions' when empty", async () => {
+    const result = await handleCommand("/rules review", {});
+    expect(result.handled).toBe(true);
+    expect(result.output).toMatch(/No pending (rule )?suggestions/i);
+  });
+
+  it("--list shows pending entries with index and metadata", async () => {
+    fs.writeFileSync(suggPath,
+      "## h\n- Phrase: don't commit\n- Occurrences: 3\n- Category (suggested): git\n- Status: pending\n");
+    const result = await handleCommand("/rules review --list", {});
+    expect(result.output).toContain("don't commit");
+    expect(result.output).toMatch(/1 pending/);
+  });
+
+  it("/rules reject <n> mutates Status and appends hash", async () => {
+    fs.writeFileSync(suggPath,
+      "## h\n- Phrase: don't you love this\n- Occurrences: 3\n- Category (suggested): general\n- Status: pending\n");
+    const result = await handleCommand("/rules reject 1", {});
+    expect(result.handled).toBe(true);
+    const updatedSource = fs.readFileSync(suggPath, "utf-8");
+    expect(updatedSource).toContain("- Status: rejected (");
+    const rejected = fs.readFileSync(rejectedPath, "utf-8");
+    expect(rejected).toContain(phraseHash("don't you love this"));
+  });
+
+  it("/rules accept <n> with missing entry returns error", async () => {
+    const result = await handleCommand("/rules accept 99", {});
+    expect(result.handled).toBe(true);
+    expect(result.output).toMatch(/no pending suggestion/i);
   });
 });

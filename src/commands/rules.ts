@@ -1,4 +1,7 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 import pc from "picocolors";
 import {
   listRuleCategories as arulesListCategories,
@@ -12,6 +15,22 @@ import {
   type CommandContext,
   type CommandResult,
 } from "./shared.js";
+
+function suggestionsPath(): string {
+  return path.join(os.homedir(), ".arules", AGENT_SCOPE.replace(":", "/"), "suggestions.md");
+}
+
+function readSuggestionsSource(): string {
+  const p = suggestionsPath();
+  if (!fs.existsSync(p)) return "";
+  return fs.readFileSync(p, "utf-8");
+}
+
+function writeSuggestionsSource(source: string): void {
+  const p = suggestionsPath();
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, source, { mode: 0o600 });
+}
 
 export async function handleRulesCommand(
   action: string | undefined,
@@ -140,6 +159,65 @@ export async function handleRulesCommand(
       return { handled: true, output: pc.red(`Check error: ${err instanceof Error ? err.message : String(err)}`) };
     }
   }
+  if (action === "review") {
+    const wantList = args.includes("--list");
+    const source = readSuggestionsSource();
+    const entries = parseSuggestions(source).filter((e) => e.status === "pending");
+
+    if (entries.length === 0) {
+      return { handled: true, output: pc.dim("No pending rule suggestions.") };
+    }
+
+    if (wantList) {
+      const lines = [pc.bold(`${entries.length} pending`), ""];
+      entries.forEach((e, i) => {
+        lines.push(
+          `  [${i + 1}] ${pc.cyan(e.heading)}`,
+          `      Phrase: ${e.phrase}`,
+          `      Occurrences: ${e.occurrences}${e.explicit ? " (explicit)" : ""} · Category: ${e.category}`,
+        );
+      });
+      lines.push("", pc.dim("Run /rules review without --list to interactively accept/reject."));
+      return { handled: true, output: lines.join("\n") };
+    }
+
+    // For v3.2.0-alpha: --list + /rules accept|reject <n> only.
+    // Full readline interactive loop lands in v3.2.0-beta.
+    return {
+      handled: true,
+      output: pc.yellow(
+        "Use /rules review --list to see pending suggestions, then /rules accept <n> or /rules reject <n>.",
+      ),
+    };
+  }
+
+  if (action === "accept" || action === "reject") {
+    const idx = parseInt(args[0], 10);
+    if (isNaN(idx) || idx < 1) {
+      return { handled: true, output: pc.yellow(`Usage: /rules ${action} <number-from-review-list>`) };
+    }
+    const source = readSuggestionsSource();
+    const entries = parseSuggestions(source).filter((e) => e.status === "pending");
+    const entry = entries[idx - 1];
+    if (!entry) {
+      return { handled: true, output: pc.red(`No pending suggestion #${idx}`) };
+    }
+    if (action === "accept") {
+      try {
+        await arulesAddRule(entry.category, entry.phrase, AGENT_SCOPE);
+        writeSuggestionsSource(acceptSuggestion(source, entry));
+        return { handled: true, output: pc.green(`\u2713 Added to ${entry.category}: "${entry.phrase}"`) };
+      } catch (err) {
+        return { handled: true, output: pc.red(`Failed: ${err instanceof Error ? err.message : String(err)}`) };
+      }
+    }
+    // reject
+    writeSuggestionsSource(rejectSuggestion(source, entry));
+    const rejectedFile = path.join(path.dirname(suggestionsPath()), ".rejected-hashes");
+    fs.appendFileSync(rejectedFile, phraseHash(entry.phrase) + "\n", { mode: 0o600 });
+    return { handled: true, output: pc.dim(`\u2717 Rejected (won't surface again).`) };
+  }
+
   if (action === "help") {
     return {
       handled: true,
@@ -150,6 +228,9 @@ export async function handleRulesCommand(
         `  ${pc.cyan("/rules remove")} <category> <idx>  Remove a rule`,
         `  ${pc.cyan("/rules toggle")} <category> <idx>  Toggle a rule`,
         `  ${pc.cyan("/rules check")} <action...>         Check if an action is allowed`,
+        `  ${pc.cyan("/rules review")}                View pending rule suggestions from observer`,
+        `  ${pc.cyan("/rules accept")} <n>            Accept suggestion #n (from review list)`,
+        `  ${pc.cyan("/rules reject")} <n>            Reject suggestion #n (won't resurface)`,
       ].join("\n"),
     };
   }

@@ -21,3 +21,18 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm test
+      - name: Bundle size budget (runtime JS, excluding sourcemaps)
+        env:
+          BUNDLE_LIMIT_KB: "550"
+        run: |
+          # Measure only compiled JS (what users actually load at runtime).
+          # Sourcemaps and .d.ts files are excluded — they don't affect perf.
+          SIZE_BYTES=$(find dist -name '*.js' -type f -exec wc -c {} + | tail -1 | awk '{print $1}')
+          LIMIT_BYTES=$((BUNDLE_LIMIT_KB * 1024))
+          SIZE_KB=$((SIZE_BYTES / 1024))
+          echo "Runtime bundle: ${SIZE_KB} KB (${SIZE_BYTES} bytes) — limit ${BUNDLE_LIMIT_KB} KB"
+          if [ "$SIZE_BYTES" -gt "$LIMIT_BYTES" ]; then
+            echo "::error::Bundle size ${SIZE_KB} KB exceeds budget of ${BUNDLE_LIMIT_KB} KB."
+            echo "::error::Investigate the cause, or raise BUNDLE_LIMIT_KB in ci.yml if justified."
+            exit 1
+          fi

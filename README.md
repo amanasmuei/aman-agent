@@ -701,6 +701,27 @@ You > Let's add a new endpoint
 /decisions               View your decision log
 ```
 
+### Memory mirror (markdown)
+
+Your memory DB is great for the agent, but sometimes you want memories as **plain Markdown files** you can `grep`, edit in any editor, commit to git, or sync with Dropbox/iCloud across devices. The mirror gives you exactly that — a human-readable copy of every memory that round-trips cleanly back into the DB.
+
+```
+/memory export --to <dir>     One-shot snapshot of all memories as .md files
+/memory mirror status         Show live mirror path, file count, last sync
+/memory mirror rebuild        Re-materialise the mirror from the DB
+/memory sync --from <dir>     Reconstitute the DB from a directory of .md files
+```
+
+**When you want this:**
+
+- **Human-readable backup** — `grep -r "postgres" ~/.aman-agent/memories/` to see every memory that mentions Postgres.
+- **Edit outside the agent** — fix a typo or retire a stale decision in your favourite editor, then run `/memory sync --from ...` (or just restart — startup auto-syncs).
+- **Version-control your memory** — `git init ~/.aman-agent/memories/` and you get a full history of every memory the agent has ever learned.
+- **Multi-device sync** — point the mirror dir at a synced folder (Dropbox, iCloud, Syncthing) and your memories follow you.
+- **No lock-in** — YAML-frontmatter Markdown is readable without aman-agent ever being installed again.
+
+Opt-out: `config.mirror.enabled = false` disables all mirror I/O. Disable auto-sync on startup only with `config.mirror.autoSyncOnStartup = false`.
+
 </details>
 
 <details>

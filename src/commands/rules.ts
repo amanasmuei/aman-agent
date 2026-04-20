@@ -157,3 +157,71 @@ export async function handleRulesCommand(
     output: pc.yellow(`Unknown action: /rules ${action}. Try /rules --help`),
   };
 }
+
+export interface SuggestionEntry {
+  heading: string;
+  phrase: string;
+  occurrences: number;
+  explicit: boolean;
+  firstSeen?: string;
+  category: string;
+  status: "pending" | "accepted" | "rejected";
+  rawBlockStart: number;
+  rawBlockEnd: number;
+}
+
+export function parseSuggestions(source: string): SuggestionEntry[] {
+  if (!source.trim()) return [];
+  const lines = source.split("\n");
+  const entries: SuggestionEntry[] = [];
+
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].startsWith("## ")) {
+      const blockStart = lines.slice(0, i).join("\n").length + (i > 0 ? 1 : 0);
+      const heading = lines[i].slice(3).trim();
+      const fields: Record<string, string> = {};
+      let j = i + 1;
+      while (j < lines.length && !lines[j].startsWith("## ")) {
+        const m = lines[j].match(/^-\s+([^:]+):\s*(.*)$/);
+        if (m) fields[m[1].trim().toLowerCase()] = m[2].trim();
+        j++;
+      }
+      const blockEnd = lines.slice(0, j).join("\n").length;
+
+      const phrase = fields["phrase"];
+      const statusRaw = fields["status"] ?? "";
+      const status: SuggestionEntry["status"] = statusRaw.startsWith("accepted")
+        ? "accepted"
+        : statusRaw.startsWith("rejected")
+        ? "rejected"
+        : "pending";
+      const occRaw = fields["occurrences"] ?? "";
+      const occMatch = occRaw.match(/^(\d+)/);
+      const occurrences = occMatch ? parseInt(occMatch[1], 10) : 0;
+      const explicit = /explicit marker/i.test(occRaw);
+      const category =
+        fields["category (used)"] ??
+        fields["category (suggested)"] ??
+        "general";
+
+      if (phrase && statusRaw) {
+        entries.push({
+          heading,
+          phrase,
+          occurrences,
+          explicit,
+          firstSeen: fields["first seen"],
+          category,
+          status,
+          rawBlockStart: blockStart,
+          rawBlockEnd: blockEnd,
+        });
+      }
+      i = j;
+    } else {
+      i++;
+    }
+  }
+  return entries;
+}

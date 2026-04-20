@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSuggestions } from "../src/commands/rules.js";
+import { parseSuggestions, acceptSuggestion } from "../src/commands/rules.js";
 
 describe("parseSuggestions", () => {
   it("parses a well-formed block", () => {
@@ -54,5 +54,42 @@ describe("parseSuggestions", () => {
 
   it("returns empty array for empty input", () => {
     expect(parseSuggestions("")).toEqual([]);
+  });
+});
+
+describe("acceptSuggestion", () => {
+  it("mutates Status: to accepted with timestamp", () => {
+    const source = `## h\n- Phrase: don't commit\n- Category (suggested): git\n- Status: pending\n`;
+    const entry = parseSuggestions(source)[0];
+    const updated = acceptSuggestion(source, entry, new Date("2026-04-20T11:30:00Z"));
+    expect(updated).toContain("- Status: accepted (2026-04-20");
+    expect(updated).not.toContain("- Status: pending");
+  });
+
+  it("preserves rest of the source", () => {
+    const source = `before\n## h\n- Phrase: p\n- Status: pending\n## other\n- Phrase: q\n- Status: pending\nafter\n`;
+    const [entry] = parseSuggestions(source);
+    const updated = acceptSuggestion(source, entry, new Date("2026-04-20T11:30:00Z"));
+    expect(updated).toContain("before\n");
+    expect(updated).toContain("after\n");
+    // Second entry's pending status should still be there
+    const pendingCount = (updated.match(/- Status: pending/g) ?? []).length;
+    expect(pendingCount).toBe(1);
+  });
+
+  it("preserves original phrase when edited", () => {
+    const source = `## h\n- Phrase: original phrase\n- Category (suggested): git\n- Status: pending\n`;
+    const entry = parseSuggestions(source)[0];
+    const updated = acceptSuggestion(
+      source,
+      entry,
+      new Date("2026-04-20T11:30:00Z"),
+      "edited phrase",
+      "release",
+    );
+    expect(updated).toContain("- Original: original phrase");
+    expect(updated).toContain("- Phrase: edited phrase");
+    expect(updated).toContain("- Category (used): release");
+    expect(updated).toContain("- Status: accepted (");
   });
 });

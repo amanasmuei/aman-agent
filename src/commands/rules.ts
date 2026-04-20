@@ -225,3 +225,45 @@ export function parseSuggestions(source: string): SuggestionEntry[] {
   }
   return entries;
 }
+
+function formatTs(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export function acceptSuggestion(
+  source: string,
+  entry: SuggestionEntry,
+  now: Date = new Date(),
+  editedPhrase?: string,
+  editedCategory?: string,
+): string {
+  const block = source.slice(entry.rawBlockStart, entry.rawBlockEnd);
+  const lines = block.split("\n");
+  const newLines: string[] = [];
+  const ts = formatTs(now);
+
+  let insertedOriginal = false;
+  for (const ln of lines) {
+    if (editedPhrase && !insertedOriginal && /^- Phrase:/.test(ln)) {
+      newLines.push(`- Original: ${entry.phrase}`);
+      newLines.push(`- Phrase: ${editedPhrase}`);
+      insertedOriginal = true;
+      continue;
+    }
+    if (editedCategory && /^- Category \(suggested\):/.test(ln)) {
+      newLines.push(ln);
+      newLines.push(`- Category (used): ${editedCategory}`);
+      continue;
+    }
+    if (/^- Status: pending/.test(ln)) {
+      newLines.push(`- Status: accepted (${ts})`);
+      continue;
+    }
+    newLines.push(ln);
+  }
+
+  return source.slice(0, entry.rawBlockStart) +
+    newLines.join("\n") +
+    source.slice(entry.rawBlockEnd);
+}

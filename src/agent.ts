@@ -12,7 +12,6 @@ import type {
   ContentBlock,
   ToolDefinition,
   ToolResultBlock,
-  StreamChunk,
 } from "./llm/types.js";
 import { handleCommand } from "./commands.js";
 import type { McpManager } from "./mcp/client.js";
@@ -34,6 +33,8 @@ import { generateSessionId } from "./agent/session-id.js";
 import { saveConversationToMemory } from "./agent/save-conversation.js";
 import { parseAttachments } from "./agent/attachments.js";
 import { refreshPersonality } from "./agent/personality-refresh.js";
+import { buildVirtualTools } from "./agent/virtual-tools.js";
+import { createStreamHandler } from "./agent/stream-handler.js";
 import { autoTriggerSkills, matchKnowledge } from "./skill-engine.js";
 import { BackgroundTaskManager, shouldRunInBackground } from "./background.js";
 import { getActivePlan, formatPlanForPrompt } from "./plans.js";
@@ -78,39 +79,7 @@ export async function runAgent(
   const profiles = listProfiles();
   const teams = listTeams();
   if (tools && (profiles.length > 0 || teams.length > 0)) {
-    const virtualTools: ToolDefinition[] = [];
-
-    if (profiles.length > 0) {
-      virtualTools.push({
-        name: "delegate_task",
-        description: `Delegate a task to a specialist sub-agent with a different profile. Available profiles: ${profiles.map((p) => `${p.name} (${p.personality})`).join(", ")}. IMPORTANT: Always ask the user for permission before delegating.`,
-        input_schema: {
-          type: "object",
-          properties: {
-            profile: { type: "string", description: "Profile name to delegate to" },
-            task: { type: "string", description: "The task description for the sub-agent" },
-          },
-          required: ["profile", "task"],
-        },
-      });
-    }
-
-    if (teams.length > 0) {
-      virtualTools.push({
-        name: "team_run",
-        description: `Run a task with a named agent team. Available teams: ${teams.map((t) => `${t.name} (${t.workflow}: ${t.members.map((m) => m.profile).join("→")})`).join(", ")}. IMPORTANT: Always ask the user for permission before running a team.`,
-        input_schema: {
-          type: "object",
-          properties: {
-            team: { type: "string", description: "Team name" },
-            task: { type: "string", description: "The task for the team" },
-          },
-          required: ["team", "task"],
-        },
-      });
-    }
-
-    tools = [...tools, ...virtualTools];
+    tools = [...tools, ...buildVirtualTools(profiles, teams)];
   }
   const hintState: HintState = {
     turnCount: 0,
@@ -129,32 +98,8 @@ export async function runAgent(
     err.message.includes("ENOTFOUND") ||
     err.message.includes("EAI_AGAIN");
 
-  let responseBuffer = "";
-
-  const onChunkHandler = (chunk: StreamChunk) => {
-    if (chunk.type === "text" && chunk.text) {
-      responseBuffer += chunk.text;
-      if (process.stdout.isTTY) {
-        logUpdate(responseBuffer);
-      } else {
-        process.stdout.write(chunk.text);
-      }
-    }
-    if (chunk.type === "done") {
-      if (process.stdout.isTTY && responseBuffer.trim()) {
-        try {
-          const rendered = marked(responseBuffer.trim()) as string;
-          logUpdate(rendered);
-          logUpdate.done();
-        } catch {
-          logUpdate.done();
-        }
-      } else {
-        process.stdout.write("\n");
-      }
-      responseBuffer = "";
-    }
-  };
+  const stream = createStreamHandler();
+  const onChunkHandler = stream.handler;
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -706,12 +651,13 @@ ${knowledgeItem.content}
       isStreaming = false;
       // If aborted by user (Ctrl+C), just add partial response and continue
       if (abortController?.signal.aborted) {
-        if (responseBuffer.trim()) {
-          messages.push({ role: "assistant", content: responseBuffer.trim() });
+        const partial = stream.getBuffer();
+        if (partial.trim()) {
+          messages.push({ role: "assistant", content: partial.trim() });
           if (process.stdout.isTTY) {
-            try { logUpdate(marked(responseBuffer.trim()) as string); logUpdate.done(); } catch { logUpdate.done(); }
+            try { logUpdate(marked(partial.trim()) as string); logUpdate.done(); } catch { logUpdate.done(); }
           }
-          responseBuffer = "";
+          stream.resetBuffer();
         }
         continue;
       }

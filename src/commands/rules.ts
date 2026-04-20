@@ -16,8 +16,24 @@ import {
   type CommandResult,
 } from "./shared.js";
 
+/**
+ * Observer suggestions live in the plugin scope (`~/.arules/dev/plugin/`),
+ * NOT the aman-agent CLI scope, because the detector that produces them
+ * is part of the aman-claude-code plugin. `/rules review` reads from
+ * there regardless of which scope aman-agent itself is running in.
+ *
+ * When a suggestion is accepted, the resulting rule goes into
+ * AGENT_SCOPE (via `arulesAddRule(..., AGENT_SCOPE)`) — that's the
+ * expected behavior, since the user is running the CLI and claiming
+ * the rule as theirs. acore's scope inheritance then makes it visible
+ * to the plugin's sessions.
+ */
+function suggestionsScopeDir(): string {
+  return path.join(os.homedir(), ".arules", "dev", "plugin");
+}
+
 function suggestionsPath(): string {
-  return path.join(os.homedir(), ".arules", AGENT_SCOPE.replace(":", "/"), "suggestions.md");
+  return path.join(suggestionsScopeDir(), "suggestions.md");
 }
 
 function readSuggestionsSource(): string {

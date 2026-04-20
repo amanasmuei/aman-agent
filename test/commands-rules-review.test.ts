@@ -132,12 +132,33 @@ describe("/rules review integration", () => {
     originalHome = process.env.HOME;
     process.env.HOME = tempHome;
 
-    scopeDir = path.join(tempHome, ".arules", "dev", "agent");
+    scopeDir = path.join(tempHome, ".arules", "dev", "plugin");
     fs.mkdirSync(scopeDir, { recursive: true });
     suggPath = path.join(scopeDir, "suggestions.md");
     rejectedPath = path.join(scopeDir, ".rejected-hashes");
     fs.writeFileSync(suggPath, "");
     fs.writeFileSync(rejectedPath, "");
+  });
+
+  it("reads from dev/plugin scope (not dev/agent)", async () => {
+    // Prove the scope-mismatch bug (pre-fix) doesn't regress.
+    // Put a suggestion in the WRONG scope (dev/agent) and confirm
+    // /rules review ignores it. Then put one in the RIGHT scope
+    // (dev/plugin) and confirm it's found.
+    const wrongScope = path.join(tempHome, ".arules", "dev", "agent");
+    fs.mkdirSync(wrongScope, { recursive: true });
+    fs.writeFileSync(
+      path.join(wrongScope, "suggestions.md"),
+      "## wrong\n- Phrase: wrong-scope\n- Status: pending\n",
+    );
+
+    // Plugin-scope file (the right one) is already set up in beforeEach
+    fs.writeFileSync(suggPath,
+      "## right\n- Phrase: right-scope\n- Status: pending\n");
+
+    const result = await handleCommand("/rules review --list", {});
+    expect(result.output).toContain("right-scope");
+    expect(result.output).not.toContain("wrong-scope");
   });
 
   afterEach(() => {

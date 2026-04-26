@@ -51,6 +51,7 @@ import {
   cleanupOldObservations,
   type ObservationSession,
 } from "./observation.js";
+import { recordWorkspace, surfaceCurrentThread } from "./workspaces/index.js";
 
 // markedTerminal() returns a MarkedExtension — types lag behind, cast is safe
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -193,6 +194,21 @@ export async function runAgent(
     observationSession = createObservationSession(sessionId);
     // Cleanup old observation files (non-blocking, fire-and-forget)
     cleanupOldObservations().catch(() => {});
+  }
+
+  // Workspace tracking + thread surfacing (per workspaces design spec §3.3 + §10.4).
+  // Both are non-fatal: any error logs and continues — never blocks startup.
+  recordWorkspace(process.cwd()).catch((err) =>
+    log.warn("workspaces", "workspace tracking failed (non-fatal)", err),
+  );
+  if (mcpManager) {
+    surfaceCurrentThread(process.cwd(), mcpManager)
+      .then((msg) => {
+        if (msg) log.debug("workspaces", msg);
+      })
+      .catch((err) =>
+        log.warn("workspaces", "thread surfacing failed (non-fatal)", err),
+      );
   }
 
   while (true) {

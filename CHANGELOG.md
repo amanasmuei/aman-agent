@@ -2,6 +2,45 @@
 
 All notable changes to aman-agent are documented here.
 
+## 0.43.0 — 2026-04-26
+
+### Added — Workspace tracker (LRU N=7) + aman-mcp thread bridge
+
+Implements the workspace half of the project-tracking system designed in
+`docs/superpowers/specs/2026-04-21-project-tracking-design.md`
+(reconciled with aman-mcp@0.8.0 in §10).
+
+- New `src/workspaces/` module: types, store, tracker, thread-bridge, index
+- New `/workspaces` slash command: `list` / `all` / `archive` / `unarchive` / `notes` / `forget`
+- New file: `~/.aman-agent/workspaces.json` (created on first run, version 1)
+- LRU cap: 7 active workspaces; oldest auto-archives on overflow (silent, non-blocking)
+- Identity: git repo root via `git rev-parse --show-toplevel`, else absolute cwd path
+- Test isolation: respects `AMAN_AGENT_HOME` env var
+
+#### Cross-layer integration
+
+`recordWorkspace` runs at every `runAgent` startup; `surfaceCurrentThread` calls
+`mcp__aman__project_active` (from aman-mcp@0.8.0) and emits a one-line context
+message linking the current workspace to the active thread (if any). Both are
+non-fatal — workspace tracking failure or MCP unreachability never blocks startup.
+The surfaced message currently routes to `log.debug` (rotating file at
+`~/.aman-agent/debug.log`) — not yet user-visible at terminal startup. Promote
+to a console line in a follow-up if the surfacing should be louder.
+
+#### Vocabulary clarification
+
+This subsystem tracks **workspaces** (where the user codes — repos, dirs).
+The aman-mcp project layer at `~/.aprojects/` tracks **threads** (what the
+user pursues — arcs of work). Threads can span workspaces; workspaces host
+multiple threads over time. The `/workspaces` slash command and the
+`workspaces.json` filename make this distinction unambiguous.
+
+### Migration
+
+- No breaking changes. The `~/.aman-agent/workspaces.json` file is created on
+  first run; deleting it resets the tracker.
+- Existing `src/project/` (singular — stack classification) is untouched.
+
 ## [0.40.0] - 2026-04-13
 
 ### Added

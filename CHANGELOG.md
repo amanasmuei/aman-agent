@@ -2,6 +2,11 @@
 
 All notable changes to aman-agent are documented here.
 
+## 0.43.1 — 2026-04-27
+
+### Fixed
+- `surfaceCurrentThread` output now writes to stderr (dim) at session start, not just `log.debug`. Workspace/thread context line is visible at terminal boot without spelunking the debug log.
+
 ## 0.43.0 — 2026-04-26
 
 ### Added — Workspace tracker (LRU N=7) + aman-mcp thread bridge

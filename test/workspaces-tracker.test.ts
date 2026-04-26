@@ -182,3 +182,48 @@ describe("archiveWorkspace / unarchiveWorkspace", () => {
     );
   });
 });
+
+import {
+  setNotes,
+  forgetWorkspace,
+} from "../src/workspaces/tracker.js";
+
+describe("setNotes", () => {
+  function makeRepo(name: string): string {
+    const dir = path.join(tmp, `notes-${name}`);
+    fs.mkdirSync(dir);
+    gitInit(dir);
+    return dir;
+  }
+
+  it("sets notes by name", async () => {
+    await recordWorkspace(makeRepo("alpha"));
+    await setNotes("notes-alpha", "first notes");
+    const list = await listWorkspaces();
+    expect(list[0].notes).toBe("first notes");
+  });
+
+  it("clears notes when text is empty string", async () => {
+    await recordWorkspace(makeRepo("alpha"));
+    await setNotes("notes-alpha", "x");
+    await setNotes("notes-alpha", "");
+    const list = await listWorkspaces();
+    expect(list[0].notes).toBeUndefined();
+  });
+});
+
+describe("forgetWorkspace", () => {
+  function makeRepo(name: string): string {
+    const dir = path.join(tmp, `forget-${name}`);
+    fs.mkdirSync(dir);
+    gitInit(dir);
+    return dir;
+  }
+
+  it("removes the entry entirely (not archive — gone)", async () => {
+    await recordWorkspace(makeRepo("alpha"));
+    await forgetWorkspace("forget-alpha");
+    const all = await listWorkspaces({ includeArchived: true });
+    expect(all).toHaveLength(0);
+  });
+});

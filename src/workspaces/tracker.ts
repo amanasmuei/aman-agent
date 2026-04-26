@@ -158,3 +158,23 @@ export async function unarchiveWorkspace(name: string): Promise<void> {
   pruneLRU(store);
   await saveStore(store);
 }
+
+export async function setNotes(name: string, text: string): Promise<void> {
+  const target = await findByName(name);
+  const store = await loadStore();
+  const entry = store.workspaces.find((w) => w.path === target.path);
+  if (!entry) throw new Error(`Workspace not found: "${name}"`);
+  if (text === "") {
+    delete entry.notes;
+  } else {
+    entry.notes = text;
+  }
+  await saveStore(store);
+}
+
+export async function forgetWorkspace(name: string): Promise<void> {
+  const target = await findByName(name);
+  const store = await loadStore();
+  store.workspaces = store.workspaces.filter((w) => w.path !== target.path);
+  await saveStore(store);
+}

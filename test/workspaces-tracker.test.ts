@@ -45,3 +45,62 @@ describe("identifyWorkspace", () => {
     expect(result.name).toBe("scratch");
   });
 });
+
+import { recordWorkspace } from "../src/workspaces/tracker.js";
+import { loadStore, saveStore } from "../src/workspaces/store.js";
+
+describe("recordWorkspace", () => {
+  function makeRepo(name: string): string {
+    const dir = path.join(tmp, name);
+    fs.mkdirSync(dir);
+    gitInit(dir);
+    return dir;
+  }
+
+  it("creates a new entry on first record (firstSeen == lastSeen)", async () => {
+    const repo = makeRepo("alpha");
+    const entry = await recordWorkspace(repo);
+    expect(entry.name).toBe("alpha");
+    expect(entry.archived).toBe(false);
+    expect(entry.firstSeen).toBe(entry.lastSeen);
+    const store = await loadStore();
+    expect(store.workspaces).toHaveLength(1);
+  });
+
+  it("touches lastSeen on second record (firstSeen unchanged)", async () => {
+    const repo = makeRepo("alpha");
+    const first = await recordWorkspace(repo);
+    await new Promise((r) => setTimeout(r, 10));
+    const second = await recordWorkspace(repo);
+    expect(second.firstSeen).toBe(first.firstSeen);
+    expect(new Date(second.lastSeen).getTime()).toBeGreaterThan(
+      new Date(first.lastSeen).getTime(),
+    );
+    const store = await loadStore();
+    expect(store.workspaces).toHaveLength(1);
+  });
+
+  it("revives an archived entry (archived -> false on touch)", async () => {
+    const repo = makeRepo("alpha");
+    await recordWorkspace(repo);
+    const store = await loadStore();
+    store.workspaces[0].archived = true;
+    await saveStore(store);
+    const revived = await recordWorkspace(repo);
+    expect(revived.archived).toBe(false);
+  });
+
+  it("auto-archives the oldest active when 8th workspace is recorded", async () => {
+    for (let i = 0; i < 8; i++) {
+      const repo = makeRepo(`repo-${i}`);
+      await recordWorkspace(repo);
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    const store = await loadStore();
+    const active = store.workspaces.filter((w) => !w.archived);
+    const archived = store.workspaces.filter((w) => w.archived);
+    expect(active).toHaveLength(7);
+    expect(archived).toHaveLength(1);
+    expect(archived[0].name).toBe("repo-0");
+  });
+});

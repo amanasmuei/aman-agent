@@ -2,7 +2,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { homeDir } from "../config.js";
-import { EMPTY_STORE, type WorkspaceStore } from "./types.js";
+import { type WorkspaceStore } from "./types.js";
 
 /** Absolute path to the workspaces JSON file. */
 export function storePath(): string {
@@ -23,24 +23,24 @@ export async function loadStore(): Promise<WorkspaceStore> {
   try {
     raw = await fs.readFile(storePath(), "utf-8");
   } catch {
-    return { ...EMPTY_STORE };
+    return { version: 1, workspaces: [] };
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { ...EMPTY_STORE };
+    return { version: 1, workspaces: [] };
   }
   if (
     typeof parsed !== "object" ||
     parsed === null ||
     (parsed as { version?: unknown }).version !== 1
   ) {
-    return { ...EMPTY_STORE };
+    return { version: 1, workspaces: [] };
   }
   const candidate = parsed as WorkspaceStore;
   if (!Array.isArray(candidate.workspaces)) {
-    return { ...EMPTY_STORE };
+    return { version: 1, workspaces: [] };
   }
   return candidate;
 }

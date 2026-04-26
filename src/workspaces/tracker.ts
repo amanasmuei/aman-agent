@@ -3,6 +3,12 @@ import * as fsSync from "node:fs";
 import * as path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { loadStore, saveStore } from "./store.js";
+import {
+  WORKSPACE_CAP,
+  type WorkspaceEntry,
+  type WorkspaceStore,
+} from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -36,4 +42,55 @@ export async function identifyWorkspace(cwd: string): Promise<WorkspaceId> {
   // realpath canonicalizes (resolves symlinks like /var -> /private/var on macOS)
   const canonical = fsSync.realpathSync(resolved);
   return { path: canonical, name: path.basename(canonical) };
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+/**
+ * Record (or touch) the workspace for the given cwd.
+ * Per §2.2: called from runAgent at startup.
+ *
+ * Behavior:
+ *   - First time seeing this path -> create new entry (firstSeen = lastSeen = now)
+ *   - Existing match -> touch lastSeen, set archived = false
+ *   - After insert/update, prune LRU: if active count > 7, archive oldest by lastSeen
+ */
+export async function recordWorkspace(cwd: string): Promise<WorkspaceEntry> {
+  const id = await identifyWorkspace(cwd);
+  const store = await loadStore();
+  const now = nowIso();
+  let entry = store.workspaces.find((w) => w.path === id.path);
+  if (entry) {
+    entry.lastSeen = now;
+    entry.archived = false;
+  } else {
+    entry = {
+      path: id.path,
+      name: id.name,
+      firstSeen: now,
+      lastSeen: now,
+      archived: false,
+    };
+    store.workspaces.push(entry);
+  }
+  pruneLRU(store);
+  await saveStore(store);
+  return entry;
+}
+
+/**
+ * Mutates store: if active count > WORKSPACE_CAP, archive oldest active by lastSeen.
+ * Archived entries don't count toward the cap.
+ */
+function pruneLRU(store: WorkspaceStore): void {
+  const active = store.workspaces.filter((w) => !w.archived);
+  if (active.length <= WORKSPACE_CAP) return;
+  const oldest = active.reduce((acc, cur) =>
+    new Date(cur.lastSeen).getTime() < new Date(acc.lastSeen).getTime()
+      ? cur
+      : acc,
+  );
+  oldest.archived = true;
 }

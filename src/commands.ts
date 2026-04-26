@@ -36,6 +36,7 @@ import { handleShowcaseCommand } from "./commands/showcase.js";
 import { handleFileCommand } from "./commands/file.js";
 import { handleObserveCommand } from "./commands/observe.js";
 import { handlePostmortemCommand } from "./commands/postmortem.js";
+import { handleWorkspacesCommand } from "./commands/workspaces.js";
 
 // Preserve the previous export surface so external callers and tests that
 // imported `CommandContext`/`CommandResult` from `./commands.js` keep working.
@@ -47,6 +48,7 @@ const KNOWN_COMMANDS = new Set([
   "save", "decisions", "export", "debug", "reset", "reminder",
   "update", "upgrade", "plan", "profile", "delegate", "team", "agents", "showcase", "file",
   "observe", "postmortem", "orchestrate", "orch", "github",
+  "workspaces",
 ]);
 
 export async function handleCommand(input: string, ctx: CommandContext): Promise<CommandResult> {
@@ -127,6 +129,8 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
       return handleOrchestrateCommand(action, args, ctx);
     case "github":
       return handleGitHubCommand(action, args, ctx);
+    case "workspaces":
+      return handleWorkspacesCommand(action, args, ctx);
     default:
       return { handled: false };
   }

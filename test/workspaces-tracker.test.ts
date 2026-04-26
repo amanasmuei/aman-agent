@@ -104,3 +104,81 @@ describe("recordWorkspace", () => {
     expect(archived[0].name).toBe("repo-0");
   });
 });
+
+import {
+  listWorkspaces,
+  archiveWorkspace,
+  unarchiveWorkspace,
+} from "../src/workspaces/tracker.js";
+
+describe("listWorkspaces", () => {
+  function makeRepo(name: string): string {
+    const dir = path.join(tmp, `list-${name}`);
+    fs.mkdirSync(dir);
+    gitInit(dir);
+    return dir;
+  }
+
+  it("returns active only by default, newest lastSeen first", async () => {
+    await recordWorkspace(makeRepo("alpha"));
+    await new Promise((r) => setTimeout(r, 10));
+    await recordWorkspace(makeRepo("beta"));
+    const list = await listWorkspaces();
+    expect(list.map((w) => w.name)).toEqual(["list-beta", "list-alpha"]);
+  });
+
+  it("includes archived when includeArchived=true", async () => {
+    await recordWorkspace(makeRepo("alpha"));
+    await archiveWorkspace("list-alpha");
+    const activeOnly = await listWorkspaces();
+    expect(activeOnly).toHaveLength(0);
+    const all = await listWorkspaces({ includeArchived: true });
+    expect(all).toHaveLength(1);
+    expect(all[0].archived).toBe(true);
+  });
+});
+
+describe("archiveWorkspace / unarchiveWorkspace", () => {
+  function makeRepo(name: string): string {
+    const dir = path.join(tmp, `arch-${name}`);
+    fs.mkdirSync(dir);
+    gitInit(dir);
+    return dir;
+  }
+
+  it("archives by name", async () => {
+    await recordWorkspace(makeRepo("alpha"));
+    await archiveWorkspace("arch-alpha");
+    const all = await listWorkspaces({ includeArchived: true });
+    expect(all[0].archived).toBe(true);
+  });
+
+  it("unarchives by name", async () => {
+    await recordWorkspace(makeRepo("alpha"));
+    await archiveWorkspace("arch-alpha");
+    await unarchiveWorkspace("arch-alpha");
+    const list = await listWorkspaces();
+    expect(list).toHaveLength(1);
+    expect(list[0].archived).toBe(false);
+  });
+
+  it("throws when name not found (helpful error)", async () => {
+    await expect(archiveWorkspace("nonexistent")).rejects.toThrow(
+      /not found/i,
+    );
+  });
+
+  it("throws when name is ambiguous", async () => {
+    const root1 = path.join(tmp, "ambiguous-1");
+    const root2 = path.join(tmp, "ambiguous-2");
+    fs.mkdirSync(path.join(root1, "shared-name"), { recursive: true });
+    fs.mkdirSync(path.join(root2, "shared-name"), { recursive: true });
+    gitInit(path.join(root1, "shared-name"));
+    gitInit(path.join(root2, "shared-name"));
+    await recordWorkspace(path.join(root1, "shared-name"));
+    await recordWorkspace(path.join(root2, "shared-name"));
+    await expect(archiveWorkspace("shared-name")).rejects.toThrow(
+      /ambiguous|multiple/i,
+    );
+  });
+});

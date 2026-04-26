@@ -94,3 +94,67 @@ function pruneLRU(store: WorkspaceStore): void {
   );
   oldest.archived = true;
 }
+
+export interface ListOptions {
+  includeArchived?: boolean;
+}
+
+/**
+ * List workspaces.
+ * Default: active only, newest lastSeen first.
+ * With { includeArchived: true }: all entries, same ordering.
+ */
+export async function listWorkspaces(
+  opts: ListOptions = {},
+): Promise<WorkspaceEntry[]> {
+  const store = await loadStore();
+  const filtered = opts.includeArchived
+    ? store.workspaces
+    : store.workspaces.filter((w) => !w.archived);
+  return [...filtered].sort(
+    (a, b) =>
+      new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime(),
+  );
+}
+
+/**
+ * Look up a workspace by case-insensitive name match.
+ * Throws if zero or multiple matches.
+ */
+async function findByName(name: string): Promise<WorkspaceEntry> {
+  const store = await loadStore();
+  const lower = name.toLowerCase();
+  const matches = store.workspaces.filter(
+    (w) => w.name.toLowerCase() === lower,
+  );
+  if (matches.length === 0) {
+    throw new Error(`Workspace not found: "${name}"`);
+  }
+  if (matches.length > 1) {
+    const paths = matches.map((m) => m.path).join(", ");
+    throw new Error(
+      `Workspace name "${name}" is ambiguous (${matches.length} matches: ${paths}). Use the full path or rename one.`,
+    );
+  }
+  return matches[0];
+}
+
+export async function archiveWorkspace(name: string): Promise<void> {
+  const target = await findByName(name);
+  const store = await loadStore();
+  const entry = store.workspaces.find((w) => w.path === target.path);
+  if (!entry) throw new Error(`Workspace not found: "${name}"`);
+  entry.archived = true;
+  await saveStore(store);
+}
+
+export async function unarchiveWorkspace(name: string): Promise<void> {
+  const target = await findByName(name);
+  const store = await loadStore();
+  const entry = store.workspaces.find((w) => w.path === target.path);
+  if (!entry) throw new Error(`Workspace not found: "${name}"`);
+  entry.archived = false;
+  // If unarchiving pushes active count over cap, prune the next-oldest
+  pruneLRU(store);
+  await saveStore(store);
+}

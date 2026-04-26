@@ -1,9 +1,11 @@
 # Project Tracking + LRU Cap — Design Spec (Strawman)
 
-**Status:** strawman, pending human review
+**Status:** strawman, pending human review — **reconciled 2026-04-26 against aman-mcp@0.8.0 (see Section 10)**
 **Roadmap item:** #8 ("LRU-7 project cap — hard slot limit on project detection/tracking")
-**Date:** 2026-04-21
+**Date:** 2026-04-21 (reconciliation appended 2026-04-26)
 **Author:** aman-agent session
+
+> **Reading guide.** Sections 1–9 are the original April 21 strawman, preserved as history. **Section 10** is the post-2026-04-26 reconciliation: aman-mcp@0.8.0 shipped a *thread*-shaped project-tracking layer that overlaps in name but not in semantics with this *workspace*-shaped tracker. Read Section 10 first if you're picking up this spec fresh — it reframes the scope of what's left to build here.
 
 > **Scope note.** The roadmap entry described a *cap*, but no list exists to
 > cap. `src/project/detector.ts` only *classifies* cwd (frontend/backend/...)
@@ -256,3 +258,127 @@ and commands. No migration needed — the tracker creates the store on first run
 
 ~270 LOC (tracker + store + commands) + ~200 LOC hermetic tests via
 `AMAN_AGENT_HOME`. Single session, no coordination required.
+
+---
+
+## 10. Reconciliation with aman-mcp@0.8.0 (2026-04-26)
+
+> **Why this section exists.** Five days after this strawman was written, `@aman_asmuei/aman-mcp@0.8.0` shipped a project-tracking subsystem to the aman ecosystem. The names collide ("project tracking + LRU cap" appears on both sides), but the *concepts* don't — they're complementary, not duplicate. This section reconciles the divergence and updates the scope of what's left to build here.
+
+### 10.1 The divergence
+
+| | This strawman (Apr 21) | aman-mcp@0.8.0 (Apr 26, shipped) |
+|---|---|---|
+| **What's a "project"?** | git repo root (auto-detected from cwd at startup) | named topical work-thread (manually created via `project_add`) |
+| **Cardinality** | One per repo | One per arc-of-work; can span repos |
+| **Detection** | `git rev-parse --show-toplevel` on `runAgent()` startup | Conversational: "I got a new project, building X" |
+| **LRU cap** | N=7 (Miller's law) | N=10 (sample-derived, hardcoded v1, parameterizable later) |
+| **Storage** | `~/.aman-agent/projects.json` (flat JSON, owned by aman-agent) | `~/.aprojects/dev/plugin/projects.md` (MarkdownFileStorage, scope-aware, owned by aman-mcp) |
+| **Lifecycle field?** | `archived: boolean` (cap-overflow marker only) | `status: active \| paused \| complete \| abandoned` + orthogonal `inActiveList: boolean` |
+| **Niyyah-aware?** | No (just path + name + dates) | Yes (optional `niyyah` field, optional `linkedIntentionId`) |
+| **Conceptually** | **Workspace** — *where I code* | **Thread** — *what I pursue* |
+| **Status** | Strawman, not yet implemented | Shipped to npm, Claude Code plugin live |
+
+The two layers reference each other implicitly: `aman-mcp.Project.workspaces: string[]` already references workspace paths. Tonight's ship baked in the integration seam without naming it.
+
+### 10.2 Vocabulary fix — "project" is overloaded; this strawman is about **workspaces**
+
+To eliminate the name collision:
+
+- **Rename throughout this spec** (when implemented): `project` → `workspace` for this subsystem.
+- File: `~/.aman-agent/projects.json` → **`~/.aman-agent/workspaces.json`**
+- Slash commands: `/projects` → `/workspaces` (or `/ws`)
+- Function names: `recordProject(cwd)` → `recordWorkspace(cwd)`, `identifyProject(cwd)` → `identifyWorkspace(cwd)`, etc.
+
+Why: in the unified ecosystem, **"project" now consistently means a thread of work** (one's `linkedIntentionId`, one's session log, one's niyyah). Repos are **workspaces** that *host* threads. Mixing the two terms costs us clarity for years.
+
+### 10.3 Recommended integration shape — keep separate, link via aman-mcp
+
+The two layers are complementary at different cardinalities. Don't merge them into one. Instead:
+
+1. **aman-agent owns workspace tracking** — local to its runtime, JSON store as designed in §3, N=7 cap, slash commands, the works. Its job: *which repo am I in right now?*
+2. **aman-mcp owns thread tracking** — already shipped at `~/.aprojects/dev/plugin/projects.md`. Its job: *which arc of work am I pursuing?*
+3. **Integration via `aman-mcp.Project.workspaces[]`** — when a thread spans multiple repos, those repo paths populate this array. The aman-agent workspace tracker can be the *source of truth* for the current cwd anchor; aman-mcp threads reference workspace paths but don't manage them.
+
+### 10.4 New behavior at `runAgent()` startup (revised data flow)
+
+Replacing the §4 data flow:
+
+```
+runAgent()
+  ├─ recordWorkspace(cwd)                ← this strawman, unchanged
+  │    ├─ identifyWorkspace(cwd)         → { path, name }
+  │    ├─ load ~/.aman-agent/workspaces.json
+  │    ├─ touch lastSeen / push new entry
+  │    ├─ pruneLRU(active=7)
+  │    └─ atomic save
+  │
+  └─ surfaceCurrentThread(cwd)           ← NEW, integrates aman-mcp
+       ├─ call mcp__aman__project_active() via MCP client
+       ├─ if active thread exists:
+       │    ├─ log: "Workspace: <name>; current thread: <thread.name>"
+       │    └─ if cwd ∈ thread.workspaces: anchor inline ("you're in <ws>, part of <thread>")
+       ├─ if no active thread but workspaces.json shows recurring repo:
+       │    └─ suggest: "Want to start a thread for <ws>?" (passive, one-time)
+       └─ never auto-create threads
+```
+
+This uses aman-mcp's tools at runtime but doesn't depend on aman-mcp at install time (graceful degradation if MCP server unreachable).
+
+### 10.5 Should workspace tracking move to aman-mcp?
+
+**Decision:** No, not in v1. Reasoning:
+
+- Workspace tracking is **runtime-local** — it's about "which cwd is this aman-agent process in *right now*." Moving it to aman-mcp would push runtime concerns into substrate.
+- aman-mcp is already neutral and broadly useful (any MCP-speaking agent can use thread tracking). Adding workspace concerns there couples it to the assumption that the runtime has a meaningful cwd, which isn't true for all consumers (e.g., a web-hosted Arienz with no cwd).
+- The existing `aman-mcp.Project.workspaces[]` array is sufficient as the integration point. aman-agent populates it from its own workspace tracker; other runtimes can populate it differently or leave it empty.
+
+**Revisit if:** multiple runtimes (web client, daemon, IDE plugin) all need workspace tracking and start to duplicate aman-agent's logic. At that point, extract a shared workspace tracker into aman-core.
+
+### 10.6 Open questions added by tonight's ship
+
+(In addition to the original §8 list — those still stand.)
+
+**8.6 — Should workspace tracking auto-suggest thread creation?**
+When a workspace is first detected, aman-mcp has zero threads referencing it. Options: (a) silent (just track the workspace), (b) ask once ("start a thread for `<ws>`?"), (c) auto-create a thread named after the workspace.
+**Lean: (b).** Auto-creation pollutes the LRU; silence misses the obvious bootstrap moment.
+
+**8.7 — Memory / amem scope: workspace OR thread OR both?**
+Original §8.1 asked "should memory recall scope-filter by project?" — that question now bifurcates. Workspace-scoped recall ("what did I do last time I was in `aman-copilot`?") and thread-scoped recall ("what did I decide on Phase 1.5 substrate?") are different axes. Probably both, with thread taking precedence when present.
+
+**8.8 — Worktrees revisited.**
+Original §8.2 noted worktrees collapse to main repo path under the workspace model. Threads handle this naturally — different feature branches *in the same workspace* can be different threads. So the worktree problem is now less about workspace identity and more about *which thread is active in this branch*. Possibly: future `aman-agent` integration could detect git branch and prompt "different thread for this branch?"
+
+**8.9 — Cross-machine sync changes shape.**
+Original §8.3 worried about archive paths leaking. With threads in `~/.aprojects/` (no absolute paths in core fields), only the workspaces array contains cross-machine-fragile data. So cross-machine sync of threads is *more* portable than workspaces. Reflects the substrate-sovereignty principle: the *what I pursue* is portable; the *where I code* is machine-local.
+
+### 10.7 Estimated effort — revised
+
+Original §9 estimated ~270 LOC (tracker + store + commands) + ~200 LOC tests.
+
+**Revised:** still ~270 LOC + tests for the workspace tracker (rename-only changes from the original). **Plus** ~50 LOC for `surfaceCurrentThread(cwd)` integration with aman-mcp (an MCP-client call wrapped in graceful-degradation).
+
+Total: ~320 LOC + tests. Single session, but with one external dependency (the aman-mcp client must be available at runtime — already in scope since aman-agent already ships an MCP client for amem).
+
+### 10.8 What's actively unchanged from the original strawman
+
+These §3 decisions still stand under the workspace reframing:
+
+- §3.1 store version field for migration seam ✅
+- §3.2 atomic save via tmp file + rename ✅
+- §3.3 corrupt-store-fail-open (never block startup) ✅
+- §3.4 v1 doesn't cross-link with memory/identity/rules (deferred — see §8.7) ✅
+- §6 non-goals (no telemetry, no cross-machine sync, no scope filter) ✅
+- §7 rollout plan (ship on main, no feature flag, additive only) ✅
+
+### 10.9 Status after this reconciliation
+
+- Strawman remains pending human review.
+- Reframed as a **workspace tracker** (not a project tracker — that name now belongs to aman-mcp's thread layer).
+- Integration shape with aman-mcp@0.8.0 documented (§10.3 / §10.4); requires `surfaceCurrentThread()` addition at runtime.
+- Effort revised slightly upward (~50 LOC) for the integration call; nothing else changes.
+- **Next decision:** human review of this reconciliation; if accepted, the original §3–§9 implementation can proceed under the new vocabulary.
+
+---
+
+*Reconciliation appended 2026-04-26 by Arienz, post aman-mcp@0.8.0 ship.*

@@ -12,3 +12,8 @@ export {
   type WorkspaceId,
 } from "./tracker.js";
 export { storePath, loadStore, saveStore } from "./store.js";
+export {
+  surfaceCurrentThread,
+  formatThreadSurfaceMessage,
+  type ThreadSurfaceInput,
+} from "./thread-bridge.js";

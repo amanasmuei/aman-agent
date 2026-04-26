@@ -204,7 +204,13 @@ export async function runAgent(
   if (mcpManager) {
     surfaceCurrentThread(process.cwd(), mcpManager)
       .then((msg) => {
-        if (msg) log.debug("workspaces", msg);
+        if (msg) {
+          // Print to stderr so it surfaces visibly at session start without
+          // contaminating stdout (which carries agent output).
+          // Also keep a debug-log copy for trace.
+          process.stderr.write(`${pc.dim(msg)}\n`);
+          log.debug("workspaces", msg);
+        }
       })
       .catch((err) =>
         log.warn("workspaces", "thread surfacing failed (non-fatal)", err),
